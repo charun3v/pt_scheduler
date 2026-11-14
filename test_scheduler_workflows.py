@@ -6,6 +6,9 @@ import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
 
+from django.test.utils import setup_test_environment
+setup_test_environment()
+
 from django.test import Client
 from django.contrib.auth.models import User
 from datetime import date, timedelta
@@ -308,8 +311,127 @@ def run_tests():
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
     print("✓ Test 11 Passed: /reports/machines/ rendered with HTTP 200 without VariableDoesNotExist errors.")
 
+    # 12. Test Dashboard Overhaul & Non-Scheduled Patients Pagination (15 per page)
+    print("\n--- Test 12: Dashboard Overhaul & Non-Scheduled Pagination (15/page) ---")
+    c.force_login(admin_user)
+    resp = c.get('/dashboard/')
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+    # Verify stats tiles are removed
+    assert b'Total Registered Patients' not in resp.content, "Stats tile 'Total Registered Patients' should be removed"
+    assert b'Total Treatment Schedules' not in resp.content, "Stats tile 'Total Treatment Schedules' should be removed"
+    assert b'Starts Booked Today' not in resp.content, "Machine workload starts breakdown should be removed"
+
+    # Verify primary options are present
+    assert b'Register Patients' in resp.content, "Option 'Register Patients' must be present"
+    assert b'Schedule Patients' in resp.content, "Option 'Schedule Patients' must be present"
+    assert b'Non-Scheduled Patients' in resp.content, "Table for Non-Scheduled Patients must be present"
+
+    # Verify pagination is exactly 15 per page
+    page_obj = resp.context['page_obj']
+    assert len(page_obj) <= 15, f"Expected at most 15 items per page, got {len(page_obj)}"
+    assert resp.context['page_obj'].paginator.per_page == 15, "Paginator must be set to 15 per page"
+
+    # Test page 2 navigation
+    if resp.context['page_obj'].paginator.num_pages >= 2:
+        resp_p2 = c.get('/dashboard/?page=2')
+        assert resp_p2.status_code == 200
+        assert len(resp_p2.context['page_obj']) == 15, "Page 2 should contain 15 patients"
+
+    # Test search on dashboard
+    resp_search = c.get(f'/dashboard/?q={p.mr_no}')
+    assert resp_search.status_code == 200
+    assert bytes(str(p.mr_no), 'utf-8') in resp_search.content
+    print("✓ Test 12 Passed: Dashboard stats removed; options for Register & Schedule present; Non-scheduled table paginated at 15 patients/page.")
+
+    # 13. Test Admin (not SubAdmin) Rights to Delete Patient
+    print("\n--- Test 13: Admin (not SubAdmin) Patient Deletion Rights ---")
+    # Create test patient to delete
+    del_mr = 9999003
+    Patient.objects.filter(mr_no=del_mr).delete()
+    test_pt = Patient.objects.create(
+        mr_no=del_mr,
+        pt_name='Test Patient For Deletion',
+        sex='M',
+        diagnosis='Cancer Test',
+        created_by=admin_user
+    )
+
+    # SubAdmin attempt to GET delete confirmation -> blocked
+    c.force_login(subadmin_user)
+    resp = c.get(f'/patients/{test_pt.id}/delete/')
+    assert resp.status_code == 302, f"SubAdmin should be redirected, got {resp.status_code}"
+    # SubAdmin attempt to POST delete -> blocked
+    resp = c.post(f'/patients/{test_pt.id}/delete/')
+    assert resp.status_code == 302, f"SubAdmin should be redirected, got {resp.status_code}"
+    assert Patient.objects.filter(id=test_pt.id).exists(), "Patient must NOT be deleted by SubAdmin"
+
+    # Admin attempt to GET delete confirmation -> allowed
+    c.force_login(admin_user)
+    resp = c.get(f'/patients/{test_pt.id}/delete/')
+    assert resp.status_code == 200, f"Admin should see confirmation page, got {resp.status_code}"
+    assert b'Confirm Permanent Patient Deletion' in resp.content
+    assert bytes(str(del_mr), 'utf-8') in resp.content
+
+    # Admin attempt to POST delete -> patient deleted
+    resp = c.post(f'/patients/{test_pt.id}/delete/')
+    assert resp.status_code == 302, f"Admin post delete should redirect, got {resp.status_code}"
+    assert not Patient.objects.filter(id=test_pt.id).exists(), "Patient must be deleted by Admin"
+    print("✓ Test 13 Passed: SubAdmin is strictly blocked from deleting patients; Admin can permanently delete patient.")
+
+    # 14. Test Admin (not SubAdmin) Rights to Remove from Schedule List
+    print("\n--- Test 14: Admin (not SubAdmin) Remove from Schedule List Rights ---")
+    # Create test patient with a schedule
+    sched_mr = 9999002
+    Patient.objects.filter(mr_no=sched_mr).delete()
+    sched_pt = Patient.objects.create(
+        mr_no=sched_mr,
+        pt_name='Test Patient For Schedule Removal',
+        sex='F',
+        diagnosis='Cervix Cancer',
+        created_by=admin_user
+    )
+    test_sched = TreatmentSchedule.objects.create(
+        patient=sched_pt,
+        machine=mach,
+        shift=Shift.objects.first(),
+        date_of_sim=date.today(),
+        date_of_start=date.today() + timedelta(days=3),
+        dose_planned=Decimal('50.0'),
+        no_of_fractions=25,
+        created_by=admin_user
+    )
+
+    # SubAdmin attempt to GET remove schedule -> blocked
+    c.force_login(subadmin_user)
+    resp = c.get(f'/scheduler/schedule/{test_sched.id}/delete/')
+    assert resp.status_code == 302, f"SubAdmin should be redirected, got {resp.status_code}"
+    # SubAdmin attempt to POST remove schedule -> blocked
+    resp = c.post(f'/scheduler/schedule/{test_sched.id}/delete/')
+    assert resp.status_code == 302, f"SubAdmin should be redirected, got {resp.status_code}"
+    assert TreatmentSchedule.objects.filter(id=test_sched.id).exists(), "Schedule must NOT be deleted by SubAdmin"
+
+    # Admin attempt to GET remove confirmation -> allowed
+    c.force_login(admin_user)
+    resp = c.get(f'/scheduler/schedule/{test_sched.id}/delete/')
+    assert resp.status_code == 200, f"Admin should see confirmation page, got {resp.status_code}"
+    assert b'Confirm Removal from Schedule List' in resp.content
+
+    # Admin attempt to POST remove -> schedule deleted, patient now non-scheduled
+    resp = c.post(f'/scheduler/schedule/{test_sched.id}/delete/')
+    assert resp.status_code == 302, f"Admin post delete should redirect, got {resp.status_code}"
+    assert not TreatmentSchedule.objects.filter(id=test_sched.id).exists(), "Schedule must be deleted by Admin"
+    assert sched_pt.schedules.count() == 0, "Patient should now have 0 schedules"
+
+    # Verify sched_pt now appears in non-scheduled list on dashboard
+    resp = c.get(f'/dashboard/?q={sched_mr}')
+    assert resp.status_code == 200
+    assert bytes(str(sched_mr), 'utf-8') in resp.content
+    assert b'Not Scheduled' in resp.content
+
     # Clean up test patient
+    sched_pt.delete()
     p.delete()
+    print("✓ Test 14 Passed: SubAdmin is strictly blocked from removing schedules; Admin can remove patient from schedule list.")
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

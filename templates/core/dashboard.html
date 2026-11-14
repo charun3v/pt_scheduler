@@ -3,149 +3,272 @@
 {% block title %}Dashboard - {{ APP_TITLE }}{% endblock %}
 
 {% block content %}
-<div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-    <div>
-        <h1 style="margin: 0; font-size: 20px; color: #003366;">Radiotherapy Clinical Dashboard</h1>
-        <div style="font-size: 12px; color: #666;">Radiation Oncology Patient Scheduling & Machine Capacity Overview</div>
-    </div>
-    <div style="display: flex; gap: 8px;">
-        <a href="{% url 'patient_register' %}" class="action-ribbon-btn btn-highlight" style="padding: 8px 16px; font-size: 13px;">➕ Register New Patient</a>
-        <a href="{% url 'unscheduled_patients' %}" class="action-ribbon-btn" style="padding: 8px 16px; font-size: 13px;">⏳ Unscheduled Queue</a>
-    </div>
-</div>
-
-<!-- Stat Tiles -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px;">
-    <div style="background: #ffffff; border-left: 4px solid #003366; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold;">Total Registered Patients</div>
-        <div style="font-size: 26px; font-weight: bold; color: #003366; margin: 4px 0;">{{ total_patients }}</div>
-        <div style="font-size: 11px; color: #28a745;">Unique MR Number records</div>
-    </div>
-
-    <div style="background: #ffffff; border-left: 4px solid #28a745; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold;">Total Treatment Schedules</div>
-        <div style="font-size: 26px; font-weight: bold; color: #28a745; margin: 4px 0;">{{ total_schedules }}</div>
-        <div style="font-size: 11px; color: #666;">Historical & Active courses</div>
-    </div>
-
-    <div style="background: #ffffff; border-left: 4px solid #ffc107; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold;">Start Dates Pending</div>
-        <div style="font-size: 26px; font-weight: bold; color: #856404; margin: 4px 0;">{{ pending_starts }}</div>
-        <a href="{% url 'pending_starts_report' %}" style="font-size: 11px; color: #003366; text-decoration: underline;">View pending list & schedule &rarr;</a>
-    </div>
-
-    <div style="background: #ffffff; border-left: 4px solid #17a2b8; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold;">Starts Today ({{ today|date:"d M" }})</div>
-        <div style="font-size: 26px; font-weight: bold; color: #17a2b8; margin: 4px 0;">{{ today_starts }}</div>
-        <a href="{% url 'machine_daily_list' %}?start_date={{ today|date:'Y-m-d' }}&end_date={{ today|date:'Y-m-d' }}" style="font-size: 11px; color: #003366; text-decoration: underline;">View daily schedule &rarr;</a>
-    </div>
-</div>
-
-<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-    
-    <!-- Today's Machine Starts Breakdown -->
-    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 4px; padding: 16px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
-            <h3 style="margin: 0; font-size: 14px; color: #003366;">⚡ Today's Starts by Machine ({{ today|date:"d M Y" }})</h3>
-            <a href="{% url 'machine_daily_list' %}" class="action-ribbon-btn">Full Machine Calendar &rarr;</a>
-        </div>
-
-        {% if machine_counts %}
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-            <thead>
-                <tr style="background: #f0f4f8; text-align: left;">
-                    <th style="padding: 8px; border-bottom: 2px solid #ddd;">Machine</th>
-                    <th style="padding: 8px; border-bottom: 2px solid #ddd;">Code</th>
-                    <th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: right;">Starts Booked Today</th>
-                    <th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: center;">Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in machine_counts %}
-                <tr style="border-bottom: 1px solid #eee;">
-                    <td style="padding: 8px; font-weight: 600;">{{ row.machine__name }}</td>
-                    <td style="padding: 8px;"><span class="badge-locked">{{ row.machine__code }}</span></td>
-                    <td style="padding: 8px; text-align: right; font-weight: bold; color: #003366;">{{ row.patient_count }}</td>
-                    <td style="padding: 8px; text-align: center;">
-                        <a href="{% url 'machine_daily_list' %}?machine_code={{ row.machine__code }}&start_date={{ today|date:'Y-m-d' }}" style="color: #003366; text-decoration: underline;">View Patients</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p style="color: #666; font-style: italic; margin: 10px 0;">No patient treatment starts scheduled for today yet.</p>
-        {% endif %}
-
-        <!-- Upcoming Starts This Week -->
-        <h3 style="margin: 20px 0 10px 0; font-size: 14px; color: #003366; border-bottom: 1px solid #eee; padding-bottom: 6px;">📅 Upcoming Treatment Starts This Week</h3>
-        {% if upcoming_starts %}
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-            <thead>
-                <tr style="background: #f0f4f8; text-align: left;">
-                    <th style="padding: 6px 8px;">Start Date</th>
-                    <th style="padding: 6px 8px;">MR No.</th>
-                    <th style="padding: 6px 8px;">Patient Name</th>
-                    <th style="padding: 6px 8px;">Machine</th>
-                    <th style="padding: 6px 8px;">Shift</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for s in upcoming_starts %}
-                <tr style="border-bottom: 1px solid #eee;">
-                    <td style="padding: 6px 8px; font-weight: bold;">{{ s.date_of_start|date:"d-m-Y" }}</td>
-                    <td style="padding: 6px 8px;"><a href="{% url 'patient_detail' s.patient.id %}">{{ s.patient.mr_no }}</a></td>
-                    <td style="padding: 6px 8px;">{{ s.patient.pt_name }}</td>
-                    <td style="padding: 6px 8px;">{{ s.machine_display }}</td>
-                    <td style="padding: 6px 8px;">{{ s.shift_display }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p style="color: #666; font-style: italic;">No upcoming starts in the next 7 days.</p>
-        {% endif %}
-    </div>
-
-    <!-- Right Side: Recent Registrations & Quick Links -->
-    <div style="display: flex; flex-direction: column; gap: 16px;">
-        <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 4px; padding: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 6px;">
-                <h3 style="margin: 0; font-size: 13px; color: #003366;">Recent Registrations</h3>
-                <a href="{% url 'patient_search' %}" style="font-size: 11px; color: #003366; text-decoration: underline;">All &rarr;</a>
+<div style="margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #003366; padding-bottom: 10px; margin-bottom: 18px;">
+        <div>
+            <h1 style="margin: 0; font-size: 22px; color: #003366; display: flex; align-items: center; gap: 8px;">
+                <span>🏥</span> Radiotherapy Patient Scheduler
+            </h1>
+            <div style="font-size: 12px; color: #555; margin-top: 3px;">
+                Clinical Patient Registration & Radiotherapy Scheduling Workstation
             </div>
-            {% if recent_patients %}
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                {% for p in recent_patients %}
-                <div style="border-bottom: 1px dashed #eee; padding-bottom: 6px; font-size: 12px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <a href="{% url 'patient_detail' p.id %}" style="font-weight: 600; color: #003366;">{{ p.pt_name }}</a>
-                        <span style="font-size: 11px; color: #888;">MR: {{ p.mr_no }}</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666; margin-top: 2px;">
-                        <span>{{ p.diagnosis|truncatechars:20 }}</span>
-                        {% if p.has_schedule %}
-                            <span class="badge-success">Scheduled</span>
-                        {% else %}
-                            <a href="{% url 'schedule_patient' p.id %}" class="badge-warning" style="text-decoration: none;">Schedule &rarr;</a>
-                        {% endif %}
+        </div>
+        <div style="font-size: 12px; color: #666; text-align: right;">
+            <div>Logged in as: <strong>{{ user.first_name|default:user.username }}</strong>
+                {% if CURRENT_ROLE %}
+                    {% if CURRENT_ROLE.role_name == 'Admin' %}
+                        <span class="badge-admin">Admin</span>
+                    {% elif CURRENT_ROLE.role_name == 'SubAdmin' %}
+                        <span class="badge-subadmin">SubAdmin</span>
+                    {% else %}
+                        <span class="badge-locked">{{ CURRENT_ROLE.role_name }}</span>
+                    {% endif %}
+                {% endif %}
+            </div>
+            <div style="font-size: 11px; color: #888;">{{ "now"|date:"l, d F Y" }}</div>
+        </div>
+    </div>
+
+    <!-- Primary Clinical Options: Register patients & Schedule patients -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+        
+        <!-- Option 1: Register Patients -->
+        <div style="background: linear-gradient(to bottom, #ffffff, #f7fafc); border: 2px solid #003366; border-radius: 6px; padding: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <span style="font-size: 28px; line-height: 1;">📝</span>
+                    <div>
+                        <h2 style="margin: 0; font-size: 17px; color: #003366; font-weight: bold;">Register Patients</h2>
+                        <div style="font-size: 11px; color: #666;">Step 1: Patient Registration & Demographics</div>
                     </div>
                 </div>
-                {% endfor %}
+                <p style="margin: 6px 0 16px 0; font-size: 12px; color: #444; line-height: 1.5;">
+                    Record patient demographics: <strong>MR Number</strong> (unique), <strong>Patient Name</strong>, <strong>RT Number</strong>, <strong>Age</strong>, <strong>Sex</strong>, <strong>Diagnosis</strong>, <strong>Primary Consultant</strong>, and <strong>Phone Number</strong>.
+                </p>
             </div>
-            {% endif %}
+            <div>
+                <a href="{% url 'patient_register' %}" class="action-ribbon-btn btn-highlight" style="padding: 10px 22px; font-size: 14px; width: 100%; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">
+                    ➕ Register New Patient &rarr;
+                </a>
+            </div>
         </div>
 
-        <div style="background: #eef4f9; border: 1px solid #c2d6eb; border-radius: 4px; padding: 14px; font-size: 12px;">
-            <h4 style="margin: 0 0 8px 0; color: #003366;">Quick Clinical Actions</h4>
-            <ul style="margin: 0; padding-left: 18px; line-height: 1.8;">
-                <li><a href="{% url 'patient_register' %}" style="color: #003366; font-weight: 600;">Register New Patient</a></li>
-                <li><a href="{% url 'patient_search' %}" style="color: #003366;">Search by MR Number / Name</a></li>
-                <li><a href="{% url 'pending_starts_report' %}" style="color: #003366;">Process Pending Start Dates</a></li>
-                <li><a href="{% url 'machine_daily_list' %}" style="color: #003366;">Generate Machine Schedules</a></li>
-                <li><a href="{% url 'consultant_stats' %}" style="color: #003366;">Consultant Workload Pivot</a></li>
-            </ul>
+        <!-- Option 2: Schedule Patients -->
+        <div style="background: linear-gradient(to bottom, #ffffff, #f7fafc); border: 2px solid #28a745; border-radius: 6px; padding: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <span style="font-size: 28px; line-height: 1;">⚡</span>
+                    <div>
+                        <h2 style="margin: 0; font-size: 17px; color: #1e7e34; font-weight: bold;">Schedule Patients</h2>
+                        <div style="font-size: 11px; color: #666;">Step 2: Treatment Course & Machine Slot Booking</div>
+                    </div>
+                </div>
+                <p style="margin: 6px 0 16px 0; font-size: 12px; color: #444; line-height: 1.5;">
+                    Assign <strong>Machine</strong>, <strong>Shift</strong>, <strong>Simulation Date</strong>, <strong>Dose / Fractions</strong>, <strong>Technique</strong>, <strong>Junior Resident</strong>, and calculate <strong>Nearest Available Free Slot</strong>.
+                </p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" onclick="document.getElementById('quickScheduleModal').style.display='flex';" class="action-ribbon-btn" style="background: #28a745; color: #ffffff; border-color: #1e7e34; padding: 10px 18px; font-size: 14px; font-weight: bold; flex: 1; justify-content: center; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.15);">
+                    ⚡ Schedule by MR Number &rarr;
+                </button>
+                <a href="{% url 'patient_search' %}" class="action-ribbon-btn" style="padding: 10px 16px; font-size: 13px; justify-content: center;">
+                    🔍 Lookup Patient
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table of Non-Scheduled Patients -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden;">
+        
+        <!-- Table Header & Search Filter -->
+        <div style="background: #f0f4f8; border-bottom: 2px solid #003366; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h3 style="margin: 0; font-size: 15px; color: #003366; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                    <span>📋</span> Non-Scheduled Patients
+                    <span style="font-size: 12px; font-weight: normal; background: #003366; color: #ffffff; padding: 2px 8px; border-radius: 12px;">
+                        {{ total_non_scheduled }} patient{{ total_non_scheduled|pluralize }} awaiting scheduling
+                    </span>
+                </h3>
+                <div style="font-size: 11px; color: #666; margin-top: 2px;">
+                    Registered patients without a treatment schedule or with pending treatment start dates. Paginated at 15 patients per page.
+                </div>
+            </div>
+
+            <!-- Search Form -->
+            <form method="GET" action="{% url 'dashboard' %}" style="display: flex; gap: 6px; align-items: center;">
+                <input type="text" name="q" value="{{ query }}" placeholder="Search MR No, Name, Phone..."
+                       style="padding: 6px 12px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; width: 240px;">
+                <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 6px 12px; font-size: 12px; cursor: pointer;">
+                    🔍 Search
+                </button>
+                {% if query %}
+                    <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="padding: 6px 10px; font-size: 12px;">
+                        ✖ Clear
+                    </a>
+                {% endif %}
+            </form>
+        </div>
+
+        <!-- Non-Scheduled Patients Table -->
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <thead>
+                    <tr style="background: #003366; color: #ffffff; text-align: left;">
+                        <th style="padding: 9px 10px; width: 40px; text-align: center;">#</th>
+                        <th style="padding: 9px 10px;">MR Number</th>
+                        <th style="padding: 9px 10px;">Patient Name</th>
+                        <th style="padding: 9px 10px;">RT Number</th>
+                        <th style="padding: 9px 10px;">Age / Sex</th>
+                        <th style="padding: 9px 10px;">Diagnosis</th>
+                        <th style="padding: 9px 10px;">Primary Consultant</th>
+                        <th style="padding: 9px 10px;">Phone Number</th>
+                        <th style="padding: 9px 10px; text-align: center;">Status</th>
+                        <th style="padding: 9px 10px; text-align: center; min-width: 190px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in page_obj %}
+                    <tr style="border-bottom: 1px solid #e2e8f0; {% cycle 'background:#ffffff;' 'background:#fbfbfb;' %}"
+                        onmouseover="this.style.background='#eef5fc';"
+                        onmouseout="this.style.background='{% cycle '#ffffff' '#fbfbfb' %}';">
+                        <td style="padding: 8px 10px; text-align: center; color: #888;">
+                            {{ forloop.counter0|add:page_obj.start_index }}
+                        </td>
+                        <td style="padding: 8px 10px; font-weight: bold;">
+                            <a href="{% url 'patient_detail' p.id %}" style="color: #003366; text-decoration: underline;" title="View Patient Details">
+                                {{ p.mr_no }}
+                            </a>
+                        </td>
+                        <td style="padding: 8px 10px; font-weight: 600; color: #222;">
+                            {{ p.pt_name }}
+                        </td>
+                        <td style="padding: 8px 10px; color: #555;">
+                            {{ p.rt_no|default:'-' }}
+                        </td>
+                        <td style="padding: 8px 10px;">
+                            {{ p.age|default:'-' }} Yrs / {{ p.get_sex_display }}
+                        </td>
+                        <td style="padding: 8px 10px; color: #333;" title="{{ p.diagnosis }}">
+                            {{ p.diagnosis|truncatechars:30 }}
+                        </td>
+                        <td style="padding: 8px 10px; color: #444;">
+                            {{ p.consultant_display }}
+                        </td>
+                        <td style="padding: 8px 10px; color: #555;">
+                            {{ p.phone_no|default:'-' }}
+                        </td>
+                        <td style="padding: 8px 10px; text-align: center;">
+                            {% if p.schedules.exists %}
+                                <span class="badge-warning" title="CT Simulation recorded but Treatment Start Date is pending">Start Date Pending</span>
+                            {% else %}
+                                <span class="badge-locked" style="background: #e2e8f0; color: #495057; border: 1px solid #cbd5e0;">Not Scheduled</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 8px 10px; text-align: center; white-space: nowrap;">
+                            <div style="display: inline-flex; gap: 5px; align-items: center;">
+                                <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn btn-highlight" style="padding: 3px 8px; font-size: 11px;" title="Schedule treatment course">
+                                    ⚡ Schedule
+                                </a>
+                                <a href="{% url 'patient_edit' p.id %}" class="action-ribbon-btn" style="padding: 3px 8px; font-size: 11px;" title="Edit patient demographics">
+                                    ✏️ Edit
+                                </a>
+                                {% if CAN_DELETE_PATIENT %}
+                                <a href="{% url 'patient_delete' p.id %}" class="btn-delete" style="padding: 3px 8px; font-size: 11px;" title="Permanently delete patient record (Admin only)">
+                                    🗑️ Delete
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" style="padding: 36px 16px; text-align: center; color: #28a745;">
+                            <div style="font-size: 24px; margin-bottom: 6px;">🎉</div>
+                            <strong style="font-size: 14px;">No Non-Scheduled Patients Found!</strong>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                {% if query %}
+                                    No patients matched your search query "{{ query }}". <a href="{% url 'dashboard' %}">Clear search filter</a>.
+                                {% else %}
+                                    All registered patients have had their treatment courses scheduled.
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls (15 per page) -->
+        {% if page_obj.has_other_pages %}
+        <div style="background: #f8f9fa; border-top: 1px solid #dee2e6; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px;">
+            <div style="color: #666;">
+                Showing <strong>{{ page_obj.start_index }}</strong> to <strong>{{ page_obj.end_index }}</strong> of <strong>{{ total_non_scheduled }}</strong> patients
+                (Page <strong>{{ page_obj.number }}</strong> of <strong>{{ page_obj.paginator.num_pages }}</strong>)
+            </div>
+
+            <div style="display: flex; gap: 4px; align-items: center;">
+                {% if page_obj.has_previous %}
+                    <a href="?page=1{% if query %}&q={{ query }}{% endif %}" class="action-ribbon-btn" style="padding: 4px 8px;">&laquo; First</a>
+                    <a href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}" class="action-ribbon-btn" style="padding: 4px 8px;">&lsaquo; Prev</a>
+                {% else %}
+                    <span class="action-ribbon-btn" style="opacity: 0.5; cursor: not-allowed; padding: 4px 8px;">&laquo; First</span>
+                    <span class="action-ribbon-btn" style="opacity: 0.5; cursor: not-allowed; padding: 4px 8px;">&lsaquo; Prev</span>
+                {% endif %}
+
+                <span style="padding: 4px 10px; background: #003366; color: #ffffff; font-weight: bold; border-radius: 3px;">
+                    Page {{ page_obj.number }}
+                </span>
+
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}" class="action-ribbon-btn" style="padding: 4px 8px;">Next &rsaquo;</a>
+                    <a href="?page={{ page_obj.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}" class="action-ribbon-btn" style="padding: 4px 8px;">Last &raquo;</a>
+                {% else %}
+                    <span class="action-ribbon-btn" style="opacity: 0.5; cursor: not-allowed; padding: 4px 8px;">Next &rsaquo;</span>
+                    <span class="action-ribbon-btn" style="opacity: 0.5; cursor: not-allowed; padding: 4px 8px;">Last &raquo;</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+<!-- Modal: Quick Schedule by MR Number -->
+<div id="quickScheduleModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 6px; width: 440px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); overflow: hidden;">
+        <div style="background: #003366; color: #ffffff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 15px; font-weight: bold;">⚡ Schedule Patient: Enter MR Number</h3>
+            <button type="button" onclick="document.getElementById('quickScheduleModal').style.display='none';" style="background: none; border: none; color: #ffffff; font-size: 16px; cursor: pointer;">✖</button>
+        </div>
+        <div style="padding: 20px;">
+            <form method="GET" action="{% url 'patient_search' %}">
+                <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 6px; color: #333;">
+                    Hospital / MR Number or Patient Name:
+                </label>
+                <input type="text" name="q" required placeholder="e.g. 20260010680 or Patient Name" autofocus
+                       style="width: 100%; padding: 8px 12px; font-size: 13px; border: 1px solid #707070; border-radius: 3px; margin-bottom: 16px; box-sizing: border-box;">
+                <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" onclick="document.getElementById('quickScheduleModal').style.display='none';" class="action-ribbon-btn" style="padding: 7px 14px;">
+                        Cancel
+                    </button>
+                    <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 7px 18px; font-weight: bold; cursor: pointer;">
+                        Find & Schedule &rarr;
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
+
+<script>
+    // Close modal when clicking outside modal box
+    window.onclick = function(event) {
+        var modal = document.getElementById('quickScheduleModal');
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    }
+</script>
 {% endblock %}

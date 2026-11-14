@@ -101,12 +101,13 @@ def can_schedule_patient(user) -> bool:
 
 
 def can_delete_patient(user) -> bool:
-    if is_admin_or_subadmin(user):
-        return True
-    profile = getattr(user, 'profile', None)
-    if profile and profile.role and profile.role.is_active:
-        return bool(profile.role.cap_delete_records)
-    return False
+    """Only Admin (not SubAdmin) has the right to delete patient records."""
+    return is_admin_only(user)
+
+
+def can_remove_from_schedule(user) -> bool:
+    """Only Admin (not SubAdmin) has the right to remove a patient from the schedule list."""
+    return is_admin_only(user)
 
 
 def can_export_data(user) -> bool:

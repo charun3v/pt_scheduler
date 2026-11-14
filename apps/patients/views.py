@@ -237,3 +237,38 @@ def patient_search_view(request):
         'total_count': paginator.count,
     }
     return render(request, 'patients/patient_search.html', context)
+
+
+@login_required
+def patient_delete_view(request, patient_id):
+    """
+    Permanently delete a patient record and all associated treatment schedules.
+    Strictly restricted to Admin (not SubAdmin).
+    """
+    if not can_delete_patient(request.user):
+        messages.error(request, "Access restricted. Only Administrators have permission to delete patient records.")
+        return redirect('dashboard')
+
+    patient = get_object_or_404(Patient, id=patient_id)
+
+    if request.method == 'POST':
+        mr_no = patient.mr_no
+        pt_name = patient.pt_name
+        rt_no = patient.rt_no or '-'
+        schedules_count = patient.schedules.count()
+
+        patient.delete()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="PATIENT_DELETE",
+            mr_no=str(mr_no),
+            details=f"Permanently deleted patient {pt_name} (MR: {mr_no}, RT: {rt_no}) and {schedules_count} schedule course(s).",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"Patient {pt_name} (MR: {mr_no}) was deleted successfully.")
+        return redirect('dashboard')
+
+    return render(request, 'patients/patient_confirm_delete.html', {'patient': patient})
+

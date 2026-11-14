@@ -14,13 +14,18 @@
                     Hospital / MR Number: <strong style="color: #003366;">{{ patient.mr_no }}</strong> | RT No: <strong>{{ patient.rt_no|default:'N/A' }}</strong>
                 </div>
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; align-items: center;">
                 <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 8px 16px;">
                     ⚡ {% if patient.has_schedule %}Edit / Add Schedule{% else %}Schedule Treatment Now{% endif %}
                 </a>
                 <a href="{% url 'patient_edit' patient.id %}" class="action-ribbon-btn" style="padding: 8px 14px;">
                     ✏️ Edit Demographics
                 </a>
+                {% if CAN_DELETE_PATIENT %}
+                <a href="{% url 'patient_delete' patient.id %}" class="btn-delete" style="padding: 8px 14px;" title="Permanently delete patient record (Admin only)">
+                    🗑️ Delete Patient
+                </a>
+                {% endif %}
             </div>
         </div>
 
@@ -114,10 +119,15 @@
                 </div>
                 {% endif %}
 
-                <div style="margin-top: 10px; text-align: right;">
-                    <a href="{% url 'schedule_patient' patient.id %}" style="font-size: 12px; color: #003366; text-decoration: underline; font-weight: 600;">
+                <div style="margin-top: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+                    <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn" style="font-size: 11px; padding: 4px 10px;">
                         ✏️ Modify this Schedule
                     </a>
+                    {% if CAN_REMOVE_FROM_SCHEDULE %}
+                    <a href="{% url 'schedule_delete' s.id %}" class="btn-delete" style="font-size: 11px; padding: 4px 10px;" title="Remove this patient from the schedule list (Admin only)">
+                        🗑️ Remove from Schedule List
+                    </a>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}

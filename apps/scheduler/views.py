@@ -12,7 +12,7 @@ from .models import (
 )
 from apps.patients.models import Patient, DEFAULT_SITES
 from apps.core.models import AuditLog
-from apps.core.permissions import is_admin_or_subadmin, can_manage_mappings
+from apps.core.permissions import is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule
 from apps.core.validators import validate_field_value
 
 
@@ -349,3 +349,50 @@ def unscheduled_patients_view(request):
     """Queue of registered patients who have no treatment schedule booked yet."""
     patients = Patient.objects.filter(schedules__isnull=True).order_by('-created_at')
     return render(request, 'scheduler/unscheduled_patients.html', {'patients': patients})
+
+
+@login_required
+def schedule_delete_view(request, schedule_id):
+    """
+    Remove a patient from the schedule list (deletes the TreatmentSchedule course).
+    Strictly restricted to Admin (not SubAdmin).
+    """
+    if not can_remove_from_schedule(request.user):
+        messages.error(request, "Access restricted. Only Administrators have permission to remove patients from the schedule list.")
+        return redirect('dashboard')
+
+    schedule = get_object_or_404(TreatmentSchedule, id=schedule_id)
+    patient = schedule.patient
+    patient_id = patient.id
+    mr_no = patient.mr_no
+    pt_name = patient.pt_name
+    machine_name = schedule.machine.name if schedule.machine else 'Unassigned'
+    start_date_str = str(schedule.date_of_start) if schedule.date_of_start else 'Pending'
+
+    if request.method == 'POST':
+        schedule.delete()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="SCHEDULE_REMOVE",
+            mr_no=str(mr_no),
+            details=f"Removed treatment schedule for {pt_name} (MR: {mr_no}) on {machine_name}, start date: {start_date_str}.",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(
+            request,
+            f"Treatment schedule for {pt_name} (MR: {mr_no}) on {machine_name} was removed. Patient is now non-scheduled."
+        )
+
+        next_url = request.POST.get('next') or request.GET.get('next')
+        if next_url:
+            return redirect(next_url)
+        return redirect('patient_detail', patient_id=patient_id)
+
+    return render(request, 'scheduler/schedule_confirm_delete.html', {
+        'schedule': schedule,
+        'patient': patient,
+        'next': request.GET.get('next', '')
+    })
+

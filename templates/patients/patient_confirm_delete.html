@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm Patient Deletion - {{ patient.pt_name }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 650px; margin: 40px auto;">
+    <div style="background: #ffffff; border: 2px solid #d9534f; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden;">
+        <div style="background: #d9534f; color: #ffffff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;">
+            <h2 style="margin: 0; font-size: 16px; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                ⚠️ Confirm Permanent Patient Deletion
+            </h2>
+            <span class="badge-admin">ADMIN ONLY</span>
+        </div>
+
+        <div style="padding: 24px;">
+            <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
+                <strong>Warning:</strong> You are about to permanently delete this patient's registration and <strong>all associated treatment schedules ({{ patient.schedules.count }} course{{ patient.schedules.count|pluralize }})</strong>.
+                This action is non-reversible and will be recorded in the security audit log.
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px;">
+                <tbody>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; width: 35%; color: #495057;">Hospital / MR Number:</td>
+                        <td style="padding: 10px 14px; color: #003366; font-weight: bold; font-size: 15px;">{{ patient.mr_no }}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Patient Name:</td>
+                        <td style="padding: 10px 14px; font-weight: 600;">{{ patient.pt_name }}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">RT Number:</td>
+                        <td style="padding: 10px 14px;">{{ patient.rt_no|default:'-' }}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Age / Sex:</td>
+                        <td style="padding: 10px 14px;">{{ patient.age|default:'-' }} Yrs / {{ patient.get_sex_display }}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Diagnosis:</td>
+                        <td style="padding: 10px 14px;">{{ patient.diagnosis }}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Primary Consultant:</td>
+                        <td style="padding: 10px 14px;">{{ patient.consultant_display }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Treatment Schedules:</td>
+                        <td style="padding: 10px 14px; color: #c82333; font-weight: bold;">{{ patient.schedules.count }} schedule course(s) to be removed</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <form method="POST" style="display: flex; justify-content: flex-end; gap: 12px;">
+                {% csrf_token %}
+                <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="padding: 8px 18px; font-size: 13px;">
+                    ✖ Cancel
+                </a>
+                <button type="submit" class="action-ribbon-btn btn-danger" style="padding: 8px 20px; font-size: 13px; font-weight: bold;">
+                    🗑️ Permanently Delete Record
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

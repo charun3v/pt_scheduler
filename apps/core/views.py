@@ -5,7 +5,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
 from datetime import date, timedelta
-from django.db.models import Count
+from django.db.models import Count, Q
+from django.core.paginator import Paginator
 
 from .models import Role, UserProfile, Consultant, AuditLog, FieldValidationConfig, LookupDefault
 from .permissions import (
@@ -75,37 +76,40 @@ def logout_view(request):
 
 @login_required
 def dashboard_view(request):
-    today = date.today()
+    """
+    Radiotherapy Clinical Dashboard.
+    Provides two primary clinical options: Register patients, Schedule patients.
+    Displays a table for non-scheduled patients with pagination of 15 patients.
+    Admin (not SubAdmin) has permissions to delete patients or remove them from schedule.
+    """
+    query = request.GET.get('q', '').strip()
 
-    total_patients = Patient.objects.count()
-    total_schedules = TreatmentSchedule.objects.count()
-    pending_starts = TreatmentSchedule.objects.filter(date_of_start__isnull=True).count()
-    today_starts = TreatmentSchedule.objects.filter(date_of_start=today).count()
+    # Non-scheduled patients: either have no treatment schedule, or have schedule with no start date
+    non_scheduled_qs = Patient.objects.filter(
+        Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True)
+    ).distinct().select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
 
-    # Machine workload for today
-    machine_counts = TreatmentSchedule.objects.filter(date_of_start=today)\
-        .values('machine__name', 'machine__code')\
-        .annotate(patient_count=Count('id'))\
-        .order_by('machine__display_order')
+    if query:
+        if query.isdigit():
+            non_scheduled_qs = non_scheduled_qs.filter(
+                Q(mr_no=int(query)) | Q(phone_no__icontains=query)
+            )
+        else:
+            non_scheduled_qs = non_scheduled_qs.filter(
+                Q(pt_name__icontains=query) |
+                Q(rt_no__icontains=query) |
+                Q(diagnosis__icontains=query) |
+                Q(primary_consultant__name__icontains=query)
+            )
 
-    # Recent 10 registrations
-    recent_patients = Patient.objects.select_related('primary_consultant').order_by('-created_at')[:10]
-
-    # Upcoming starts this week
-    week_end = today + timedelta(days=7)
-    upcoming_starts = TreatmentSchedule.objects.filter(date_of_start__range=[today, week_end])\
-        .select_related('patient', 'machine', 'shift')\
-        .order_by('date_of_start')[:15]
+    paginator = Paginator(non_scheduled_qs, 15)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
 
     context = {
-        'total_patients': total_patients,
-        'total_schedules': total_schedules,
-        'pending_starts': pending_starts,
-        'today_starts': today_starts,
-        'machine_counts': machine_counts,
-        'recent_patients': recent_patients,
-        'upcoming_starts': upcoming_starts,
-        'today': today,
+        'page_obj': page_obj,
+        'query': query,
+        'total_non_scheduled': paginator.count,
     }
     return render(request, 'core/dashboard.html', context)
 

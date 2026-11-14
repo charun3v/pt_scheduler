@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm Schedule Removal - {{ patient.pt_name }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 650px; margin: 40px auto;">
+    <div style="background: #ffffff; border: 2px solid #d9534f; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden;">
+        <div style="background: #d9534f; color: #ffffff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;">
+            <h2 style="margin: 0; font-size: 16px; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                ⚠️ Confirm Removal from Schedule List
+            </h2>
+            <span class="badge-admin">ADMIN ONLY</span>
+        </div>
+
+        <div style="padding: 24px;">
+            <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
+                <strong>Notice:</strong> Removing this treatment schedule will clear the patient's booked slot on this machine.
+                The patient record will remain intact, and the patient will return to the <strong>Non-Scheduled Patients list</strong> on the dashboard.
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px;">
+                <tbody>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; width: 35%; color: #495057;">Patient:</td>
+                        <td style="padding: 10px 14px; font-weight: 600;">{{ patient.pt_name }} (MR: <strong style="color: #003366;">{{ patient.mr_no }}</strong>)</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Machine / Unit:</td>
+                        <td style="padding: 10px 14px; font-weight: bold; color: #003366;">{{ schedule.machine_display }}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Shift:</td>
+                        <td style="padding: 10px 14px;">{{ schedule.shift_display }}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Start Date:</td>
+                        <td style="padding: 10px 14px; font-weight: bold;">
+                            {% if schedule.date_of_start %}
+                                <span class="badge-success">{{ schedule.date_of_start|date:"d-M-Y" }}</span>
+                            {% else %}
+                                <span class="badge-warning">Pending</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Technique:</td>
+                        <td style="padding: 10px 14px;">{{ schedule.technique.name|default:'-' }}{% if schedule.special_technique and schedule.special_technique.name != 'None' %} ({{ schedule.special_technique.name }}){% endif %}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Dose / Fractions:</td>
+                        <td style="padding: 10px 14px;">{{ schedule.dose_planned|default:'-' }} Gy / {{ schedule.no_of_fractions|default:'-' }} Fr</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <form method="POST" style="display: flex; justify-content: flex-end; gap: 12px;">
+                {% csrf_token %}
+                {% if next %}
+                    <input type="hidden" name="next" value="{{ next }}">
+                {% endif %}
+                <a href="{% if next %}{{ next }}{% else %}{% url 'patient_detail' patient.id %}{% endif %}" class="action-ribbon-btn" style="padding: 8px 18px; font-size: 13px;">
+                    ✖ Cancel
+                </a>
+                <button type="submit" class="action-ribbon-btn btn-danger" style="padding: 8px 20px; font-size: 13px; font-weight: bold;">
+                    🗑️ Remove from Schedule List
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
