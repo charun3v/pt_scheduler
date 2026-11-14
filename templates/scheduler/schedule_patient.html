@@ -2,74 +2,158 @@
 
 {% block title %}Schedule Treatment - {{ patient.pt_name }}{% endblock %}
 
+{% block extra_head %}
+<style>
+    /* Compact Top Patient Card */
+    .top-patient-card-compact {
+        background: #ffffff;
+        border: 2px solid #003366;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .top-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 6px;
+        margin-bottom: 8px;
+    }
+    .compact-pill {
+        background: #f8f9fa;
+        padding: 3px 8px;
+        border-radius: 3px;
+        border: 1px solid #e2e8f0;
+        font-size: 11px;
+    }
+    .compact-pill.editable {
+        background: #fffdf0;
+        border-color: #e6db8f;
+    }
+    .compact-input {
+        border: 1px solid #c9b952;
+        padding: 2px 5px;
+        border-radius: 2px;
+        font-size: 11px;
+        background: #fff;
+    }
+
+    /* Mapped Machine Slots Table Styling */
+    .machine-slot-card {
+        background: #ffffff;
+        border: 1px solid #cbd5e0;
+        border-radius: 5px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+        transition: all 0.2s ease;
+    }
+    .machine-slot-card:hover {
+        border-color: #003366;
+        box-shadow: 0 2px 8px rgba(0, 51, 102, 0.1);
+    }
+    .machine-slot-card.selected {
+        border: 2px solid #003366;
+        background: #f0f7ff;
+    }
+    .date-choice-pill {
+        padding: 8px 12px;
+        border-radius: 4px;
+        border: 1px solid #cbd5e0;
+        background: #fafafa;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .date-choice-pill:hover {
+        background: #f0f4f8;
+    }
+    .date-choice-pill.active-system {
+        background: #e8f5e9;
+        border-color: #28a745;
+    }
+    .date-choice-pill.active-custom {
+        background: #fffdf0;
+        border-color: #ffc107;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div style="max-width: 980px; margin: 0 auto;">
+<div style="max-width: 1040px; margin: 0 auto;">
 
-    <!-- TOP CARD: Registration Details (Uneditable except Age, Diagnosis, Site, Phone) -->
-    <div class="top-patient-card">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #003366; padding-bottom: 8px; margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 18px;">📋</span>
-                <span style="font-size: 15px; font-weight: bold; color: #003366;">Patient Registration Summary</span>
-                <span style="font-size: 11px; color: #666; font-style: italic;">(Uneditable except Age, Diagnosis, Site & Phone)</span>
+    <!-- Form encapsulates top-card editable fields and scheduling fields -->
+    <form method="POST" id="scheduleForm" onsubmit="return validateScheduleSubmission();">
+        {% csrf_token %}
+
+        <!-- TOP CARD: Compact Registration Details (Consultant on Right Extreme) -->
+        <div class="top-patient-card-compact">
+            <div class="top-card-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 15px;">📋</span>
+                    <strong style="font-size: 13px; color: #003366;">Patient Registration Summary</strong>
+                    <span style="font-size: 11px; color: #666; font-style: italic;">(Uneditable except Age, Diagnosis, Site & Phone)</span>
+                </div>
+                <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="font-size: 11px; padding: 2px 8px;">
+                    View Profile
+                </a>
             </div>
-            <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="font-size: 11px;">View Full Profile</a>
-        </div>
 
-        <!-- Form encapsulates both top-card editable fields and scheduling fields -->
-        <form method="POST" id="scheduleForm">
-            {% csrf_token %}
-
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 12px; margin-bottom: 12px;">
-                <!-- UNEDITABLE: MR No -->
-                <div style="background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
-                    <span style="color: #666; display: block; font-size: 10px;">MR NUMBER 🔒</span>
-                    <strong style="color: #003366; font-size: 14px;">{{ patient.mr_no }}</strong>
+            <!-- Row 1: Compact MR, Name, RT, Sex, Age, Phone, and Consultant on Far Right Extreme -->
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; margin-bottom: 8px;">
+                
+                <!-- MR No (Locked) -->
+                <div class="compact-pill" style="background: #eef4f9; border-color: #b8daff; white-space: nowrap;">
+                    <span style="color: #666; font-size: 9px; display: block; line-height: 1;">MR NO 🔒</span>
+                    <strong style="color: #003366; font-size: 13px;">{{ patient.mr_no }}</strong>
                 </div>
 
-                <!-- UNEDITABLE: Patient Name -->
-                <div style="background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
-                    <span style="color: #666; display: block; font-size: 10px;">PATIENT NAME 🔒</span>
-                    <strong style="color: #222; font-size: 13px;">{{ patient.pt_name }}</strong>
+                <!-- Patient Name (Compact, Locked) -->
+                <div class="compact-pill" style="max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <span style="color: #666; font-size: 9px; display: block; line-height: 1;">NAME 🔒</span>
+                    <strong style="color: #222; font-size: 12px;" title="{{ patient.pt_name }}">{{ patient.pt_name }}</strong>
                 </div>
 
-                <!-- UNEDITABLE: RT No -->
-                <div style="background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
-                    <span style="color: #666; display: block; font-size: 10px;">RT NUMBER 🔒</span>
-                    <strong style="color: #222;">{{ patient.rt_no|default:'N/A' }}</strong>
+                <!-- RT No (Compact, Locked) -->
+                <div class="compact-pill" style="width: 70px; white-space: nowrap;">
+                    <span style="color: #666; font-size: 9px; display: block; line-height: 1;">RT NO 🔒</span>
+                    <strong style="color: #333; font-size: 12px;">{{ patient.rt_no|default:'-' }}</strong>
                 </div>
 
-                <!-- UNEDITABLE: Sex -->
-                <div style="background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
-                    <span style="color: #666; display: block; font-size: 10px;">SEX 🔒</span>
-                    <strong style="color: #222;">{{ patient.get_sex_display }}</strong>
+                <!-- Sex (Compact, Locked) -->
+                <div class="compact-pill" style="width: 40px; text-align: center;">
+                    <span style="color: #666; font-size: 9px; display: block; line-height: 1;">SEX 🔒</span>
+                    <strong style="color: #333; font-size: 12px;">{{ patient.sex }}</strong>
                 </div>
 
-                <!-- UNEDITABLE: Primary Consultant -->
-                <div style="grid-column: span 2; background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
-                    <span style="color: #666; display: block; font-size: 10px;">PRIMARY CONSULTANT 🔒</span>
-                    <strong style="color: #003366;">{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
-                </div>
-
-                <!-- EDITABLE: Age -->
-                <div style="background: #fffdf0; padding: 6px 10px; border-radius: 3px; border: 1px solid #e6db8f;">
-                    <label style="color: #856404; display: block; font-size: 10px; font-weight: bold;">AGE (Editable ✏️)</label>
+                <!-- Age (Compact, Editable) -->
+                <div class="compact-pill editable" style="width: 60px;">
+                    <label style="color: #856404; font-size: 9px; display: block; font-weight: bold; line-height: 1;">AGE ✏️</label>
                     <input type="number" name="age" value="{{ patient.age|default:'' }}" min="1" max="120"
-                           style="width: 100%; border: 1px solid #c9b952; padding: 4px; border-radius: 2px; font-weight: bold; font-size: 12px; background: #fff;">
+                           class="compact-input" style="width: 100%; font-weight: bold;">
                 </div>
 
-                <!-- EDITABLE: Phone Number -->
-                <div style="background: #fffdf0; padding: 6px 10px; border-radius: 3px; border: 1px solid #e6db8f;">
-                    <label style="color: #856404; display: block; font-size: 10px; font-weight: bold;">PHONE NUMBER (Editable ✏️)</label>
+                <!-- Phone Number (Compact, Editable) -->
+                <div class="compact-pill editable" style="width: 110px;">
+                    <label style="color: #856404; font-size: 9px; display: block; font-weight: bold; line-height: 1;">PHONE ✏️</label>
                     <input type="text" name="phone_no" value="{{ patient.phone_no|default:'' }}"
-                           style="width: 100%; border: 1px solid #c9b952; padding: 4px; border-radius: 2px; font-size: 12px; background: #fff;">
+                           class="compact-input" style="width: 100%;">
                 </div>
 
-                <!-- EDITABLE: Site of Treatment -->
-                <div style="grid-column: span 2; background: #fffdf0; padding: 6px 10px; border-radius: 3px; border: 1px solid #e6db8f;">
-                    <label style="color: #856404; display: block; font-size: 10px; font-weight: bold;">SITE OF TREATMENT (Editable ✏️)</label>
+                <!-- Primary Consultant (RIGHT EXTREME!) -->
+                <div style="margin-left: auto; background: #eef4f9; padding: 4px 12px; border-radius: 3px; border: 1px solid #b8daff; text-align: right; white-space: nowrap;">
+                    <span style="color: #666; font-size: 9px; display: block; line-height: 1;">PRIMARY CONSULTANT 🔒</span>
+                    <strong style="color: #003366; font-size: 13px;">{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
+                </div>
+            </div>
+
+            <!-- Row 2: Site of Treatment (Compact Dropdown) & Diagnosis (Editable Text) -->
+            <div style="display: flex; gap: 8px; align-items: center; font-size: 12px;">
+                <!-- Site of Treatment (Compact Dropdown) -->
+                <div class="compact-pill editable" style="width: 220px; white-space: nowrap;">
+                    <label style="color: #856404; font-size: 9px; display: block; font-weight: bold; line-height: 1; margin-bottom: 2px;">SITE OF TREATMENT ✏️</label>
                     <select name="site_of_treatment" id="top_site_dropdown"
-                            style="width: 100%; border: 1px solid #c9b952; padding: 4px; border-radius: 2px; font-size: 12px; background: #fff;">
+                            style="width: 100%; border: 1px solid #c9b952; padding: 3px 6px; font-size: 12px; background: #fff;">
                         <option value="">-- Select Treatment Site --</option>
                         {% for s in treatment_sites %}
                             <option value="{{ s.name }}" {% if patient.site_of_treatment == s.name or schedule.site_of_treatment == s.name %}selected{% endif %}>{{ s.name }}</option>
@@ -77,306 +161,490 @@
                     </select>
                 </div>
 
-                <!-- EDITABLE: Diagnosis -->
-                <div style="grid-column: span 2; background: #fffdf0; padding: 6px 10px; border-radius: 3px; border: 1px solid #e6db8f;">
-                    <label style="color: #856404; display: block; font-size: 10px; font-weight: bold;">DIAGNOSIS (Editable ✏️)</label>
+                <!-- Diagnosis (Editable Text, fills remaining width) -->
+                <div class="compact-pill editable" style="flex: 1;">
+                    <label style="color: #856404; font-size: 9px; display: block; font-weight: bold; line-height: 1; margin-bottom: 2px;">DIAGNOSIS ✏️</label>
                     <input type="text" name="diagnosis" value="{{ patient.diagnosis }}" required
-                           style="width: 100%; border: 1px solid #c9b952; padding: 4px; border-radius: 2px; font-size: 12px; background: #fff;">
+                           style="width: 100%; border: 1px solid #c9b952; padding: 3px 6px; font-size: 12px; background: #fff; box-sizing: border-box;">
                 </div>
             </div>
-    </div>
-
-    <!-- SCHEDULING FORM CARD -->
-    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); overflow: hidden;">
-        
-        <div style="background: #f0f4f8; padding: 12px 18px; border-bottom: 2px solid #003366; display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 15px; font-weight: bold; color: #003366; display: flex; align-items: center; gap: 8px;">
-                <span>⚡</span>
-                <span>Radiotherapy Treatment Scheduling & Machine Slot Allocation</span>
-            </div>
-            <span style="font-size: 11px; color: #555;">Option A Quota Engine</span>
         </div>
 
-        <div style="padding: 20px;">
-            <div class="form-grid">
+        <!-- SCHEDULING FORM MAIN WORKSPACE -->
+        <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); overflow: hidden; margin-bottom: 20px;">
+            
+            <div style="background: #f0f4f8; padding: 10px 16px; border-bottom: 2px solid #003366; display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 14px; font-weight: bold; color: #003366; display: flex; align-items: center; gap: 8px;">
+                    <span>⚡</span>
+                    <span>Radiotherapy Treatment Scheduler & Machine Earliest Slot Finder</span>
+                </div>
+                <span style="font-size: 11px; color: #666;">Dynamic Machine-Technique Mapping Engine</span>
+            </div>
+
+            <div style="padding: 18px;">
                 
-                <!-- Machine Selection (Dynamic Trigger) -->
-                <div>
-                    <label style="display: block; font-weight: bold; margin-bottom: 4px; color: #003366;">Machine: *</label>
-                    <select name="machine" id="machineSelect" required onchange="handleMachineChange(this.value);"
-                            style="width: 100%; padding: 8px 10px; border: 2px solid #003366; border-radius: 3px; font-size: 13px; font-weight: bold; background: #fff;">
-                        <option value="">-- Select Machine --</option>
-                        {% for m in machines %}
-                            <option value="{{ m.id }}" {% if schedule and schedule.machine_id == m.id %}selected{% endif %}>
-                                {{ m.name }} ({{ m.code }})
-                            </option>
-                        {% endfor %}
-                    </select>
-                    <span id="machineQuotaNotice" style="font-size: 11px; color: #666; display: block; margin-top: 2px;">
-                        Select machine to load dynamic shifts & techniques
-                    </span>
-                </div>
-
-                <!-- Shift Selection -->
-                <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Shift: *</label>
-                    <select name="shift" id="shiftSelect" required onchange="clearFreeSlotBox();"
-                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
-                        <option value="">-- Select Shift --</option>
-                        {% for s in shifts %}
-                            <option value="{{ s.id }}" {% if schedule and schedule.shift_id == s.id %}selected{% endif %}>
-                                {{ s.name }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Technique Selection -->
-                <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Technique: *</label>
-                    <select name="technique" id="techniqueSelect" required
-                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
-                        <option value="">-- Select Technique --</option>
-                        {% for t in techniques %}
-                            <option value="{{ t.id }}" {% if schedule and schedule.technique_id == t.id %}selected{% endif %}>
-                                {{ t.name }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Special Technique -->
-                <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Special Technique:</label>
-                    <select name="special_technique" id="specialTechSelect"
-                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
-                        {% for st in special_techniques %}
-                            <option value="{{ st.id }}" {% if schedule and schedule.special_technique_id == st.id %}selected{% elif not schedule and st.name == 'None' %}selected{% endif %}>
-                                {{ st.name }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Simulation Date -->
-                <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Simulation Date:</label>
-                    <input type="date" name="date_of_sim" id="dateOfSim"
-                           value="{{ schedule.date_of_sim|date:'Y-m-d'|default:today }}"
-                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
-                </div>
-
-                <!-- Simulated For -->
-                <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Simulated For:</label>
-                    <select name="simulated_for"
-                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
-                        <option value="">-- Select --</option>
-                        {% for sf in simulated_for_list %}
-                            <option value="{{ sf.id }}" {% if schedule and schedule.simulated_for_id == sf.id %}selected{% endif %}>
-                                {{ sf.name }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <!-- Dose Planned (Gy) -->
-                <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Dose Planned (Gy):</label>
-                    <input type="number" step="0.01" name="dose_planned" value="{{ schedule.dose_planned|default:'' }}" placeholder="e.g. 50.00"
-                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
-                </div>
-
-                <!-- Number of Fractions -->
-                <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Number of Fractions:</label>
-                    <input type="number" name="no_of_fractions" value="{{ schedule.no_of_fractions|default:'' }}" min="1" max="60" placeholder="e.g. 25"
-                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
-                </div>
-
-                <!-- Junior Resident -->
-                <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Junior Resident:</label>
-                    <input type="text" name="jr_resident" value="{{ schedule.jr_resident|default:'' }}" placeholder="Dr. Resident Name"
-                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
-                </div>
-
-                <!-- Treatment Start Date with Slot Finder Trigger -->
-                <div>
-                    <label style="display: block; font-weight: bold; margin-bottom: 4px; color: #003366;">
-                        Treatment Start Date:
-                    </label>
-                    <div style="display: flex; gap: 6px;">
-                        <input type="date" name="date_of_start" id="dateOfStart"
-                               value="{{ schedule.date_of_start|date:'Y-m-d'|default:'' }}"
-                               style="flex-grow: 1; padding: 8px 10px; border: 2px solid #003366; border-radius: 3px; font-size: 13px; font-weight: bold;">
-                        <button type="button" onclick="findNearestSlot();"
-                                style="background: #28a745; color: #ffffff; border: 1px solid #1e7e34; padding: 6px 12px; border-radius: 3px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap;"
-                                title="Automatically search calendar for the nearest free machine quota slot">
-                            🔍 Find Slot
-                        </button>
+                <!-- 1. SEPARATE HORIZONTAL SPACE FOR SIMULATION DATE -->
+                <div style="background: #f0f7ff; border: 1px solid #b8daff; border-radius: 4px; padding: 12px 16px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 24px;">📅</span>
+                        <div>
+                            <label for="dateOfSim" style="font-weight: bold; color: #003366; font-size: 14px; display: block;">
+                                CT Simulation Date: *
+                            </label>
+                            <div style="font-size: 11px; color: #555;">
+                                Date when patient underwent CT simulation (Free slot search begins on or after simulation date)
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="date" name="date_of_sim" id="dateOfSim" required
+                               value="{{ schedule.date_of_sim|date:'Y-m-d'|default:today }}"
+                               onchange="loadMappedMachinesSlots();"
+                               style="padding: 7px 12px; font-size: 13px; font-weight: bold; border: 2px solid #003366; border-radius: 4px; background: #fff;">
                     </div>
                 </div>
 
-                <!-- Notes (Span 2) -->
-                <div style="grid-column: span 2;">
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Clinical / Scheduling Notes:</label>
-                    <input type="text" name="notes" value="{{ schedule.notes|default:'' }}" placeholder="Any special setup, immobilization, or scheduling notes"
-                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                <!-- 2. PRESCRIPTION & TECHNIQUES SETUP (Defaults: Technique=IMRT, Special=None, Simulated For=None) -->
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr) repeat(3, 1fr); gap: 12px; margin-bottom: 20px;">
+                    
+                    <!-- Technique (default = IMRT) -->
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 4px; color: #003366; font-size: 12px;">
+                            Treatment Technique: *
+                        </label>
+                        <select name="technique" id="techniqueSelect" required onchange="loadMappedMachinesSlots();"
+                                style="width: 100%; padding: 7px 10px; border: 2px solid #003366; border-radius: 3px; font-size: 13px; font-weight: bold; background: #fff;">
+                            {% for t in techniques %}
+                                <option value="{{ t.id }}"
+                                    {% if schedule and schedule.technique_id == t.id %}selected
+                                    {% elif not schedule and t.id == default_technique.id %}selected{% endif %}>
+                                    {{ t.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Special Technique (default = None) -->
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 4px; color: #003366; font-size: 12px;">
+                            Special Technique:
+                        </label>
+                        <select name="special_technique" id="specialTechSelect" onchange="loadMappedMachinesSlots();"
+                                style="width: 100%; padding: 7px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                            {% for st in special_techniques %}
+                                <option value="{{ st.id }}"
+                                    {% if schedule and schedule.special_technique_id == st.id %}selected
+                                    {% elif not schedule and st.name == 'None' %}selected{% endif %}>
+                                    {{ st.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Simulated For (default = no selection) -->
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 4px; color: #333; font-size: 12px;">
+                            Simulated For:
+                        </label>
+                        <select name="simulated_for" id="simulatedForSelect"
+                                style="width: 100%; padding: 7px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                            <option value="" {% if not schedule or not schedule.simulated_for_id %}selected{% endif %}>
+                                -- No Selection --
+                            </option>
+                            {% for sf in simulated_for_list %}
+                                <option value="{{ sf.id }}" {% if schedule and schedule.simulated_for_id == sf.id %}selected{% endif %}>
+                                    {{ sf.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Dose Planned (Gy) -->
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">Dose Planned (Gy):</label>
+                        <input type="number" step="0.01" name="dose_planned" value="{{ schedule.dose_planned|default:'' }}" placeholder="e.g. 50.00"
+                               style="width: 100%; padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
+                    </div>
+
+                    <!-- Number of Fractions -->
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">Number of Fractions:</label>
+                        <input type="number" name="no_of_fractions" value="{{ schedule.no_of_fractions|default:'' }}" min="1" max="60" placeholder="e.g. 25"
+                               style="width: 100%; padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
+                    </div>
+
+                    <!-- Junior Resident -->
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">Junior Resident:</label>
+                        <input type="text" name="jr_resident" value="{{ schedule.jr_resident|default:'' }}" placeholder="Dr. Resident Name"
+                               style="width: 100%; padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <!-- 3. DYNAMIC EARLIEST AVAILABLE DATES FOR ALL MAPPED MACHINES -->
+                <div style="margin-top: 14px; border-top: 2px solid #e2e8f0; padding-top: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <div>
+                            <h3 style="margin: 0; font-size: 15px; color: #003366; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                                <span>⚡</span> Earliest Available Slot by Mapped Machine
+                            </h3>
+                            <div style="font-size: 11px; color: #666; margin-top: 2px;">
+                                Below are all machines supporting your selected technique. Select a machine, then choose either the <strong>System Earliest Slot</strong> or enter a <strong>Custom Date</strong> with a reason.
+                            </div>
+                        </div>
+                        <div id="slotsStatusPill" style="font-size: 11px; font-weight: 600; color: #003366; background: #eef4f9; padding: 4px 10px; border-radius: 12px;">
+                            Evaluating mapped machines...
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Machines List Container (Populated via AJAX) -->
+                    <div id="mappedMachinesContainer">
+                        <div style="padding: 24px; text-align: center; color: #666; background: #f8f9fa; border-radius: 4px;">
+                            🔄 Loading mapped machines and calculating slot availability...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- General Clinical Notes -->
+                <div style="margin-top: 16px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">General Clinical / Setup Notes:</label>
+                    <input type="text" name="notes" id="generalNotesInput" value="{{ schedule.notes|default:'' }}" placeholder="Additional notes regarding immobilization, organ motion, or machine setup"
+                           style="width: 100%; padding: 7px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px; box-sizing: border-box;">
+                </div>
+
+            </div>
+
+            <!-- HIDDEN INPUTS FOR FORM SUBMISSION (Populated by selected machine slot) -->
+            <input type="hidden" name="machine" id="selectedMachineId" value="{{ schedule.machine_id|default:'' }}">
+            <input type="hidden" name="shift" id="selectedShiftId" value="{{ schedule.shift_id|default:'' }}">
+            <input type="hidden" name="date_of_start" id="selectedDateOfStart" value="{{ schedule.date_of_start|date:'Y-m-d'|default:'' }}">
+            <input type="hidden" name="date_mode" id="selectedDateMode" value="system">
+            <input type="hidden" name="custom_reason" id="selectedCustomReason" value="">
+
+            <!-- Final Action Footer -->
+            <div style="background: #f8f9fa; padding: 14px 20px; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div id="selectionSummary" style="font-size: 12px; color: #333;">
+                    {% if schedule and schedule.date_of_start %}
+                        Current Schedule: <strong>{{ schedule.machine_display }}</strong> on <strong>{{ schedule.date_of_start|date:"d-M-Y" }}</strong> ({{ schedule.shift_display }})
+                    {% else %}
+                        <span style="color: #666;">No machine selected yet. Click any machine above to allocate slot.</span>
+                    {% endif %}
+                </div>
+
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="padding: 8px 18px;">
+                        Cancel
+                    </a>
+                    <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 8px 24px; font-size: 13px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
+                        💾 Confirm & Save Treatment Schedule
+                    </button>
                 </div>
             </div>
 
-            <!-- FREE SLOT RECOMMENDATION CONTAINER (AJAX) -->
-            <div id="slotRecommendationBox" style="display: none; margin-top: 16px;"></div>
-
-            <!-- Action Buttons -->
-            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
-                <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="padding: 10px 18px;">Cancel</a>
-                
-                <button type="submit"
-                        style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 10px 24px; font-weight: bold; font-size: 13px; border-radius: 4px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.15);">
-                    💾 Save Treatment Schedule
-                </button>
-            </div>
-        </form>
-    </div>
+        </div>
+    </form>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    // Dynamic Mapping AJAX Handler
-    function handleMachineChange(machineId) {
-        clearFreeSlotBox();
-        if (!machineId) return;
+    // State of loaded machines
+    let gMappedMachines = [];
+    let gSelectedMachineId = "{{ schedule.machine_id|default:'' }}";
+    let gCurrentScheduledDate = "{{ schedule.date_of_start|date:'Y-m-d'|default:'' }}";
+    let gCurrentShiftId = "{{ schedule.shift_id|default:'' }}";
 
-        fetch(`/scheduler/api/machine-options/${machineId}/`)
-            .then(res => res.json())
-            .then(data => {
-                // Update quota notice
-                document.getElementById('machineQuotaNotice').innerText =
-                    `Quota: Maximum ${data.max_daily_starts} new starts/day on this machine`;
-
-                // Update Shifts
-                const shiftSelect = document.getElementById('shiftSelect');
-                const currShift = shiftSelect.value;
-                shiftSelect.innerHTML = '<option value="">-- Select Shift --</option>';
-                data.shifts.forEach(s => {
-                    const opt = document.createElement('option');
-                    opt.value = s.id;
-                    opt.text = s.name;
-                    if (s.id == currShift) opt.selected = true;
-                    shiftSelect.appendChild(opt);
-                });
-
-                // Update Techniques
-                const techSelect = document.getElementById('techniqueSelect');
-                const currTech = techSelect.value;
-                techSelect.innerHTML = '<option value="">-- Select Technique --</option>';
-                data.techniques.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t.id;
-                    opt.text = t.name;
-                    if (t.id == currTech) opt.selected = true;
-                    techSelect.appendChild(opt);
-                });
-
-                // Update Special Techniques
-                const specSelect = document.getElementById('specialTechSelect');
-                const currSpec = specSelect.value;
-                specSelect.innerHTML = '';
-                data.special_techniques.forEach(st => {
-                    const opt = document.createElement('option');
-                    opt.value = st.id;
-                    opt.text = st.name;
-                    if (st.id == currSpec) opt.selected = true;
-                    specSelect.appendChild(opt);
-                });
-            })
-            .catch(err => console.error("Could not fetch machine options:", err));
-    }
-
-    // Nearest Free Slot Recommendation Engine
-    function findNearestSlot() {
-        const machineId = document.getElementById('machineSelect').value;
-        const shiftId = document.getElementById('shiftSelect').value;
+    // Load Mapped Machines and Earliest Available Free Slots
+    function loadMappedMachinesSlots() {
+        const techId = document.getElementById('techniqueSelect').value;
+        const specTechId = document.getElementById('specialTechSelect').value;
         const simDate = document.getElementById('dateOfSim').value;
-        const box = document.getElementById('slotRecommendationBox');
+        const container = document.getElementById('mappedMachinesContainer');
+        const pill = document.getElementById('slotsStatusPill');
 
-        if (!machineId) {
-            alert("Please select a Machine first to check available slots.");
+        if (!techId) {
+            container.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Please select a Treatment Technique first.</div>';
             return;
         }
 
-        box.style.display = 'block';
-        box.innerHTML = '<div style="padding: 10px; background: #f0f4f8; border-radius: 4px; color: #003366;">🔍 Evaluating machine workload and slot availability...</div>';
+        pill.innerText = 'Calculating earliest free slots...';
+        container.innerHTML = '<div style="padding: 24px; text-align: center; color: #003366; background: #f8f9fa;">🔄 Querying machine mappings and calculating slot availability...</div>';
 
-        const url = `/scheduler/api/nearest-free-slot/?machine_id=${machineId}&shift_id=${shiftId}&start_from=${simDate}`;
+        const url = `/scheduler/api/mapped-machine-slots/?technique_id=${techId}&special_technique_id=${specTechId}&sim_date=${simDate}`;
 
         fetch(url)
             .then(res => res.json())
             .then(data => {
-                if (!data.found) {
-                    box.innerHTML = `<div class="slot-busy-card">⚠️ ${data.message}</div>`;
+                if (!data.success || !data.machines || data.machines.length === 0) {
+                    pill.innerText = '0 Machines Mapped';
+                    container.innerHTML = `
+                        <div style="padding: 24px; text-align: center; color: #c82333; background: #fff5f5; border: 1px solid #f5c6cb; border-radius: 4px;">
+                            ⚠️ No active machines are currently mapped to <strong>${data.technique_name}</strong> and <strong>${data.special_technique_name}</strong>.
+                            <div style="font-size: 11px; margin-top: 6px; color: #666;">
+                                Please check <a href="{% url 'machine_mappings' %}" target="_blank">Machine Mappings</a> to enable this technique for your machines.
+                            </div>
+                        </div>
+                    `;
                     return;
                 }
 
-                const n = data.nearest_slot;
-                let html = `
-                    <div class="slot-free-card">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <span style="font-weight: bold; color: #155724; font-size: 13px;">✅ Nearest Available Free Slot Found:</span>
-                                <div style="font-size: 15px; font-weight: bold; color: #003366; margin: 4px 0;">
-                                    ${n.formatted} (${data.machine_name} - ${data.shift_name})
-                                </div>
-                                <span style="font-size: 11px; color: #2e7d32;">
-                                    Starts Booked: ${n.booked_count} / ${n.max_quota} (Remaining: <strong>${n.remaining}</strong> slot${n.remaining > 1 ? 's' : ''})
-                                </span>
-                            </div>
-                            <button type="button" onclick="applySlotDate('${n.date}')"
-                                    style="background: #28a745; color: #fff; border: 1px solid #1e7e34; padding: 8px 16px; font-weight: bold; border-radius: 4px; cursor: pointer;">
-                                Apply This Date ➡️
-                            </button>
-                        </div>
-                `;
+                gMappedMachines = data.machines;
+                pill.innerText = `${data.machines.length} Machine${data.machines.length > 1 ? 's' : ''} Mapped`;
 
-                if (data.alternative_slots && data.alternative_slots.length > 0) {
-                    html += `
-                        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #a5d6a7; font-size: 11px;">
-                            <span style="color: #444; font-weight: bold;">Alternative Available Dates:</span>
-                            <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
-                    `;
-                    data.alternative_slots.forEach(alt => {
-                        html += `
-                            <button type="button" onclick="applySlotDate('${alt.date}')"
-                                    style="background: #ffffff; border: 1px solid #81c784; padding: 4px 8px; border-radius: 3px; font-size: 11px; cursor: pointer;">
-                                ${alt.formatted} (${alt.remaining} free)
-                            </button>
-                        `;
+                // Render machines cards
+                let html = '';
+                let autoSelectId = null;
+
+                data.machines.forEach(m => {
+                    const isCardSelected = (gSelectedMachineId && gSelectedMachineId == m.machine_id);
+                    if (!autoSelectId && isCardSelected) autoSelectId = m.machine_id;
+
+                    // Shifts options for custom selection
+                    let shiftsHtml = '';
+                    m.shifts.forEach(s => {
+                        const sel = (s.id == gCurrentShiftId) ? 'selected' : '';
+                        shiftsHtml += `<option value="${s.id}" ${sel}>${s.name}</option>`;
                     });
-                    html += `</div></div>`;
-                }
 
-                html += `</div>`;
-                box.innerHTML = html;
+                    const earliestDateStr = m.slot ? m.slot.date : '';
+                    const earliestFormatted = m.slot ? m.slot.date_formatted : 'No Free Slot';
+                    const earliestShiftName = m.slot ? m.slot.shift_name : '';
+                    const bookedInfo = m.slot ? `${m.slot.booked_count}/${m.slot.max_quota} booked (${m.slot.remaining} free)` : 'Full';
+
+                    html += `
+                        <div class="machine-slot-card ${isCardSelected ? 'selected' : ''}" id="machCard-${m.machine_id}">
+                            
+                            <!-- Machine Header -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px dashed #cbd5e0; padding-bottom: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="radio" name="selected_machine_radio" id="machRadio-${m.machine_id}" value="${m.machine_id}"
+                                           ${isCardSelected ? 'checked' : ''}
+                                           onchange="chooseMachine(${m.machine_id});"
+                                           style="cursor: pointer; width: 16px; height: 16px;">
+                                    <label for="machRadio-${m.machine_id}" style="font-weight: bold; font-size: 14px; color: #003366; cursor: pointer;">
+                                        ${m.machine_name}
+                                    </label>
+                                    <span class="badge-locked" style="font-size: 11px;">${m.machine_code}</span>
+                                    <span style="font-size: 10px; background: #e2e8f0; color: #495057; padding: 2px 6px; border-radius: 2px;">
+                                        ${m.machine_type}
+                                    </span>
+                                </div>
+                                <div style="font-size: 11px; color: #666;">
+                                    Daily Auto Quota: <strong>${m.max_daily_starts} starts/day</strong>
+                                </div>
+                            </div>
+
+                            <!-- Date Selection: System Earliest Slot vs Custom Date -->
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                
+                                <!-- Option 1: System Earliest Available Slot -->
+                                <div class="date-choice-pill active-system" id="systemPill-${m.machine_id}" onclick="setChoiceMode(${m.machine_id}, 'system');">
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                        <input type="radio" name="date_choice_${m.machine_id}" id="choiceSystem-${m.machine_id}" value="system" checked
+                                               onchange="setChoiceMode(${m.machine_id}, 'system');" style="cursor: pointer;">
+                                        <label for="choiceSystem-${m.machine_id}" style="font-weight: bold; color: #155724; font-size: 12px; cursor: pointer;">
+                                            🟢 System Earliest Free Slot
+                                        </label>
+                                        <span class="badge-success" style="font-size: 10px; padding: 1px 5px; margin-left: auto;">Recommended</span>
+                                    </div>
+                                    <div style="font-size: 13px; font-weight: bold; color: #003366; margin-left: 20px;">
+                                        ${earliestFormatted} <span style="font-size: 12px; font-weight: normal; color: #555;">(${earliestShiftName})</span>
+                                    </div>
+                                    <div style="font-size: 11px; color: #2e7d32; margin-left: 20px; margin-top: 2px;">
+                                        ${bookedInfo}
+                                    </div>
+                                </div>
+
+                                <!-- Option 2: Custom Date Selection -->
+                                <div class="date-choice-pill" id="customPill-${m.machine_id}" onclick="setChoiceMode(${m.machine_id}, 'custom');">
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                                        <input type="radio" name="date_choice_${m.machine_id}" id="choiceCustom-${m.machine_id}" value="custom"
+                                               onchange="setChoiceMode(${m.machine_id}, 'custom');" style="cursor: pointer;">
+                                        <label for="choiceCustom-${m.machine_id}" style="font-weight: bold; color: #856404; font-size: 12px; cursor: pointer;">
+                                            ✏️ Custom Date Selection
+                                        </label>
+                                    </div>
+                                    <div style="display: flex; gap: 6px; margin-left: 20px; align-items: center; flex-wrap: wrap;">
+                                        <input type="date" id="customDate-${m.machine_id}" value="${gCurrentScheduledDate || ''}"
+                                               onchange="syncCustomValues(${m.machine_id});"
+                                               onclick="event.stopPropagation(); setChoiceMode(${m.machine_id}, 'custom');"
+                                               style="padding: 4px 6px; font-size: 12px; border: 1px solid #707070; border-radius: 3px;">
+                                        <select id="customShift-${m.machine_id}"
+                                                onchange="syncCustomValues(${m.machine_id});"
+                                                onclick="event.stopPropagation(); setChoiceMode(${m.machine_id}, 'custom');"
+                                                style="padding: 4px 6px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; background: #fff;">
+                                            ${shiftsHtml}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Reason for Custom Date Selection (Notes Box) -->
+                            <div id="customReasonBox-${m.machine_id}" style="display: none; background: #fffdf0; border: 1px solid #ffeeba; border-radius: 4px; padding: 8px 12px; margin-top: 8px;">
+                                <label for="customReasonText-${m.machine_id}" style="display: block; font-size: 11px; font-weight: bold; color: #856404; margin-bottom: 3px;">
+                                    ⚠️ Reason for Custom Date Selection: * (Required when choosing custom date)
+                                </label>
+                                <input type="text" id="customReasonText-${m.machine_id}" placeholder="e.g. Clinical urgency, patient preference, concurrent chemotherapy sync..."
+                                       oninput="syncCustomValues(${m.machine_id});"
+                                       onclick="event.stopPropagation();"
+                                       style="width: 100%; padding: 5px 8px; font-size: 12px; border: 1px solid #c9b952; border-radius: 3px; box-sizing: border-box;">
+                            </div>
+                        </div>
+                    `;
+                });
+
+                container.innerHTML = html;
+
+                // Auto-select if we already had a machine or select the first machine
+                if (autoSelectId) {
+                    chooseMachine(autoSelectId);
+                } else if (data.machines.length > 0) {
+                    chooseMachine(data.machines[0].machine_id);
+                }
             })
             .catch(err => {
-                box.innerHTML = '<div class="slot-busy-card">Error calculating slot availability. Please try again.</div>';
+                pill.innerText = 'Error';
+                container.innerHTML = '<div style="padding: 20px; text-align: center; color: #c82333;">Error calculating available slots. Please retry.</div>';
+                console.error(err);
             });
     }
 
-    function applySlotDate(slotDateStr) {
-        document.getElementById('dateOfStart').value = slotDateStr;
-        const box = document.getElementById('slotRecommendationBox');
-        box.innerHTML = `<div style="padding: 8px 12px; background: #e8f5e9; border: 1px solid #81c784; border-radius: 4px; color: #155724; font-size: 12px;">
-            ✓ Treatment start date set to <strong>${slotDateStr}</strong>! Click "Save Treatment Schedule" below to finalize.
-        </div>`;
+    // When a machine card is clicked or selected via radio
+    function chooseMachine(machId) {
+        gSelectedMachineId = machId;
+
+        // Update card styles
+        document.querySelectorAll('.machine-slot-card').forEach(c => c.classList.remove('selected'));
+        const card = document.getElementById('machCard-' + machId);
+        if (card) card.classList.add('selected');
+
+        const radio = document.getElementById('machRadio-' + machId);
+        if (radio) radio.checked = true;
+
+        // Check which mode is currently active on this machine
+        const isCustom = document.getElementById('choiceCustom-' + machId)?.checked;
+        if (isCustom) {
+            setChoiceMode(machId, 'custom');
+        } else {
+            setChoiceMode(machId, 'system');
+        }
     }
 
-    function clearFreeSlotBox() {
-        const box = document.getElementById('slotRecommendationBox');
-        if (box) box.style.display = 'none';
+    // Switch between System Date and Custom Date for a machine
+    function setChoiceMode(machId, mode) {
+        // Ensure machine itself is selected
+        gSelectedMachineId = machId;
+        document.querySelectorAll('.machine-slot-card').forEach(c => c.classList.remove('selected'));
+        const card = document.getElementById('machCard-' + machId);
+        if (card) card.classList.add('selected');
+        const machRadio = document.getElementById('machRadio-' + machId);
+        if (machRadio) machRadio.checked = true;
+
+        const systemPill = document.getElementById('systemPill-' + machId);
+        const customPill = document.getElementById('customPill-' + machId);
+        const reasonBox = document.getElementById('customReasonBox-' + machId);
+        const reasonInput = document.getElementById('customReasonText-' + machId);
+
+        const mObj = gMappedMachines.find(m => m.machine_id == machId);
+        if (!mObj) return;
+
+        if (mode === 'system') {
+            document.getElementById('choiceSystem-' + machId).checked = true;
+            if (systemPill) { systemPill.classList.add('active-system'); }
+            if (customPill) { customPill.classList.remove('active-custom'); }
+            if (reasonBox) { reasonBox.style.display = 'none'; }
+
+            // Bind values to hidden inputs
+            document.getElementById('selectedMachineId').value = machId;
+            document.getElementById('selectedDateOfStart').value = mObj.slot ? mObj.slot.date : '';
+            document.getElementById('selectedShiftId').value = mObj.slot ? mObj.slot.shift_id : '';
+            document.getElementById('selectedDateMode').value = 'system';
+            document.getElementById('selectedCustomReason').value = '';
+
+            // Update summary
+            document.getElementById('selectionSummary').innerHTML = `
+                Selected: <strong style="color: #003366;">${mObj.machine_name}</strong> on 
+                <strong style="color: #155724;">${mObj.slot ? mObj.slot.date_formatted : 'No Date'}</strong> (${mObj.slot ? mObj.slot.shift_name : ''})
+                <span class="badge-success" style="font-size: 10px; margin-left: 6px;">System Recommended Slot</span>
+            `;
+        } else {
+            document.getElementById('choiceCustom-' + machId).checked = true;
+            if (systemPill) { systemPill.classList.remove('active-system'); }
+            if (customPill) { customPill.classList.add('active-custom'); }
+            if (reasonBox) { reasonBox.style.display = 'block'; }
+
+            syncCustomValues(machId);
+        }
     }
+
+    // Sync custom date & shift values to hidden inputs
+    function syncCustomValues(machId) {
+        if (gSelectedMachineId != machId) return;
+
+        const mObj = gMappedMachines.find(m => m.machine_id == machId);
+        if (!mObj) return;
+
+        const customDateVal = document.getElementById('customDate-' + machId)?.value || '';
+        const customShiftVal = document.getElementById('customShift-' + machId)?.value || '';
+        const customReasonVal = document.getElementById('customReasonText-' + machId)?.value || '';
+
+        document.getElementById('selectedMachineId').value = machId;
+        document.getElementById('selectedDateOfStart').value = customDateVal;
+        document.getElementById('selectedShiftId').value = customShiftVal;
+        document.getElementById('selectedDateMode').value = 'custom';
+        document.getElementById('selectedCustomReason').value = customReasonVal;
+
+        // Shift display name
+        const shiftElem = document.getElementById('customShift-' + machId);
+        const shiftText = shiftElem ? shiftElem.options[shiftElem.selectedIndex]?.text : '';
+
+        // Update summary
+        document.getElementById('selectionSummary').innerHTML = `
+            Selected: <strong style="color: #003366;">${mObj.machine_name}</strong> on 
+            <strong style="color: #856404;">${customDateVal || 'Select Date'}</strong> (${shiftText || 'Select Shift'})
+            <span class="badge-warning" style="font-size: 10px; margin-left: 6px;">Custom Date Override</span>
+        `;
+    }
+
+    function updateCustomReason(machId) {
+        if (gSelectedMachineId == machId) {
+            document.getElementById('selectedCustomReason').value = document.getElementById('customReasonText-' + machId)?.value || '';
+        }
+    }
+
+    // Final Form Submission Validation
+    function validateScheduleSubmission() {
+        const machId = document.getElementById('selectedMachineId').value;
+        const startDate = document.getElementById('selectedDateOfStart').value;
+        const shiftId = document.getElementById('selectedShiftId').value;
+        const dateMode = document.getElementById('selectedDateMode').value;
+        const customReason = document.getElementById('selectedCustomReason').value.trim();
+
+        if (!machId) {
+            alert("Please select a Machine from the mapped machines list.");
+            return false;
+        }
+
+        if (!startDate) {
+            alert("Please select a valid treatment start date.");
+            return false;
+        }
+
+        if (dateMode === 'custom') {
+            if (!customReason) {
+                alert("Please enter a reason for selecting a Custom Date in the notes box provided.");
+                const reasonInput = document.getElementById('customReasonText-' + machId);
+                if (reasonInput) reasonInput.focus();
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Initial Trigger on Page Load
+    document.addEventListener("DOMContentLoaded", function() {
+        loadMappedMachinesSlots();
+    });
 </script>
 {% endblock %}

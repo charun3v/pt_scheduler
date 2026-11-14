@@ -522,6 +522,88 @@ def run_tests():
     pt_manual_2.delete()
     pt_manual_3.delete()
     print("✓ Test 15 Passed: Manual treatment schedule grid (Excel view) verified: accessible only to Admin & SubAdmin, replicates Treatment LA1, edits date/shift directly without quota restrictions, exports to .xlsx.")
+
+    # 16. Test Redesigned Compact Scheduling Page & Dynamic Mapped Machine Slot Finder
+    print("\n--- Test 16: Redesigned Compact Scheduling Page & Dynamic Mapped Machine Slot Finder ---")
+    active_consultant = Consultant.objects.filter(is_active=True).first()
+    Patient.objects.filter(mr_no=999990).delete()
+    test_pt_sched = Patient.objects.create(
+        mr_no=999990,
+        rt_no='RT990',
+        pt_name='Test Redesign Patient',
+        age=58,
+        sex='Female',
+        phone_no='9988776655',
+        diagnosis='Carcinoma Endometrium',
+        primary_consultant=active_consultant
+    )
+
+    # 1. GET schedule page
+    resp_get = c.get(f'/scheduler/patient/{test_pt_sched.id}/')
+    assert resp_get.status_code == 200
+    html_content = resp_get.content.decode('utf-8')
+    assert 'top-patient-card-compact' in html_content or 'Primary Consultant' in html_content
+    assert 'mappedMachinesContainer' in html_content
+    assert 'Custom Date Selection' in html_content or 'custom_reason' in html_content
+    # Check default technique is IMRT and default special technique is None
+    imrt_tech = Technique.objects.filter(name__iexact='IMRT', is_active=True).first()
+    none_spec_tech = SpecialTechnique.objects.filter(name__iexact='None', is_active=True).first()
+    if imrt_tech:
+        assert str(resp_get.context['default_technique'].id) == str(imrt_tech.id)
+    if none_spec_tech:
+        assert str(resp_get.context['default_special_technique'].id) == str(none_spec_tech.id)
+
+    # 2. Test mapped machines slots API
+    api_url = f'/scheduler/api/mapped-machine-slots/?technique_id={imrt_tech.id if imrt_tech else 1}&special_technique_id={none_spec_tech.id if none_spec_tech else 1}&sim_date={date.today().isoformat()}'
+    resp_api = c.get(api_url)
+    assert resp_api.status_code == 200
+    api_data = resp_api.json()
+    assert api_data['success'] is True
+    assert len(api_data['machines']) > 0
+    # Every returned machine must have active shifts and machine details
+    first_m = api_data['machines'][0]
+    assert 'machine_id' in first_m
+    assert 'machine_name' in first_m
+    assert 'shifts' in first_m
+    assert len(first_m['shifts']) > 0
+
+    # 3. Test POST with custom date and custom reason notes tracking
+    custom_date = date.today() + timedelta(days=7)
+    custom_reason_text = "Urgent clinical escalation required for rapid symptom palliation"
+    target_mach = Machine.objects.filter(id=first_m['machine_id']).first()
+    target_shift = Shift.objects.filter(id=first_m['shifts'][0]['id']).first()
+
+    resp_post = c.post(f'/scheduler/patient/{test_pt_sched.id}/', {
+        'age': '58',
+        'phone_no': '9988776655',
+        'site_of_treatment': 'Pelvis',
+        'diagnosis': 'Carcinoma Endometrium Stage II',
+        'date_of_sim': date.today().isoformat(),
+        'technique': imrt_tech.id if imrt_tech else 1,
+        'special_technique': none_spec_tech.id if none_spec_tech else 1,
+        'simulated_for': '',
+        'machine': target_mach.id,
+        'shift': target_shift.id,
+        'date_of_start': custom_date.isoformat(),
+        'custom_reason': custom_reason_text,
+        'dose_planned': '45.00',
+        'no_of_fractions': '25',
+        'notes': 'Concurrent weekly chemotherapy planned'
+    })
+    assert resp_post.status_code == 302
+    test_pt_sched.refresh_from_db()
+    sched = test_pt_sched.schedules.first()
+    assert sched is not None
+    assert sched.date_of_start == custom_date
+    assert sched.machine_id == target_mach.id
+    assert sched.shift_id == target_shift.id
+    # Verify custom reason was recorded into notes
+    assert custom_reason_text in sched.notes
+    assert "[Custom Date Reason:" in sched.notes
+
+    # Cleanup
+    test_pt_sched.delete()
+    print("✓ Test 16 Passed: Redesigned compact scheduling page, dynamic mapped machine slot finder, and custom date reason tracking fully verified.")
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

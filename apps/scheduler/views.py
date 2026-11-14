@@ -64,7 +64,14 @@ def schedule_patient_view(request, patient_id):
         machine_id = request.POST.get('machine')
         shift_id = request.POST.get('shift')
         start_date_raw = request.POST.get('date_of_start', '').strip()
+        custom_reason = request.POST.get('custom_reason', '').strip()
         notes = request.POST.get('notes', '').strip()
+
+        if custom_reason:
+            if notes:
+                notes = f"[Custom Date Reason: {custom_reason}] {notes}"
+            else:
+                notes = f"[Custom Date Reason: {custom_reason}]"
 
         def parse_d(val):
             if not val:
@@ -121,6 +128,9 @@ def schedule_patient_view(request, patient_id):
         )
         return redirect('patient_detail', patient_id=patient.id)
 
+    default_technique = techniques.filter(name__iexact='IMRT').first() or techniques.first()
+    default_special_technique = special_techniques.filter(name__iexact='None').first() or special_techniques.first()
+
     context = {
         'patient': patient,
         'schedule': existing_schedule,
@@ -128,6 +138,8 @@ def schedule_patient_view(request, patient_id):
         'shifts': shifts,
         'techniques': techniques,
         'special_techniques': special_techniques,
+        'default_technique': default_technique,
+        'default_special_technique': default_special_technique,
         'simulated_for_list': simulated_for_list,
         'treatment_sites': treatment_sites,
         'today': date.today().isoformat(),
@@ -274,6 +286,104 @@ def get_nearest_free_slot_api(request):
         'nearest_slot': nearest,
         'alternative_slots': available_slots[1:],
     })
+
+
+@login_required
+def get_mapped_machines_slots_api(request):
+    """
+    Dynamic Slot Matrix for Mapped Machines:
+    Evaluates all active machines mapped to the selected Technique & Special Technique.
+    For each capable machine, finds the earliest available free slot starting from the simulation date,
+    along with quota status, recommended shift, and active shifts for custom selection.
+    """
+    tech_id = request.GET.get('technique_id')
+    spec_tech_id = request.GET.get('special_technique_id')
+    sim_date_raw = request.GET.get('sim_date')
+
+    today = date.today()
+    if sim_date_raw:
+        try:
+            sim_date = datetime.strptime(sim_date_raw, "%Y-%m-%d").date()
+            start_search = max(sim_date + timedelta(days=1), today + timedelta(days=1))
+        except ValueError:
+            start_search = today + timedelta(days=1)
+    else:
+        start_search = today + timedelta(days=1)
+
+    tech_obj = Technique.objects.filter(id=tech_id, is_active=True).first() if tech_id else None
+    spec_tech_obj = SpecialTechnique.objects.filter(id=spec_tech_id, is_active=True).first() if spec_tech_id else None
+
+    machines = Machine.objects.filter(is_active=True).order_by('display_order', 'name')
+    results = []
+
+    for mach in machines:
+        mapping = getattr(mach, 'mapping', None)
+
+        # Check mapping for technique and special technique
+        if mapping and mapping.is_active:
+            if tech_obj and not mapping.allowed_techniques.filter(id=tech_obj.id).exists():
+                continue
+            if spec_tech_obj and spec_tech_obj.name.lower() != 'none':
+                if not mapping.allowed_special_techniques.filter(id=spec_tech_obj.id).exists():
+                    continue
+            active_shifts = list(mapping.allowed_shifts.filter(is_active=True).order_by('display_order', 'name'))
+            max_daily_starts = mapping.max_daily_starts or len(active_shifts) or 1
+        else:
+            active_shifts = list(Shift.objects.filter(is_active=True).order_by('display_order', 'name'))
+            max_daily_starts = len(active_shifts) or 1
+
+        if not active_shifts:
+            continue
+
+        # Find earliest available free slot (skipping Sundays)
+        curr_date = start_search
+        found_slot = None
+
+        for _ in range(60):
+            if curr_date.weekday() != 6:  # Skip Sunday
+                booked_total = TreatmentSchedule.objects.filter(machine=mach, date_of_start=curr_date).count()
+                if booked_total < max_daily_starts:
+                    # Find which shift has free quota (< 1 start)
+                    free_shift = None
+                    for sh in active_shifts:
+                        sh_booked = TreatmentSchedule.objects.filter(machine=mach, shift=sh, date_of_start=curr_date).count()
+                        if sh_booked < 1:
+                            free_shift = sh
+                            break
+                    if not free_shift:
+                        free_shift = active_shifts[0]
+
+                    found_slot = {
+                        'date': curr_date.isoformat(),
+                        'date_formatted': curr_date.strftime("%a, %d %b %Y"),
+                        'shift_id': free_shift.id,
+                        'shift_name': free_shift.name,
+                        'booked_count': booked_total,
+                        'max_quota': max_daily_starts,
+                        'remaining': max_daily_starts - booked_total
+                    }
+                    break
+            curr_date += timedelta(days=1)
+
+        shifts_data = [{'id': s.id, 'name': s.name} for s in active_shifts]
+
+        results.append({
+            'machine_id': mach.id,
+            'machine_name': mach.name,
+            'machine_code': mach.code or mach.name,
+            'machine_type': getattr(mach, 'machine_type', 'LINAC'),
+            'max_daily_starts': max_daily_starts,
+            'slot': found_slot,
+            'shifts': shifts_data,
+        })
+
+    return JsonResponse({
+        'success': True,
+        'technique_name': tech_obj.name if tech_obj else 'None',
+        'special_technique_name': spec_tech_obj.name if spec_tech_obj else 'None',
+        'machines': results
+    })
+
 
 
 @login_required
