@@ -16,12 +16,21 @@
             </div>
         </div>
         
-        {% if schedules %}
-        <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}&export=excel"
-           class="action-ribbon-btn" style="background: #28a745; color: #ffffff; border-color: #1e7e34; font-weight: bold;">
-            📊 Export to Excel (.xlsx)
-        </a>
-        {% endif %}
+        <div style="display: flex; gap: 8px; align-items: center;">
+            {% if CAN_MANUAL_SCHEDULE %}
+            <a href="{% url 'manual_schedule_grid' %}{% if selected_machine_id %}?machine_id={{ selected_machine_id }}{% endif %}{% if start_date_str %}&start_date={{ start_date_str }}{% endif %}{% if end_date_str %}&end_date={{ end_date_str }}{% endif %}"
+               target="_blank" class="action-ribbon-btn" style="background: #107c41; color: #ffffff; border-color: #0b5a30; font-weight: bold;" title="Open in Excel Grid format for manual editing in new tab">
+                📊 Open in Excel Grid View (Manual Scheduling) ↗
+            </a>
+            {% endif %}
+
+            {% if schedules %}
+            <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}&export=excel"
+               class="action-ribbon-btn" style="background: #28a745; color: #ffffff; border-color: #1e7e34; font-weight: bold;">
+                📊 Export to Excel (.xlsx)
+            </a>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Filter Form -->

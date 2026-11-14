@@ -9,6 +9,7 @@ from .permissions import (
     can_manage_lookups,
     can_delete_patient,
     can_remove_from_schedule,
+    can_manual_schedule,
     can_export_data
 )
 
@@ -36,5 +37,6 @@ def role_permissions(request):
         'CAN_MANAGE_LOOKUPS': can_manage_lookups(request.user),
         'CAN_DELETE_PATIENT': can_delete_patient(request.user),
         'CAN_REMOVE_FROM_SCHEDULE': can_remove_from_schedule(request.user),
+        'CAN_MANUAL_SCHEDULE': can_manual_schedule(request.user),
         'CAN_EXPORT_DATA': can_export_data(request.user),
     }

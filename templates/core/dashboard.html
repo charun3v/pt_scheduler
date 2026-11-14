@@ -75,6 +75,13 @@
                     🔍 Lookup Patient
                 </a>
             </div>
+            {% if CAN_MANUAL_SCHEDULE %}
+            <div style="margin-top: 8px;">
+                <a href="{% url 'manual_schedule_grid' %}" target="_blank" class="action-ribbon-btn" style="background: #e8f5e9; color: #107c41; border: 1px solid #107c41; font-weight: bold; font-size: 12px; width: 100%; justify-content: center;" title="Treatment LA1 & Machines Spreadsheet View (Opens in New Tab)">
+                    📊 Open Manual Treatment Grid (Excel View) ↗
+                </a>
+            </div>
+            {% endif %}
         </div>
     </div>
 

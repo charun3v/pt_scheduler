@@ -110,6 +110,11 @@ def can_remove_from_schedule(user) -> bool:
     return is_admin_only(user)
 
 
+def can_manual_schedule(user) -> bool:
+    """Manual treatment scheduling in Excel grid format is available to Admin and SubAdmin."""
+    return is_admin_or_subadmin(user)
+
+
 def can_export_data(user) -> bool:
     if is_admin_or_subadmin(user):
         return True

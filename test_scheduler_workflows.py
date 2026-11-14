@@ -432,6 +432,96 @@ def run_tests():
     sched_pt.delete()
     p.delete()
     print("✓ Test 14 Passed: SubAdmin is strictly blocked from removing schedules; Admin can remove patient from schedule list.")
+
+    # 15. Test Manual Treatment Schedule Grid (Excel View) - LA1, Manual Editing, No Quotas, Admin/SubAdmin Only
+    print("\n--- Test 15: Manual Schedule Grid (Excel View) & Permission Checks ---")
+    # Verify ordinary clinical user (Resident) is blocked
+    c.force_login(res_user)
+    resp = c.get('/reports/manual-grid/')
+    assert resp.status_code == 302, f"Resident must be redirected from manual grid, got {resp.status_code}"
+    resp = c.post('/reports/manual-grid/save-row/', {'schedule_id': 1})
+    assert resp.status_code == 403, f"Resident must receive 403 from manual save api, got {resp.status_code}"
+
+    # Verify SubAdmin has access
+    c.force_login(subadmin_user)
+    resp = c.get('/reports/manual-grid/?machine_code=LA1')
+    assert resp.status_code == 200, f"SubAdmin must have access to manual grid, got {resp.status_code}"
+    assert b'Treatment Schedule Worksheet' in resp.content
+    assert b'Treatment LA1' in resp.content
+    assert b'NO QUOTA LIMIT' in resp.content
+
+    # Verify Admin has access
+    c.force_login(admin_user)
+    resp = c.get('/reports/manual-grid/?machine_code=LA1')
+    assert resp.status_code == 200, f"Admin must have access to manual grid, got {resp.status_code}"
+
+    # Create 3 test patients on LA1 to test manual scheduling with NO quota limits
+    la1_mach = Machine.objects.filter(code='LA1').first() or mach
+    shift1 = Shift.objects.first()
+
+    pt_manual_1 = Patient.objects.create(mr_no=9999011, pt_name='Manual Pt 1', sex='M', diagnosis='Test', created_by=admin_user)
+    pt_manual_2 = Patient.objects.create(mr_no=9999012, pt_name='Manual Pt 2', sex='F', diagnosis='Test', created_by=admin_user)
+    pt_manual_3 = Patient.objects.create(mr_no=9999013, pt_name='Manual Pt 3', sex='M', diagnosis='Test', created_by=admin_user)
+
+    s1 = TreatmentSchedule.objects.create(patient=pt_manual_1, machine=la1_mach, date_of_start=None, created_by=admin_user)
+    s2 = TreatmentSchedule.objects.create(patient=pt_manual_2, machine=la1_mach, date_of_start=None, created_by=admin_user)
+    s3 = TreatmentSchedule.objects.create(patient=pt_manual_3, machine=la1_mach, date_of_start=None, created_by=admin_user)
+
+    # Manual test date: assign ALL 3 patients to the exact same date and shift (exceeding standard shift quota)
+    manual_date = date(2026, 12, 20)
+
+    # 1. Edit s1 via inline AJAX save
+    resp_ajax = c.post('/reports/manual-grid/save-row/', {
+        'schedule_id': s1.id,
+        'date_of_start': manual_date.isoformat(),
+        'shift_id': str(shift1.id),
+        'machine_id': str(la1_mach.id)
+    })
+    assert resp_ajax.status_code == 200
+    assert resp_ajax.json()['success'] is True
+    s1.refresh_from_db()
+    assert s1.date_of_start == manual_date
+    assert s1.shift_id == shift1.id
+
+    # 2. Edit s2 via inline AJAX save (same date & shift - no quota restrictions!)
+    resp_ajax2 = c.post('/reports/manual-grid/save-row/', {
+        'schedule_id': s2.id,
+        'date_of_start': manual_date.isoformat(),
+        'shift_id': str(shift1.id),
+        'machine_id': str(la1_mach.id)
+    })
+    assert resp_ajax2.status_code == 200
+    assert resp_ajax2.json()['success'] is True
+    s2.refresh_from_db()
+    assert s2.date_of_start == manual_date
+    assert s2.shift_id == shift1.id
+
+    # 3. Edit s3 via Batch Save POST (same date & shift)
+    resp_batch = c.post(f'/reports/manual-grid/?machine_id={la1_mach.id}&start_date={manual_date.isoformat()}&end_date={manual_date.isoformat()}', {
+        'schedule_id': [str(s3.id)],
+        f'start_date_{s3.id}': manual_date.isoformat(),
+        f'shift_{s3.id}': str(shift1.id),
+        f'machine_{s3.id}': str(la1_mach.id),
+    })
+    assert resp_batch.status_code == 302
+    s3.refresh_from_db()
+    assert s3.date_of_start == manual_date
+    assert s3.shift_id == shift1.id
+
+    # Verify all 3 are successfully scheduled on the same machine, date, and shift without quota restriction
+    starts_count = TreatmentSchedule.objects.filter(machine=la1_mach, date_of_start=manual_date, shift=shift1).count()
+    assert starts_count >= 3, f"Expected at least 3 starts scheduled on {manual_date}, got {starts_count}"
+
+    # Verify Excel download (.xlsx)
+    resp_export = c.get(f'/reports/manual-grid/?machine_id={la1_mach.id}&start_date={manual_date.isoformat()}&end_date={manual_date.isoformat()}&export=excel')
+    assert resp_export.status_code == 200
+    assert 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' in resp_export['Content-Type']
+
+    # Clean up test patients
+    pt_manual_1.delete()
+    pt_manual_2.delete()
+    pt_manual_3.delete()
+    print("✓ Test 15 Passed: Manual treatment schedule grid (Excel view) verified: accessible only to Admin & SubAdmin, replicates Treatment LA1, edits date/shift directly without quota restrictions, exports to .xlsx.")
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

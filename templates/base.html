@@ -72,6 +72,10 @@
         <a href="{% url 'machine_daily_list' %}" class="action-ribbon-btn">⚡ Machine Schedules</a>
         <a href="{% url 'consultant_stats' %}" class="action-ribbon-btn">📊 Consultant Stats</a>
 
+        {% if CAN_MANUAL_SCHEDULE %}
+        <a href="{% url 'manual_schedule_grid' %}" target="_blank" class="action-ribbon-btn" style="color: #107c41; font-weight: bold; border-color: #107c41;" title="Manual Treatment Schedule Editor - Excel Spreadsheet View (Opened in New Tab)">📊 Treatment Grid (Excel) ↗</a>
+        {% endif %}
+
         {% if IS_ADMIN_OR_SUBADMIN %}
         <span style="color: #888; margin: 0 4px;">|</span>
         <a href="{% url 'machine_mappings' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;" title="Configure Machine-Shift-Technique Mappings & Quotas">⚙️ Machine Mappings</a>

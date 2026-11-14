@@ -1,0 +1,511 @@
+{% extends "base.html" %}
+
+{% block title %}Treatment Schedule Grid (Excel View) - {{ selected_machine.code|default:'All' }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Excel Workbook & Spreadsheet Styling */
+    .excel-workbook {
+        background: #ffffff;
+        border: 2px solid #107c41;
+        border-radius: 4px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        margin-bottom: 24px;
+        overflow: hidden;
+    }
+    .excel-title-bar {
+        background: #107c41;
+        color: #ffffff;
+        padding: 8px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #0e6333;
+    }
+    .excel-toolbar {
+        background: #f3f2f1;
+        border-bottom: 1px solid #d2d0ce;
+        padding: 8px 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+    }
+    .excel-formula-bar {
+        background: #ffffff;
+        border-bottom: 1px solid #e1dfdd;
+        padding: 6px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 12px;
+        color: #323130;
+    }
+    .excel-grid-container {
+        overflow: auto;
+        max-height: 75vh;
+        background: #fdfdfd;
+    }
+    .excel-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: "Segoe UI", Tahoma, Calibri, sans-serif;
+        font-size: 12px;
+        color: #201f1e;
+    }
+    .excel-table th {
+        background: #e1dfdd;
+        border: 1px solid #c8c6c4;
+        padding: 5px 8px;
+        font-weight: 600;
+        text-align: left;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        white-space: nowrap;
+    }
+    .excel-table th.col-letter {
+        background: #edebe9;
+        color: #605e5c;
+        text-align: center;
+        font-size: 10px;
+        padding: 2px 4px;
+        font-weight: normal;
+    }
+    .excel-table td {
+        border: 1px solid #e1dfdd;
+        padding: 4px 6px;
+        white-space: nowrap;
+        vertical-align: middle;
+    }
+    .excel-table td.row-num {
+        background: #f3f2f1;
+        color: #605e5c;
+        text-align: center;
+        font-weight: 600;
+        font-size: 11px;
+        user-select: none;
+        width: 36px;
+    }
+    .excel-table tr:hover td:not(.row-num) {
+        background-color: #f3f9f4 !important;
+    }
+    .excel-cell-input, .excel-cell-select {
+        width: 100%;
+        padding: 4px 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        font-size: 12px;
+        font-family: inherit;
+        border-radius: 2px;
+        box-sizing: border-box;
+    }
+    .excel-cell-input:hover, .excel-cell-select:hover {
+        border-color: #107c41;
+        background: #ffffff;
+    }
+    .excel-cell-input:focus, .excel-cell-select:focus {
+        border-color: #107c41;
+        background: #ffffff;
+        outline: 2px solid #107c41;
+        box-shadow: 0 0 4px rgba(16, 124, 65, 0.4);
+    }
+    .cell-modified {
+        background-color: #fff9db !important;
+        border-color: #e0a800 !important;
+    }
+    .save-indicator {
+        font-size: 11px;
+        font-weight: bold;
+        padding: 2px 6px;
+        border-radius: 3px;
+        display: inline-block;
+    }
+    .save-indicator.saved {
+        background: #d4edda;
+        color: #155724;
+    }
+    .save-indicator.dirty {
+        background: #fff3cd;
+        color: #856404;
+    }
+    .btn-excel-save {
+        background: #107c41;
+        color: #ffffff;
+        border: 1px solid #0b5a30;
+        padding: 6px 16px;
+        font-weight: bold;
+        font-size: 12px;
+        border-radius: 3px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .btn-excel-save:hover {
+        background: #0e6333;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="excel-workbook">
+    
+    <!-- Excel Title Bar -->
+    <div class="excel-title-bar">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 20px;">📊</span>
+            <div>
+                <strong style="font-size: 15px; letter-spacing: 0.5px;">
+                    Treatment Schedule Worksheet — Excel Format
+                </strong>
+                <span style="font-size: 12px; opacity: 0.9; margin-left: 8px;">
+                    [Query: Treatment {{ selected_machine.code|default:'All Machines' }}]
+                </span>
+            </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge-admin">ADMIN & SUBADMIN ONLY</span>
+            <span class="badge-success" style="background: #ffffff; color: #107c41; font-weight: bold; font-size: 11px; padding: 3px 8px; border-radius: 3px;">
+                ⚡ MANUAL SCHEDULING (NO QUOTA LIMIT)
+            </span>
+            <span style="font-size: 11px; opacity: 0.85;">New Tab View</span>
+        </div>
+    </div>
+
+    <!-- Filter Ribbon Form -->
+    <div class="excel-toolbar">
+        <form method="GET" action="{% url 'manual_schedule_grid' %}" id="filterForm" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; width: 100%;">
+            
+            <!-- Machine Selection -->
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-weight: bold; font-size: 11px; color: #333;">Machine:</label>
+                <select name="machine_id" onchange="this.form.submit();" style="padding: 5px 8px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; background: #fff; font-weight: 600; color: #003366;">
+                    <option value="" {% if not selected_machine_id %}selected{% endif %}>-- All Treatment Machines --</option>
+                    {% for m in all_machines %}
+                    <option value="{{ m.id }}" {% if selected_machine_id == m.id %}selected{% endif %}>
+                        {{ m.name }} [{{ m.code|default:m.name }}]
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Date Range -->
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-weight: bold; font-size: 11px; color: #333;">Start Date:</label>
+                <input type="date" name="start_date" value="{{ start_date_str }}" style="padding: 4px 8px; font-size: 12px; border: 1px solid #707070; border-radius: 3px;">
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-weight: bold; font-size: 11px; color: #333;">End Date:</label>
+                <input type="date" name="end_date" value="{{ end_date_str }}" style="padding: 4px 8px; font-size: 12px; border: 1px solid #707070; border-radius: 3px;">
+            </div>
+
+            <!-- Include Pending Starts -->
+            <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer; color: #555;">
+                <input type="checkbox" name="include_pending" value="1" {% if include_pending %}checked{% endif %} onchange="this.form.submit();">
+                Include Pending Starts (Unscheduled Start Dates)
+            </label>
+
+            <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 5px 12px; font-size: 12px; cursor: pointer;">
+                🔍 Filter Sheet
+            </button>
+
+            <!-- Quick Presets -->
+            <div style="display: flex; gap: 4px; margin-left: auto; align-items: center;">
+                <span style="font-size: 11px; color: #777;">Presets:</span>
+                <a href="?machine_code=LA1" class="action-ribbon-btn {% if selected_machine.code == 'LA1' %}btn-highlight{% endif %}" style="padding: 3px 8px; font-size: 11px;" title="Replicate Access Treatment LA1 Query">
+                    Treatment LA1
+                </a>
+                <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}preset=this_month" class="action-ribbon-btn" style="padding: 3px 8px; font-size: 11px;">
+                    This Month
+                </a>
+                <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}preset=next_30" class="action-ribbon-btn" style="padding: 3px 8px; font-size: 11px;">
+                    Next 30 Days
+                </a>
+                <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}preset=all_2026" class="action-ribbon-btn" style="padding: 3px 8px; font-size: 11px;">
+                    All 2026
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Formula Bar & Action Buttons -->
+    <form method="POST" id="batchScheduleForm">
+        {% csrf_token %}
+        <div class="excel-formula-bar">
+            <span style="font-family: Consolas, monospace; font-weight: bold; color: #107c41; font-size: 13px;">fx</span>
+            <span style="color: #666; font-size: 11px; border-right: 1px solid #ccc; padding-right: 10px;">
+                Sheet: <strong>{{ selected_machine.name|default:'All Machines' }}</strong>
+            </span>
+            <div style="flex: 1; display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 12px; color: #333;">
+                    Found <strong>{{ total_count }}</strong> patient course{{ total_count|pluralize }} between <strong>{{ start_date_str }}</strong> and <strong>{{ end_date_str }}</strong>.
+                </span>
+                <input type="text" id="sheetFilter" placeholder="Filter sheet by MR No, Patient Name, Diagnosis..."
+                       style="padding: 3px 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 3px; width: 260px;"
+                       onkeyup="filterSheetRows();">
+            </div>
+            
+            <div style="display: flex; gap: 6px;">
+                <button type="submit" class="btn-excel-save" title="Save all modified dates and shifts to database">
+                    💾 Save All Changes
+                </button>
+                <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}{% if include_pending %}&include_pending=1{% endif %}&export=excel"
+                   class="action-ribbon-btn" style="background: #28a745; color: #fff; border-color: #1e7e34; padding: 5px 12px; font-weight: bold;" title="Download Excel .xlsx file">
+                    📥 Download .xlsx
+                </a>
+                <a href="{{ request.get_full_path }}" class="action-ribbon-btn" style="padding: 5px 10px;">
+                    🔄 Reload
+                </a>
+            </div>
+        </div>
+
+        <!-- Excel Spreadsheet Grid -->
+        <div class="excel-grid-container">
+            <table class="excel-table" id="excelSheetTable">
+                <thead>
+                    <!-- Column Letters (Excel A-O) -->
+                    <tr>
+                        <th class="col-letter"></th>
+                        <th class="col-letter">A</th>
+                        <th class="col-letter">B</th>
+                        <th class="col-letter">C</th>
+                        <th class="col-letter">D</th>
+                        <th class="col-letter">E</th>
+                        <th class="col-letter">F</th>
+                        <th class="col-letter">G</th>
+                        <th class="col-letter">H</th>
+                        <th class="col-letter">I</th>
+                        <th class="col-letter">J</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">K (Edit)</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">L (Edit)</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">M (Edit)</th>
+                        <th class="col-letter">N</th>
+                    </tr>
+                    <!-- Real Headers -->
+                    <tr>
+                        <th style="width: 36px; text-align: center;">#</th>
+                        <th>MR Number</th>
+                        <th>Patient Name</th>
+                        <th>RT No.</th>
+                        <th>Age / Sex</th>
+                        <th>Diagnosis</th>
+                        <th>Site of Treatment</th>
+                        <th>Technique</th>
+                        <th>Dose / Fr</th>
+                        <th>Primary Consultant</th>
+                        <th>Jr. Resident</th>
+                        <th style="background: #c3e6cb; color: #155724; min-width: 130px;">Machine (Assigned)</th>
+                        <th style="background: #c3e6cb; color: #155724; min-width: 140px;">Date of Start (Editable)</th>
+                        <th style="background: #c3e6cb; color: #155724; min-width: 110px;">Shift (Editable)</th>
+                        <th style="text-align: center; min-width: 100px;">Row Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in schedules %}
+                    <tr id="row-{{ s.id }}" data-schedule-id="{{ s.id }}" class="sheet-row">
+                        <!-- Hidden Schedule ID for Batch Form Submission -->
+                        <input type="hidden" name="schedule_id" value="{{ s.id }}">
+
+                        <td class="row-num">{{ forloop.counter }}</td>
+                        
+                        <!-- MR No. -->
+                        <td style="font-family: Consolas, monospace; font-weight: bold;">
+                            <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="Open patient details in new tab">
+                                {{ s.patient.mr_no }}
+                            </a>
+                        </td>
+
+                        <!-- Patient Name -->
+                        <td style="font-weight: 600; color: #111;">{{ s.patient.pt_name }}</td>
+                        
+                        <!-- RT No. -->
+                        <td style="color: #555;">{{ s.patient.rt_no|default:'-' }}</td>
+
+                        <!-- Age / Sex -->
+                        <td>{{ s.patient.age|default:'-' }} / {{ s.patient.sex }}</td>
+
+                        <!-- Diagnosis -->
+                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="{{ s.patient.diagnosis }}">
+                            {{ s.patient.diagnosis|truncatechars:28 }}
+                        </td>
+
+                        <!-- Site -->
+                        <td>{{ s.site_of_treatment|default:s.patient.site_of_treatment|default:'-' }}</td>
+
+                        <!-- Technique -->
+                        <td>
+                            {{ s.technique.name|default:'-' }}
+                            {% if s.special_technique and s.special_technique.name != 'None' %}
+                                <span class="badge-locked" style="font-size: 10px;">{{ s.special_technique.name }}</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Dose / Fractions -->
+                        <td style="font-family: Consolas, monospace;">
+                            {{ s.dose_planned|default:'-' }} Gy / {{ s.no_of_fractions|default:'-' }} Fr
+                        </td>
+
+                        <!-- Consultant -->
+                        <td>{{ s.patient.consultant_display }}</td>
+
+                        <!-- Jr Resident -->
+                        <td>{{ s.jr_resident|default:'-' }}</td>
+
+                        <!-- EDITABLE: Machine -->
+                        <td style="background: #fdfdfd;">
+                            <select name="machine_{{ s.id }}" id="machine_{{ s.id }}" class="excel-cell-select"
+                                    onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
+                                {% for m in all_machines %}
+                                <option value="{{ m.id }}" {% if s.machine_id == m.id %}selected{% endif %}>
+                                    {{ m.code|default:m.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+
+                        <!-- EDITABLE: Date of Start -->
+                        <td style="background: #fdfdfd;">
+                            <input type="date" name="start_date_{{ s.id }}" id="start_date_{{ s.id }}"
+                                   value="{{ s.date_of_start|date:'Y-m-d' }}"
+                                   class="excel-cell-input"
+                                   onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
+                        </td>
+
+                        <!-- EDITABLE: Shift -->
+                        <td style="background: #fdfdfd;">
+                            <select name="shift_{{ s.id }}" id="shift_{{ s.id }}" class="excel-cell-select"
+                                    onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
+                                <option value="" {% if not s.shift_id %}selected{% endif %}>-- None --</option>
+                                {% for sh in all_shifts %}
+                                <option value="{{ sh.id }}" {% if s.shift_id == sh.id %}selected{% endif %}>
+                                    {{ sh.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+
+                        <!-- Action / Live Save Status -->
+                        <td style="text-align: center;">
+                            <span id="indicator-{{ s.id }}" class="save-indicator {% if s.date_of_start %}saved{% else %}dirty{% endif %}">
+                                {% if s.date_of_start %}Saved ✓{% else %}Pending{% endif %}
+                            </span>
+                            <button type="button" onclick="liveAutoSave('{{ s.id }}');" class="action-ribbon-btn" style="padding: 1px 6px; font-size: 10px; margin-left: 2px;" title="Manually push this row's changes">
+                                💾
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="15" style="text-align: center; padding: 40px; color: #666;">
+                            <div style="font-size: 28px; margin-bottom: 8px;">📋</div>
+                            <strong>No scheduled patients found matching this criteria.</strong>
+                            <div style="font-size: 12px; margin-top: 4px;">
+                                Try extending the date range or check the <em>"Include Pending Starts"</em> option to display unassigned patients.
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+
+    <!-- Excel Status Bar -->
+    <div style="background: #107c41; color: #ffffff; padding: 4px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+        <div>
+            Ready | <strong>{{ total_count }}</strong> Rows Loaded | Machine: <strong>{{ selected_machine.name|default:'All' }}</strong>
+        </div>
+        <div>
+            Changes are saved immediately via AJAX and can also be committed in batch via <strong>Save All Changes</strong>.
+        </div>
+    </div>
+</div>
+
+<script>
+    // Highlight cell when modified
+    function markCellModified(schedId) {
+        var row = document.getElementById('row-' + schedId);
+        if (row) {
+            row.classList.add('cell-modified');
+            var ind = document.getElementById('indicator-' + schedId);
+            if (ind) {
+                ind.className = 'save-indicator dirty';
+                ind.innerText = 'Unsaved ●';
+            }
+        }
+    }
+
+    // Instant AJAX Auto-save for single row
+    function liveAutoSave(schedId) {
+        var dateVal = document.getElementById('start_date_' + schedId).value;
+        var shiftVal = document.getElementById('shift_' + schedId).value;
+        var machVal = document.getElementById('machine_' + schedId).value;
+        var ind = document.getElementById('indicator-' + schedId);
+
+        if (ind) {
+            ind.className = 'save-indicator';
+            ind.innerText = 'Saving...';
+        }
+
+        var formData = new FormData();
+        formData.append('schedule_id', schedId);
+        formData.append('date_of_start', dateVal);
+        formData.append('shift_id', shiftVal);
+        formData.append('machine_id', machVal);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        fetch("{% url 'manual_schedule_save_row' %}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                var row = document.getElementById('row-' + schedId);
+                if (row) {
+                    row.classList.remove('cell-modified');
+                }
+                if (ind) {
+                    ind.className = 'save-indicator saved';
+                    ind.innerText = 'Saved ✓';
+                }
+            } else {
+                if (ind) {
+                    ind.className = 'save-indicator dirty';
+                    ind.innerText = 'Error!';
+                }
+                alert('Save failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            if (ind) {
+                ind.className = 'save-indicator dirty';
+                ind.innerText = 'Error!';
+            }
+            console.error('Save error:', err);
+        });
+    }
+
+    // Client-side quick filter for loaded sheet
+    function filterSheetRows() {
+        var input = document.getElementById('sheetFilter');
+        var filter = input.value.toUpperCase();
+        var table = document.getElementById('excelSheetTable');
+        var rows = table.getElementsByClassName('sheet-row');
+
+        for (var i = 0; i < rows.length; i++) {
+            var text = rows[i].textContent || rows[i].innerText;
+            if (text.toUpperCase().indexOf(filter) > -1) {
+                rows[i].style.display = "";
+            } else {
+                rows[i].style.display = "none";
+            }
+        }
+    }
+</script>
+{% endblock %}
