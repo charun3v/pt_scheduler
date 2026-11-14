@@ -129,21 +129,6 @@
                             {% endfor %}
                         </div>
 
-                        <!-- Dynamic Add New Site Bar -->
-                        <div style="background: #f8f9fa; border: 1px dashed #b8daff; border-radius: 4px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
-                            <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 280px;">
-                                <span style="font-size: 12px; font-weight: bold; color: #003366; white-space: nowrap;">➕ Add New Site:</span>
-                                <input type="text" id="newSiteInput" placeholder="e.g. Prostate, Spine, Skin..."
-                                       style="flex: 1; max-width: 280px; padding: 5px 8px; border: 1px solid #707070; border-radius: 3px; font-size: 12px;"
-                                       onkeydown="if(event.key === 'Enter'){ event.preventDefault(); addNewSiteInline(); }">
-                                <button type="button" onclick="addNewSiteInline()"
-                                        style="background: #1b5e20; color: #ffffff; border: 1px solid #0d3c13; padding: 5px 12px; font-size: 12px; font-weight: bold; border-radius: 3px; cursor: pointer; white-space: nowrap;">
-                                    + Add to List
-                                </button>
-                            </div>
-                            <span id="newSiteStatus" style="font-size: 11px; font-weight: 600;"></span>
-                        </div>
-
                         <!-- Collapse Button -->
                         <div style="text-align: right; border-top: 1px solid #e1e4e8; padding-top: 8px;">
                             <button type="button" onclick="toggleSitesDropdown(null, false)" 
@@ -154,7 +139,7 @@
                     </div>
                 </div>
                 <div style="font-size: 11px; color: #666; margin-top: 5px;">
-                    Click the box above to expand and select anatomical treatment sites. New sites added here automatically appear in the active list.
+                    Click the box above to expand and select anatomical treatment sites. New or modified sites in Reference Lookups are automatically reflected here.
                 </div>
             </div>
 
@@ -232,77 +217,6 @@
                 display.appendChild(badge);
             });
         }
-    }
-
-    function addNewSiteInline() {
-        const input = document.getElementById('newSiteInput');
-        const status = document.getElementById('newSiteStatus');
-        const siteName = input ? input.value.trim() : '';
-        if (!siteName) {
-            if (status) {
-                status.style.color = '#cf222e';
-                status.textContent = 'Please enter a site name.';
-            }
-            if (input) input.focus();
-            return;
-        }
-
-        if (status) {
-            status.style.color = '#003366';
-            status.textContent = 'Adding site...';
-        }
-
-        const formData = new FormData();
-        formData.append('site_name', siteName);
-        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-
-        fetch("{% url 'api_add_treatment_site' %}", {
-            method: 'POST',
-            body: formData,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                input.value = '';
-                if (status) {
-                    status.style.color = '#1b5e20';
-                    status.textContent = `✓ ${data.message}`;
-                    setTimeout(() => { if (status) status.textContent = ''; }, 4000);
-                }
-
-                // Check if checkbox already exists
-                let chk = document.getElementById('site_chk_' + data.id);
-                if (!chk) {
-                    const container = document.getElementById('sitesGridContainer');
-                    const lbl = document.createElement('label');
-                    lbl.id = 'site_lbl_' + data.id;
-                    lbl.style.cssText = 'display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 8px 12px; border-radius: 4px; cursor: pointer; user-select: none; border: 1px solid #2da44e; background: #e8f5e9; transition: all 0.15s;';
-                    lbl.innerHTML = `
-                        <input type="checkbox" name="allowed_sites" id="site_chk_${data.id}" value="${data.name}"
-                               checked onchange="handleSiteCheckboxChange('${data.id}');"
-                               style="cursor: pointer; width: 16px; height: 16px; margin: 0;">
-                        <span style="font-weight: 500; color: #24292f;">${data.name}</span>
-                    `;
-                    if (container) container.appendChild(lbl);
-                } else {
-                    chk.checked = true;
-                    handleSiteCheckboxChange(data.id);
-                }
-                updateSitesDisplay();
-            } else {
-                if (status) {
-                    status.style.color = '#cf222e';
-                    status.textContent = data.error || 'Failed to add site.';
-                }
-            }
-        })
-        .catch(err => {
-            if (status) {
-                status.style.color = '#cf222e';
-                status.textContent = 'Server error adding site.';
-            }
-        });
     }
 
     // Initialize display on load

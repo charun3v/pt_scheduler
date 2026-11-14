@@ -14,5 +14,4 @@ urlpatterns = [
     path('api/machine-options/<int:machine_id>/', views.get_machine_options_api, name='api_machine_options'),
     path('api/nearest-free-slot/', views.get_nearest_free_slot_api, name='api_nearest_free_slot'),
     path('api/mapped-machine-slots/', views.get_mapped_machines_slots_api, name='api_mapped_machine_slots'),
-    path('api/add-treatment-site/', views.add_treatment_site_api, name='api_add_treatment_site'),
 ]
