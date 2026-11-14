@@ -4,33 +4,34 @@
 
 {% block extra_head %}
 <style>
-    /* Clean, Simple Patient Registration Summary (No loud colors) */
+    /* Patient Registration Summary: Light green background with dark green border & accents */
     .patient-summary-simple {
-        background: #ffffff;
-        border: 1px solid #d0d7de;
+        background: #e8f5e9;
+        border: 2px solid #1b5e20;
         border-radius: 4px;
         padding: 8px 12px;
         margin-bottom: 10px;
         font-size: 12px;
-        color: #24292f;
+        color: #0f3e12;
     }
     .summary-label {
         font-size: 10px;
         text-transform: uppercase;
-        color: #57606a;
-        font-weight: 600;
+        color: #1b5e20;
+        font-weight: 700;
         margin-right: 4px;
     }
     .summary-input {
-        border: 1px solid #d0d7de;
+        border: 1px solid #2e7d32;
         border-radius: 3px;
         padding: 2px 6px;
         font-size: 12px;
         background: #ffffff;
-        color: #24292f;
+        color: #0f3e12;
     }
     .summary-input:focus {
-        border-color: #0969da;
+        border-color: #1b5e20;
+        box-shadow: 0 0 0 2px rgba(27, 94, 32, 0.2);
         outline: none;
     }
 
@@ -151,7 +152,7 @@
                 <!-- Primary Consultant (Anchored to Far Right Extreme) -->
                 <div style="margin-left: auto; text-align: right; white-space: nowrap;">
                     <span class="summary-label">Primary Consultant:</span>
-                    <strong style="color: #003366;">{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
+                    <strong style="color: #1b5e20;">{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
                 </div>
             </div>
 
