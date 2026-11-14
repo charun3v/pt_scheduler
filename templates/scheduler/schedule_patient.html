@@ -42,7 +42,7 @@
         border-radius: 4px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         overflow: hidden;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
     }
     .scheduler-header-compact {
         background: #f6f8fa;
@@ -119,7 +119,7 @@
     <form method="POST" id="scheduleForm" onsubmit="return validateScheduleSubmission();">
         {% csrf_token %}
 
-        <!-- PATIENT REGISTRATION SUMMARY: Simple, Clean, No Unnecessary Colors, Consultant Far Right -->
+        <!-- PATIENT REGISTRATION SUMMARY: Light Green Background with Dark Green Border -->
         <div class="patient-summary-simple">
             <!-- Row 1: Core Identifiers & Demographics with Consultant on Far Right -->
             <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px;">
@@ -175,18 +175,13 @@
             </div>
         </div>
 
-        <!-- SCHEDULING PANEL: Compact Vertically, Excel-Style Machine Slot Rows -->
+        <!-- SECTION 1: TREATMENT PARAMETERS & PRESCRIPTION (Compact Vertically) -->
         <div class="scheduler-panel-compact">
-            
             <div class="scheduler-header-compact">
-                <span>Radiotherapy Treatment Scheduler</span>
-                <span id="slotsStatusPill" style="font-size: 11px; font-weight: normal; color: #57606a;">
-                    Evaluating machine slot availability...
-                </span>
+                <span>Treatment Parameters & Prescription Entry</span>
             </div>
 
             <div class="scheduler-body-compact">
-                
                 <!-- PARAMETERS ROW 1: Simulation Date + Techniques (Defaults: IMRT, None, None) -->
                 <div style="display: grid; grid-template-columns: 180px 180px 180px 180px; gap: 10px; margin-bottom: 8px;">
                     <div>
@@ -249,7 +244,7 @@
                 </div>
 
                 <!-- PARAMETERS ROW 2: Dose, Fractions, Junior Resident, Clinical Notes -->
-                <div style="display: grid; grid-template-columns: 120px 100px 180px 1fr; gap: 10px; margin-bottom: 10px;">
+                <div style="display: grid; grid-template-columns: 120px 100px 180px 1fr; gap: 10px;">
                     <div>
                         <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px;">Dose (Gy):</label>
                         <input type="number" step="0.01" name="dose_planned" value="{{ schedule.dose_planned|default:'' }}" placeholder="e.g. 50"
@@ -274,26 +269,32 @@
                                class="form-control-compact">
                     </div>
                 </div>
+            </div>
+        </div>
 
-                <!-- EXCEL-STYLE ONE-LINE MACHINE SLOTS TABLE -->
-                <div style="margin-top: 6px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #57606a;">
-                            Machine Earliest Slots & Custom Date Selection
-                        </span>
-                        <span style="font-size: 11px; color: #57606a;">
-                            Click any row to select machine; choose Earliest slot or enter Custom Date.
-                        </span>
-                    </div>
+        <!-- SECTION 2: SEPARATE SECTION FOR MACHINE EARLIEST SLOTS & CUSTOM DATE SELECTION -->
+        <div class="scheduler-panel-compact">
+            <div class="scheduler-header-compact">
+                <span>Machine Earliest Slots & Custom Date Selection</span>
+                <span id="slotsStatusPill" style="font-size: 11px; font-weight: normal; color: #57606a;">
+                    Evaluating machine slot availability...
+                </span>
+            </div>
 
-                    <!-- Dynamic Machines List Container (Populated via AJAX as Excel Table) -->
-                    <div id="mappedMachinesContainer">
-                        <div style="padding: 16px; text-align: center; color: #57606a; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 3px;">
-                            Evaluating mapped machines and calculating slot availability...
-                        </div>
-                    </div>
+            <div class="scheduler-body-compact" style="padding: 8px 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 11px; color: #57606a;">
+                    <span>
+                        System provides earliest available slots. <strong>Custom Date Selection can only be scheduled after the recommended date.</strong>
+                    </span>
+                    <span>Click any row to select machine.</span>
                 </div>
 
+                <!-- Dynamic Machines List Container (Populated via AJAX as Excel Table) -->
+                <div id="mappedMachinesContainer">
+                    <div style="padding: 16px; text-align: center; color: #57606a; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 3px;">
+                        Evaluating mapped machines and calculating slot availability...
+                    </div>
+                </div>
             </div>
 
             <!-- HIDDEN INPUTS FOR FORM SUBMISSION (Populated by selected machine row) -->
@@ -322,8 +323,8 @@
                     </button>
                 </div>
             </div>
-
         </div>
+
     </form>
 </div>
 {% endblock %}
@@ -335,6 +336,19 @@
     let gSelectedMachineId = "{{ schedule.machine_id|default:'' }}";
     let gCurrentScheduledDate = "{{ schedule.date_of_start|date:'Y-m-d'|default:'' }}";
     let gCurrentShiftId = "{{ schedule.shift_id|default:'' }}";
+
+    // Helper: Compute the date immediately following a given YYYY-MM-DD string
+    function getDayAfter(dateStr) {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return '';
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        d.setDate(d.getDate() + 1);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
 
     // Load Mapped Machines and render as Excel-like table rows
     function loadMappedMachinesSlots() {
@@ -382,7 +396,7 @@
                                 <th style="width: 140px;">Machine Name</th>
                                 <th style="width: 75px;">Type</th>
                                 <th style="min-width: 250px;">Earliest Available Slot (Recommended)</th>
-                                <th style="min-width: 230px;">Custom Date Selection</th>
+                                <th style="min-width: 230px;">Custom Date Selection (After Recommended)</th>
                                 <th style="min-width: 200px;">Reason for Custom Date</th>
                             </tr>
                         </thead>
@@ -405,6 +419,11 @@
                     const earliestFormatted = m.slot ? m.slot.date_formatted : 'No Free Slot';
                     const earliestShiftName = m.slot ? `Shift ${m.slot.shift_name}` : '';
                     const bookedInfo = m.slot ? `(${m.slot.booked_count}/${m.slot.max_quota} starts booked)` : '(Full)';
+
+                    // Custom Date can ONLY be strictly AFTER the recommended date
+                    const minCustomDate = (m.slot && m.slot.date) ? getDayAfter(m.slot.date) : '';
+                    const minDateAttr = minCustomDate ? `min="${minCustomDate}"` : '';
+                    const customDateTooltip = m.slot ? `Custom date can only be after recommended date (${m.slot.date_formatted})` : 'Select custom date';
 
                     html += `
                         <tr class="excel-row ${isCardSelected ? 'row-selected' : ''}" id="machRow-${m.machine_id}"
@@ -449,9 +468,11 @@
                                            onchange="setChoiceMode(${m.machine_id}, 'custom');"
                                            onclick="event.stopPropagation();"
                                            style="cursor: pointer; margin: 0;">
-                                    <input type="date" id="customDate-${m.machine_id}" value="${gCurrentScheduledDate || ''}"
+                                    <input type="date" id="customDate-${m.machine_id}" ${minDateAttr}
+                                           value="${(gCurrentScheduledDate && minCustomDate && gCurrentScheduledDate >= minCustomDate) ? gCurrentScheduledDate : ''}"
                                            onchange="syncCustomValues(${m.machine_id});"
                                            onclick="event.stopPropagation(); setChoiceMode(${m.machine_id}, 'custom');"
+                                           title="${customDateTooltip}"
                                            style="padding: 2px 4px; font-size: 11px; border: 1px solid #d0d7de; border-radius: 2px; width: 115px;">
                                     <select id="customShift-${m.machine_id}"
                                             onchange="syncCustomValues(${m.machine_id});"
@@ -529,13 +550,13 @@
         if (!mObj) return;
 
         const reasonInput = document.getElementById('customReasonText-' + machId);
+        const dateInput = document.getElementById('customDate-' + machId);
 
         if (mode === 'system') {
             const sysRadio = document.getElementById('choiceSystem-' + machId);
             if (sysRadio) sysRadio.checked = true;
-            if (reasonInput) {
-                reasonInput.style.borderColor = '#d0d7de';
-            }
+            if (reasonInput) reasonInput.style.borderColor = '#d0d7de';
+            if (dateInput) dateInput.style.borderColor = '#d0d7de';
 
             document.getElementById('selectedMachineId').value = machId;
             document.getElementById('selectedDateOfStart').value = mObj.slot ? mObj.slot.date : '';
@@ -551,6 +572,15 @@
         } else {
             const custRadio = document.getElementById('choiceCustom-' + machId);
             if (custRadio) custRadio.checked = true;
+
+            // If custom date is empty or <= recommended date, initialize it to the day after recommended date
+            if (dateInput && mObj.slot && mObj.slot.date) {
+                const minAllowed = getDayAfter(mObj.slot.date);
+                if (!dateInput.value || dateInput.value <= mObj.slot.date) {
+                    dateInput.value = minAllowed;
+                }
+            }
+
             if (reasonInput) {
                 reasonInput.style.borderColor = '#cf222e';
             }
@@ -569,6 +599,7 @@
         const customDateVal = document.getElementById('customDate-' + machId)?.value || '';
         const customShiftVal = document.getElementById('customShift-' + machId)?.value || '';
         const customReasonVal = document.getElementById('customReasonText-' + machId)?.value || '';
+        const dateInput = document.getElementById('customDate-' + machId);
 
         document.getElementById('selectedMachineId').value = machId;
         document.getElementById('selectedDateOfStart').value = customDateVal;
@@ -576,13 +607,27 @@
         document.getElementById('selectedDateMode').value = 'custom';
         document.getElementById('selectedCustomReason').value = customReasonVal;
 
+        // Check if custom date is after recommended date
+        let isValidDate = true;
+        if (mObj.slot && mObj.slot.date && customDateVal) {
+            if (customDateVal <= mObj.slot.date) {
+                isValidDate = false;
+                if (dateInput) dateInput.style.borderColor = '#cf222e';
+            } else {
+                if (dateInput) dateInput.style.borderColor = '#d0d7de';
+            }
+        }
+
         const shiftElem = document.getElementById('customShift-' + machId);
         const shiftText = shiftElem ? shiftElem.options[shiftElem.selectedIndex]?.text : '';
+
+        const warningNotice = !isValidDate ? `<span style="color: #cf222e; font-weight: bold; margin-left: 6px;">[Must be after ${mObj.slot.date_formatted}]</span>` : '';
 
         document.getElementById('selectionSummary').innerHTML = `
             Selected: <strong>${mObj.machine_name}</strong> on 
             <strong style="color: #9a6700;">${customDateVal || 'Select Date'}</strong> (${shiftText || 'Select Shift'})
             <span style="font-size: 11px; color: #9a6700; margin-left: 4px;">(Custom Date Override)</span>
+            ${warningNotice}
         `;
     }
 
@@ -604,6 +649,20 @@
         }
 
         if (dateMode === 'custom') {
+            const mObj = gMappedMachines.find(m => m.machine_id == machId);
+            if (mObj && mObj.slot && mObj.slot.date) {
+                if (startDate <= mObj.slot.date) {
+                    const minAllowed = getDayAfter(mObj.slot.date);
+                    alert(`For ${mObj.machine_name}, custom date selection can only be AFTER the recommended date (${mObj.slot.date_formatted}).\n\nPlease select a custom date on or after ${minAllowed}.`);
+                    const dateInput = document.getElementById('customDate-' + machId);
+                    if (dateInput) {
+                        dateInput.style.borderColor = '#cf222e';
+                        dateInput.focus();
+                    }
+                    return false;
+                }
+            }
+
             if (!customReason) {
                 alert("Please enter a Reason for Custom Date Selection in the row for this machine.");
                 const reasonInput = document.getElementById('customReasonText-' + machId);

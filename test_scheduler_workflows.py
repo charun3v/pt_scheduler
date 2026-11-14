@@ -542,8 +542,10 @@ def run_tests():
     resp_get = c.get(f'/scheduler/patient/{test_pt_sched.id}/')
     assert resp_get.status_code == 200
     html_content = resp_get.content.decode('utf-8')
-    assert 'top-patient-card-compact' in html_content or 'Primary Consultant' in html_content
+    assert 'Primary Consultant' in html_content
     assert 'mappedMachinesContainer' in html_content
+    assert 'Machine Earliest Slots & Custom Date Selection' in html_content
+    assert 'Treatment Parameters & Prescription Entry' in html_content
     assert 'Custom Date Selection' in html_content or 'custom_reason' in html_content
     # Check default technique is IMRT and default special technique is None
     imrt_tech = Technique.objects.filter(name__iexact='IMRT', is_active=True).first()
