@@ -418,10 +418,14 @@
 
                     const earliestFormatted = m.slot ? m.slot.date_formatted : 'No Free Slot';
 
-                    // Custom Date can ONLY be strictly AFTER the recommended date
-                    const minCustomDate = (m.slot && m.slot.date) ? getDayAfter(m.slot.date) : '';
+                    // Custom Date can ONLY be strictly AFTER the recommended date and >= Simulation Date
+                    const simDateVal = document.getElementById('dateOfSim')?.value || '';
+                    let minCustomDate = (m.slot && m.slot.date) ? getDayAfter(m.slot.date) : simDateVal;
+                    if (simDateVal && minCustomDate && minCustomDate < simDateVal) {
+                        minCustomDate = simDateVal;
+                    }
                     const minDateAttr = minCustomDate ? `min="${minCustomDate}"` : '';
-                    const customDateTooltip = m.slot ? `Custom date can only be after recommended date (${m.slot.date_formatted})` : 'Select custom date';
+                    const customDateTooltip = m.slot ? `Custom date can only be after recommended date (${m.slot.date_formatted}) and on/after simulation date` : 'Select custom date';
 
                     html += `
                         <tr class="excel-row ${isCardSelected ? 'row-selected' : ''}" id="machRow-${m.machine_id}"
@@ -641,6 +645,13 @@
 
         if (!startDate) {
             alert("Please select a valid treatment start date.");
+            return false;
+        }
+
+        const simDateInput = document.getElementById('dateOfSim');
+        const simDate = simDateInput ? simDateInput.value : '';
+        if (startDate && simDate && startDate < simDate) {
+            alert(`Treatment Start Date (${startDate}) cannot be earlier than CT Simulation Date (${simDate}).\nDate of start must be on or after Date of simulation (>= Simulation Date).`);
             return false;
         }
 

@@ -83,6 +83,14 @@ def schedule_patient_view(request, patient_id):
 
         sim_date = parse_d(sim_date_raw)
         start_date = parse_d(start_date_raw)
+
+        if sim_date and start_date and start_date < sim_date:
+            messages.error(
+                request,
+                f"Treatment Start Date ({start_date.strftime('%d-%m-%Y')}) cannot be earlier than CT Simulation Date ({sim_date.strftime('%d-%m-%Y')}). Date of start must be on or after Date of simulation."
+            )
+            return redirect('schedule_patient', patient_id=patient.id)
+
         dose = Decimal(dose_raw) if dose_raw else None
         fractions = int(float(fractions_raw)) if fractions_raw else None
 
@@ -412,12 +420,22 @@ def edit_machine_mapping_view(request, mapping_id):
     all_shifts = Shift.objects.all().order_by('display_order')
     all_techs = Technique.objects.all().order_by('display_order')
     all_special_techs = SpecialTechnique.objects.all().order_by('display_order')
+    all_treatment_sites = TreatmentSite.objects.filter(is_active=True).order_by('display_order', 'name')
+    current_sites_list = mapping.get_allowed_sites_list()
 
     if request.method == 'POST':
         shift_ids = request.POST.getlist('shifts')
         tech_ids = request.POST.getlist('techniques')
         special_tech_ids = request.POST.getlist('special_techniques')
-        sites = request.POST.get('allowed_sites', '').strip()
+        
+        # Multi-select dropdown anatomical treatment sites
+        site_inputs = request.POST.getlist('allowed_sites')
+        if len(site_inputs) == 1 and ',' in site_inputs[0]:
+            site_list = [s.strip() for s in site_inputs[0].split(',') if s.strip()]
+        else:
+            site_list = [s.strip() for s in site_inputs if s.strip()]
+        sites = ", ".join(site_list)
+        
         quota_raw = request.POST.get('max_daily_starts', '3').strip()
 
         mapping.allowed_shifts.set(Shift.objects.filter(id__in=shift_ids))
@@ -445,6 +463,8 @@ def edit_machine_mapping_view(request, mapping_id):
         'all_shifts': all_shifts,
         'all_techs': all_techs,
         'all_special_techs': all_special_techs,
+        'all_treatment_sites': all_treatment_sites,
+        'current_sites_list': current_sites_list,
     }
     return render(request, 'scheduler/edit_machine_mapping.html', context)
 

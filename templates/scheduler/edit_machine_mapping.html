@@ -11,7 +11,6 @@
             <div style="font-size: 15px; font-weight: bold;">
                 ⚙️ Configure Machine Mapping: {{ mapping.machine.name }} ({{ mapping.machine.code }})
             </div>
-            <span class="badge-admin">Admin & SubAdmin</span>
         </div>
 
         <form method="POST" style="padding: 20px;">
@@ -74,12 +73,65 @@
                 </div>
             </div>
 
-            <!-- Allowed Anatomical Sites -->
-            <div style="margin-bottom: 24px;">
-                <label style="display: block; font-weight: bold; color: #003366; margin-bottom: 6px;">Allowed Anatomical Treatment Sites (comma-separated):</label>
-                <input type="text" name="allowed_sites" value="{{ mapping.allowed_sites }}"
-                       style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
-                <span style="font-size: 11px; color: #666;">Example: Abdomen, Brain, Breast, Extremities, Head and neck, Pelvis, Thorax, Others</span>
+            <!-- Allowed Anatomical Sites (Dropdown with Multi-Selection) -->
+            <div style="margin-bottom: 24px; position: relative;">
+                <label style="display: block; font-weight: bold; color: #003366; margin-bottom: 6px; font-size: 13px;">
+                    Allowed Anatomical Treatment Sites (Multi-Selection Dropdown):
+                </label>
+                
+                <div id="sitesDropdownContainer" style="position: relative; width: 100%;">
+                    <!-- Dropdown Trigger Button -->
+                    <button type="button" id="sitesDropdownBtn" onclick="toggleSitesDropdown(event)"
+                            style="width: 100%; min-height: 42px; padding: 6px 12px; background: #ffffff; border: 1px solid #707070; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; text-align: left; box-sizing: border-box;">
+                        <div id="sitesSelectedDisplay" style="display: flex; flex-wrap: wrap; gap: 5px; align-items: center; flex: 1;">
+                            <!-- Populated by JavaScript -->
+                        </div>
+                        <span id="sitesDropdownArrow" style="font-size: 12px; color: #003366; margin-left: 8px; transition: transform 0.2s;">▼</span>
+                    </button>
+
+                    <!-- Dropdown Menu -->
+                    <div id="sitesDropdownMenu" style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #ffffff; border: 2px solid #003366; border-radius: 4px; box-shadow: 0 6px 16px rgba(0,0,0,0.15); z-index: 1050; padding: 12px;">
+                        
+                        <!-- Header / Quick Select Controls -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 1px solid #e1e4e8;">
+                            <span style="font-size: 12px; font-weight: bold; color: #003366;">Select Anatomical Sites:</span>
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" onclick="selectAllSites(true)" 
+                                        style="background: #eef4f9; border: 1px solid #b8daff; color: #003366; font-size: 11px; font-weight: bold; padding: 3px 10px; border-radius: 3px; cursor: pointer;">
+                                    ✓ Select All
+                                </button>
+                                <button type="button" onclick="selectAllSites(false)" 
+                                        style="background: #fdf2f2; border: 1px solid #f5c6cb; color: #721c24; font-size: 11px; font-weight: bold; padding: 3px 10px; border-radius: 3px; cursor: pointer;">
+                                    ✕ Clear All
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Site Checkboxes Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px;">
+                            {% for site in all_treatment_sites %}
+                            <label id="site_lbl_{{ site.id }}" 
+                                   style="display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 7px 10px; border-radius: 4px; cursor: pointer; user-select: none; border: 1px solid {% if site.name in current_sites_list %}#2da44e{% else %}#ddd{% endif %}; background: {% if site.name in current_sites_list %}#e8f5e9{% else %}#f8f9fa{% endif %}; transition: all 0.15s;">
+                                <input type="checkbox" name="allowed_sites" id="site_chk_{{ site.id }}" value="{{ site.name }}"
+                                       {% if site.name in current_sites_list %}checked{% endif %}
+                                       onchange="handleSiteCheckboxChange('{{ site.id }}');"
+                                       style="cursor: pointer; width: 16px; height: 16px;">
+                                <span style="font-weight: 500; color: #24292f;">{{ site.name }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+
+                        <div style="margin-top: 10px; text-align: right; border-top: 1px solid #e1e4e8; padding-top: 8px;">
+                            <button type="button" onclick="toggleSitesDropdown(null, false)" 
+                                    style="background: #003366; color: #ffffff; border: none; padding: 4px 14px; font-size: 12px; font-weight: bold; border-radius: 3px; cursor: pointer;">
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                    Select the anatomical treatment sites eligible to be planned and treated on this machine.
+                </div>
             </div>
 
             <!-- Buttons -->
@@ -92,4 +144,83 @@
         </form>
     </div>
 </div>
+
+<script>
+    function toggleSitesDropdown(event, forceState) {
+        if (event) event.stopPropagation();
+        const menu = document.getElementById('sitesDropdownMenu');
+        const arrow = document.getElementById('sitesDropdownArrow');
+        if (!menu) return;
+        const isOpen = (forceState !== undefined) ? !forceState : (menu.style.display === 'block');
+        
+        if (isOpen) {
+            menu.style.display = 'none';
+            if (arrow) arrow.style.transform = 'rotate(0deg)';
+        } else {
+            menu.style.display = 'block';
+            if (arrow) arrow.style.transform = 'rotate(180deg)';
+        }
+    }
+
+    function handleSiteCheckboxChange(siteId) {
+        const chk = document.getElementById('site_chk_' + siteId);
+        const lbl = document.getElementById('site_lbl_' + siteId);
+        if (chk && lbl) {
+            lbl.style.background = chk.checked ? '#e8f5e9' : '#f8f9fa';
+            lbl.style.borderColor = chk.checked ? '#2da44e' : '#ddd';
+        }
+        updateSitesDisplay();
+    }
+
+    function selectAllSites(selectAll) {
+        const checkboxes = document.querySelectorAll('input[name="allowed_sites"]');
+        checkboxes.forEach(chk => {
+            chk.checked = selectAll;
+            const siteId = chk.id.replace('site_chk_', '');
+            const lbl = document.getElementById('site_lbl_' + siteId);
+            if (lbl) {
+                lbl.style.background = selectAll ? '#e8f5e9' : '#f8f9fa';
+                lbl.style.borderColor = selectAll ? '#2da44e' : '#ddd';
+            }
+        });
+        updateSitesDisplay();
+    }
+
+    function updateSitesDisplay() {
+        const checkboxes = document.querySelectorAll('input[name="allowed_sites"]:checked');
+        const totalCheckboxes = document.querySelectorAll('input[name="allowed_sites"]');
+        const display = document.getElementById('sitesSelectedDisplay');
+        if (!display) return;
+
+        display.innerHTML = '';
+        if (checkboxes.length === 0) {
+            display.innerHTML = '<span style="color: #888; font-size: 13px; font-style: italic;">-- Click to select anatomical sites --</span>';
+        } else if (checkboxes.length === totalCheckboxes.length && totalCheckboxes.length > 0) {
+            const allBadge = document.createElement('span');
+            allBadge.style.cssText = 'background: #003366; color: #fff; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; margin-right: 4px;';
+            allBadge.textContent = `All ${totalCheckboxes.length} Sites Allowed`;
+            display.appendChild(allBadge);
+        } else {
+            checkboxes.forEach(chk => {
+                const badge = document.createElement('span');
+                badge.style.cssText = 'background: #eef4f9; color: #003366; border: 1px solid #b8daff; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center;';
+                badge.textContent = chk.value;
+                display.appendChild(badge);
+            });
+        }
+    }
+
+    // Close dropdown on click outside
+    document.addEventListener('click', function(event) {
+        const container = document.getElementById('sitesDropdownContainer');
+        if (container && !container.contains(event.target)) {
+            toggleSitesDropdown(null, false);
+        }
+    });
+
+    // Initialize display on load
+    document.addEventListener('DOMContentLoaded', function() {
+        updateSitesDisplay();
+    });
+</script>
 {% endblock %}

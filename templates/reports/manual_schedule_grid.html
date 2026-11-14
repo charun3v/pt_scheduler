@@ -165,7 +165,6 @@
             </div>
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="badge-admin">ADMIN & SUBADMIN ONLY</span>
             <span class="badge-success" style="background: #ffffff; color: #107c41; font-weight: bold; font-size: 11px; padding: 3px 8px; border-radius: 3px;">
                 ⚡ MANUAL SCHEDULING (NO QUOTA LIMIT)
             </span>
@@ -328,6 +327,8 @@
                         <td style="background: #fdfdfd;">
                             <input type="date" name="start_date_{{ s.id }}" id="start_date_{{ s.id }}"
                                    value="{{ s.date_of_start|date:'Y-m-d' }}"
+                                   {% if s.date_of_sim %}min="{{ s.date_of_sim|date:'Y-m-d' }}" data-sim-date="{{ s.date_of_sim|date:'Y-m-d' }}"{% endif %}
+                                   data-orig-date="{{ s.date_of_start|date:'Y-m-d' }}"
                                    class="excel-cell-input"
                                    onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
                         </td>
@@ -416,7 +417,22 @@
 
     // Instant AJAX Auto-save for single row
     function liveAutoSave(schedId) {
-        var dateVal = document.getElementById('start_date_' + schedId).value;
+        var dateEl = document.getElementById('start_date_' + schedId);
+        var dateVal = dateEl ? dateEl.value : '';
+        var simDate = dateEl ? dateEl.getAttribute('data-sim-date') : null;
+
+        if (dateVal && simDate && dateVal < simDate) {
+            alert(`Treatment Start Date (${dateVal}) cannot be earlier than CT Simulation Date (${simDate}).\nStart date must be on or after Date of simulation (>= Date of simulation).`);
+            var origDate = dateEl.getAttribute('data-orig-date') || '';
+            dateEl.value = origDate;
+            var ind = document.getElementById('indicator-' + schedId);
+            if (ind) {
+                ind.className = 'save-indicator' + (origDate ? ' saved' : ' dirty');
+                ind.innerText = origDate ? 'Saved ✓' : 'Pending';
+            }
+            return;
+        }
+
         var shiftVal = document.getElementById('shift_' + schedId).value;
         var machVal = document.getElementById('machine_' + schedId).value;
         var ind = document.getElementById('indicator-' + schedId);
@@ -443,6 +459,9 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                if (dateEl) {
+                    dateEl.setAttribute('data-orig-date', dateVal);
+                }
                 var row = document.getElementById('row-' + schedId);
                 if (row) {
                     row.classList.remove('cell-modified');

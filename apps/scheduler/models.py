@@ -174,6 +174,12 @@ class TreatmentSchedule(models.Model):
     def __str__(self):
         return f"{self.patient.pt_name} - {self.machine.name if self.machine else 'Unassigned'} ({self.date_of_start or 'No Start Date'})"
 
+    def clean(self):
+        super().clean()
+        if self.date_of_sim and self.date_of_start and self.date_of_start < self.date_of_sim:
+            from django.core.exceptions import ValidationError
+            raise ValidationError({'date_of_start': "Treatment Start Date cannot be earlier than CT Simulation Date. Start date must be on or after simulation date."})
+
     @property
     def machine_display(self):
         if self.machine:

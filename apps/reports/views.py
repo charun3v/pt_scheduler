@@ -392,6 +392,12 @@ def manual_schedule_grid_view(request):
             if new_date_str:
                 try:
                     new_date = datetime.strptime(new_date_str, "%Y-%m-%d").date()
+                    if sched.date_of_sim and new_date < sched.date_of_sim:
+                        messages.error(
+                            request,
+                            f"Cannot set start date for {sched.patient.pt_name}: Start date ({new_date.strftime('%d-%m-%Y')}) cannot be earlier than CT Simulation Date ({sched.date_of_sim.strftime('%d-%m-%Y')}). Date of start must be >= Date of simulation."
+                        )
+                        continue
                     if sched.date_of_start != new_date:
                         sched.date_of_start = new_date
                         sched.status = 'Scheduled'
@@ -479,7 +485,13 @@ def manual_schedule_save_row_api(request):
 
     if date_str:
         try:
-            sched.date_of_start = datetime.strptime(date_str, "%Y-%m-%d").date()
+            new_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            if sched.date_of_sim and new_date < sched.date_of_sim:
+                return JsonResponse({
+                    'success': False,
+                    'error': f"Date of start ({new_date.strftime('%d-%m-%Y')}) cannot be earlier than CT Simulation Date ({sched.date_of_sim.strftime('%d-%m-%Y')}). Date of start must be >= Date of simulation."
+                }, status=400)
+            sched.date_of_start = new_date
             sched.status = 'Scheduled'
         except ValueError:
             return JsonResponse({'success': False, 'error': 'Invalid date format. Use YYYY-MM-DD.'}, status=400)

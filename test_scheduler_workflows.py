@@ -637,6 +637,132 @@ def run_tests():
     # Cleanup
     test_pt_sched.delete()
     print("✓ Test 16 Passed: Redesigned compact scheduling page, dynamic mapped machine slot finder, and custom date reason tracking fully verified.")
+
+    # --- Test 17: Header Badges Removal, date_of_start >= date_of_sim Enforcement, & Machine Mapping Multi-Select Sites ---
+    print("\n--- Test 17: Header Badges Removal, date_of_start >= date_of_sim Enforcement, & Machine Mapping Multi-Select Sites ---")
+    c.force_login(admin_user)
+
+    # 1. Verify "Admin & SubAdmin" badge removed from headers
+    la1_mapping = MachineMapping.objects.filter(machine__code='LA1').first()
+    if la1_mapping:
+        resp_edit_map = c.get(f'/scheduler/mappings/{la1_mapping.id}/edit/')
+        assert resp_edit_map.status_code == 200
+        content_edit = resp_edit_map.content.decode('utf-8')
+        assert '<span class="badge-admin">Admin & SubAdmin</span>' not in content_edit, "Admin & SubAdmin badge must be removed from edit machine mapping header"
+        assert 'Allowed Anatomical Treatment Sites (Multi-Selection Dropdown):' in content_edit
+
+    resp_map_list = c.get('/scheduler/mappings/')
+    assert resp_map_list.status_code == 200
+    assert '<span class="badge-admin">Admin & SubAdmin Control</span>' not in resp_map_list.content.decode('utf-8')
+
+    resp_grid = c.get('/reports/manual-grid/')
+    assert resp_grid.status_code == 200
+    assert '<span class="badge-admin">ADMIN & SUBADMIN ONLY</span>' not in resp_grid.content.decode('utf-8')
+
+    # 2. Verify date_of_start >= date_of_sim enforcement
+    active_consultant = Consultant.objects.filter(is_active=True).first()
+    test_pt_date = Patient.objects.create(
+        mr_no=9999003,
+        pt_name="Test SimDate Rule Patient",
+        age=50,
+        sex='Female',
+        phone_no='9900112233',
+        diagnosis='Carcinoma Cervix',
+        primary_consultant=active_consultant
+    )
+
+    sim_date = date.today()
+    invalid_start_date = sim_date - timedelta(days=2)  # Earlier than sim date!
+    valid_start_date = sim_date + timedelta(days=3)
+
+    # Attempt to schedule with start_date < sim_date
+    resp_invalid_sched = c.post(f'/scheduler/patient/{test_pt_date.id}/', {
+        'age': '50',
+        'phone_no': '9900112233',
+        'site_of_treatment': 'Pelvis',
+        'diagnosis': 'Carcinoma Cervix',
+        'date_of_sim': sim_date.isoformat(),
+        'technique': 1,
+        'special_technique': 1,
+        'machine': 1,
+        'shift': 1,
+        'date_of_start': invalid_start_date.isoformat(),
+        'dose_planned': '50.00',
+        'no_of_fractions': '25'
+    }, follow=True)
+    
+    # Should show error message and schedule must NOT have invalid start date
+    test_pt_date.refresh_from_db()
+    sched = test_pt_date.schedules.first()
+    assert sched is None or sched.date_of_start != invalid_start_date, "Schedule must NOT be created with date_of_start < date_of_sim"
+
+    # Now schedule with valid start_date >= sim_date
+    resp_valid_sched = c.post(f'/scheduler/patient/{test_pt_date.id}/', {
+        'age': '50',
+        'phone_no': '9900112233',
+        'site_of_treatment': 'Pelvis',
+        'diagnosis': 'Carcinoma Cervix',
+        'date_of_sim': sim_date.isoformat(),
+        'technique': 1,
+        'special_technique': 1,
+        'machine': 1,
+        'shift': 1,
+        'date_of_start': valid_start_date.isoformat(),
+        'dose_planned': '50.00',
+        'no_of_fractions': '25'
+    })
+    test_pt_date.refresh_from_db()
+    sched = test_pt_date.schedules.first()
+    assert sched is not None
+    assert sched.date_of_start == valid_start_date, "Schedule should be created with valid date_of_start >= date_of_sim"
+
+    # Test manual grid row save AJAX validation: start_date < date_of_sim must be rejected
+    resp_ajax_invalid = c.post('/reports/manual-grid/save-row/', {
+        'schedule_id': sched.id,
+        'date_of_start': invalid_start_date.isoformat(),
+        'shift_id': 1,
+        'machine_id': 1
+    }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+    assert resp_ajax_invalid.status_code == 400
+    ajax_data = resp_ajax_invalid.json()
+    assert ajax_data['success'] is False
+    assert 'cannot be earlier than CT Simulation Date' in ajax_data['error']
+
+    # Test manual grid row save AJAX validation: valid start_date >= date_of_sim succeeds
+    resp_ajax_valid = c.post('/reports/manual-grid/save-row/', {
+        'schedule_id': sched.id,
+        'date_of_start': (sim_date + timedelta(days=5)).isoformat(),
+        'shift_id': 1,
+        'machine_id': 1
+    }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+    assert resp_ajax_valid.status_code == 200
+    assert resp_ajax_valid.json()['success'] is True
+    sched.refresh_from_db()
+    assert sched.date_of_start == sim_date + timedelta(days=5)
+
+    test_pt_date.delete()
+
+    # 3. Test Machine Mapping Multi-Select Sites Saving
+    if la1_mapping:
+        orig_sites = la1_mapping.allowed_sites
+        test_selected_sites = ['Breast', 'Head and neck', 'Pelvis']
+        resp_post_mapping = c.post(f'/scheduler/mappings/{la1_mapping.id}/edit/', {
+            'shifts': [s.id for s in la1_mapping.allowed_shifts.all()],
+            'techniques': [t.id for t in la1_mapping.allowed_techniques.all()],
+            'special_techniques': [st.id for st in la1_mapping.allowed_special_techniques.all()],
+            'allowed_sites': test_selected_sites,
+        })
+        assert resp_post_mapping.status_code == 302
+        la1_mapping.refresh_from_db()
+        assert la1_mapping.allowed_sites == "Breast, Head and neck, Pelvis"
+        assert la1_mapping.get_allowed_sites_list() == test_selected_sites
+
+        # Restore original sites
+        la1_mapping.allowed_sites = orig_sites
+        la1_mapping.save()
+
+    print("✓ Test 17 Passed: Header badges removed, date_of_start >= date_of_sim strictly enforced, and machine mapping multi-select treatment sites verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")
