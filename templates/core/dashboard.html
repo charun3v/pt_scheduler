@@ -104,8 +104,8 @@
 
             <!-- Search Form -->
             <form method="GET" action="{% url 'dashboard' %}" style="display: flex; gap: 6px; align-items: center;">
-                <input type="text" name="q" value="{{ query }}" placeholder="Search MR No, Name, Phone..."
-                       style="padding: 6px 12px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; width: 240px;">
+                <input type="text" name="q" value="{{ query }}" placeholder="Search MR No, Name, RT No, Diagnosis..."
+                       style="padding: 6px 12px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; width: 260px;">
                 <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 6px 12px; font-size: 12px; cursor: pointer;">
                     🔍 Search
                 </button>
@@ -126,10 +126,10 @@
                         <th style="padding: 9px 10px;">MR Number</th>
                         <th style="padding: 9px 10px;">Patient Name</th>
                         <th style="padding: 9px 10px;">RT Number</th>
-                        <th style="padding: 9px 10px;">Age / Sex</th>
+                        <th style="padding: 9px 8px; text-align: center; width: 70px;">Age/Sex</th>
                         <th style="padding: 9px 10px;">Diagnosis</th>
                         <th style="padding: 9px 10px;">Primary Consultant</th>
-                        <th style="padding: 9px 10px;">Phone Number</th>
+                        <th style="padding: 9px 10px; text-align: center; width: 95px;">Sim. Date</th>
                         <th style="padding: 9px 10px; text-align: center;">Status</th>
                         <th style="padding: 9px 10px; text-align: center; min-width: 190px;">Actions</th>
                     </tr>
@@ -153,8 +153,8 @@
                         <td style="padding: 8px 10px; color: #555;">
                             {{ p.rt_no|default:'-' }}
                         </td>
-                        <td style="padding: 8px 10px;">
-                            {{ p.age|default:'-' }} Yrs / {{ p.get_sex_display }}
+                        <td style="padding: 8px 8px; text-align: center; font-weight: 500;">
+                            {{ p.age_sex_display }}
                         </td>
                         <td style="padding: 8px 10px; color: #333;" title="{{ p.diagnosis }}">
                             {{ p.diagnosis|truncatechars:30 }}
@@ -162,8 +162,8 @@
                         <td style="padding: 8px 10px; color: #444;">
                             {{ p.consultant_display }}
                         </td>
-                        <td style="padding: 8px 10px; color: #555;">
-                            {{ p.phone_no|default:'-' }}
+                        <td style="padding: 8px 10px; text-align: center; font-weight: 500; color: #856404; font-family: Consolas, monospace;">
+                            {{ p.sim_date_display }}
                         </td>
                         <td style="padding: 8px 10px; text-align: center;">
                             {% if p.schedules.exists %}

@@ -63,3 +63,21 @@ class Patient(models.Model):
     @property
     def consultant_display(self):
         return self.primary_consultant.name if self.primary_consultant else '-'
+
+    @property
+    def age_sex_display(self):
+        age_str = str(self.age) if self.age is not None else '-'
+        return f"{age_str}/{self.sex}"
+
+    @property
+    def sim_date(self):
+        """Simulation date from associated treatment schedules."""
+        for s in self.schedules.all():
+            if s.date_of_sim:
+                return s.date_of_sim
+        return None
+
+    @property
+    def sim_date_display(self):
+        sd = self.sim_date
+        return sd.strftime("%d-%m-%Y") if sd else '-'
