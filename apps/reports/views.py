@@ -281,6 +281,18 @@ def export_pending_starts_excel(schedules):
 
 
 @login_required
+def manual_grid_ampersand_redirect(request, query_string=''):
+    """
+    Fallback redirect for malformed URLs that passed '&' instead of '?' in the path.
+    E.g. /reports/manual-grid/&start_date=... -> /reports/manual-grid/?start_date=...
+    """
+    target = '/reports/manual-grid/'
+    if query_string:
+        target += f'?{query_string}'
+    return redirect(target)
+
+
+@login_required
 def manual_schedule_grid_view(request):
     """
     Manual Treatment Schedule Editor (Excel Spreadsheet Format).
