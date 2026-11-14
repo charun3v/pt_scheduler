@@ -524,22 +524,22 @@ def export_manual_schedule_grid_excel(schedules, machine, start_date, end_date):
     ws.title = "Treatment Grid"
 
     # Header Title
-    ws.merge_cells('A1:O1')
+    ws.merge_cells('A1:K1')
     ws['A1'] = "KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - RADIATION ONCOLOGY"
     ws['A1'].font = Font(name="Calibri", size=14, bold=True, color="FFFFFF")
     ws['A1'].fill = PatternFill(start_color="107C41", end_color="107C41", fill_type="solid")
     ws['A1'].alignment = Alignment(horizontal="center", vertical="center")
 
-    ws.merge_cells('A2:O2')
+    ws.merge_cells('A2:K2')
     ws['A2'] = f"Manual Treatment Schedule Worksheet: {mach_label} | {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')} | Total: {schedules.count()} Patients"
     ws['A2'].font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     ws['A2'].fill = PatternFill(start_color="0E6333", end_color="0E6333", fill_type="solid")
     ws['A2'].alignment = Alignment(horizontal="center", vertical="center")
 
+    # Column order: MR No, Patient Name, Simulation Date, RT No, Diagnosis, Start Date, Shift, Machine, Consultant Name, Jr Resident
     headers = [
-        "#", "MR No.", "Patient Name", "RT No.", "Age/Sex", "Diagnosis", "Site of Treatment",
-        "Technique", "Special Technique", "Dose (Gy)", "Fractions", "Primary Consultant",
-        "Machine", "Shift", "Date of Start"
+        "#", "MR No.", "Patient Name", "Simulation Date", "RT No.", "Diagnosis",
+        "Start Date", "Shift", "Machine", "Consultant Name", "Jr Resident"
     ]
     ws.append([])
     ws.append(headers)
@@ -555,23 +555,19 @@ def export_manual_schedule_grid_excel(schedules, machine, start_date, end_date):
 
     idx = 1
     for s in schedules:
-        spec_tech = s.special_technique.name if s.special_technique and s.special_technique.name != 'None' else ''
+        sim_date_str = s.date_of_sim.strftime("%d-%m-%Y") if s.date_of_sim else "-"
         ws.append([
             idx,
             s.patient.mr_no,
             s.patient.pt_name,
-            s.patient.rt_no or "",
-            f"{s.patient.age or ''}/{s.patient.sex}",
-            s.patient.diagnosis,
-            s.patient.site_of_treatment or "",
-            s.technique.name if s.technique else "",
-            spec_tech,
-            float(s.dose_planned) if s.dose_planned else "",
-            s.no_of_fractions or "",
-            s.patient.consultant_display,
-            s.machine_display,
+            sim_date_str,
+            s.patient.rt_no or "-",
+            s.patient.diagnosis or "-",
+            s.date_of_start.strftime("%d-%m-%Y") if s.date_of_start else "Pending",
             s.shift_display,
-            s.date_of_start.strftime("%d-%m-%Y") if s.date_of_start else "Pending"
+            s.machine_display,
+            s.patient.consultant_display,
+            s.jr_resident or "-"
         ])
         idx += 1
 

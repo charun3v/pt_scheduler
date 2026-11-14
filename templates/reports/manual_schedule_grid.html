@@ -248,15 +248,12 @@
             </div>
             
             <div style="display: flex; gap: 6px;">
-                <button type="submit" class="btn-excel-save" title="Save all modified dates and shifts to database">
-                    💾 Save All Changes
+                <button type="submit" class="btn-excel-save" title="Save all changes, update machine assignments, and refresh in chronological order">
+                    🔄 Refresh Changes
                 </button>
                 <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}{% if include_pending %}&include_pending=1{% endif %}&export=excel"
                    class="action-ribbon-btn" style="background: #28a745; color: #fff; border-color: #1e7e34; padding: 5px 12px; font-weight: bold;" title="Download Excel .xlsx file">
                     📥 Download .xlsx
-                </a>
-                <a href="{{ request.get_full_path }}" class="action-ribbon-btn" style="padding: 5px 10px;">
-                    🔄 Reload
                 </a>
             </div>
         </div>
@@ -265,7 +262,7 @@
         <div class="excel-grid-container">
             <table class="excel-table" id="excelSheetTable">
                 <thead>
-                    <!-- Column Letters (Excel A-O) -->
+                    <!-- Column Letters (Excel A-K) -->
                     <tr>
                         <th class="col-letter"></th>
                         <th class="col-letter">A</th>
@@ -273,33 +270,27 @@
                         <th class="col-letter">C</th>
                         <th class="col-letter">D</th>
                         <th class="col-letter">E</th>
-                        <th class="col-letter">F</th>
-                        <th class="col-letter">G</th>
-                        <th class="col-letter">H</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">F (Edit)</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">G (Edit)</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">H (Edit)</th>
                         <th class="col-letter">I</th>
                         <th class="col-letter">J</th>
-                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">K (Edit)</th>
-                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">L (Edit)</th>
-                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">M (Edit)</th>
-                        <th class="col-letter">N</th>
+                        <th class="col-letter">K</th>
                     </tr>
-                    <!-- Real Headers -->
+                    <!-- Real Headers in User-Specified Order -->
                     <tr>
                         <th style="width: 36px; text-align: center;">#</th>
-                        <th>MR Number</th>
+                        <th>MR No.</th>
                         <th>Patient Name</th>
+                        <th style="min-width: 105px;">Simulation Date</th>
                         <th>RT No.</th>
-                        <th>Age / Sex</th>
                         <th>Diagnosis</th>
-                        <th>Site of Treatment</th>
-                        <th>Technique</th>
-                        <th>Dose / Fr</th>
-                        <th>Primary Consultant</th>
-                        <th>Jr. Resident</th>
-                        <th style="background: #c3e6cb; color: #155724; min-width: 130px;">Machine (Assigned)</th>
-                        <th style="background: #c3e6cb; color: #155724; min-width: 140px;">Date of Start (Editable)</th>
-                        <th style="background: #c3e6cb; color: #155724; min-width: 110px;">Shift (Editable)</th>
-                        <th style="text-align: center; min-width: 100px;">Row Action</th>
+                        <th style="background: #c3e6cb; color: #155724; min-width: 135px;">Start Date (Editable)</th>
+                        <th style="background: #c3e6cb; color: #155724; min-width: 105px;">Shift (Editable)</th>
+                        <th style="background: #c3e6cb; color: #155724; min-width: 125px;">Machine (Assigned)</th>
+                        <th>Consultant Name</th>
+                        <th>Jr Resident</th>
+                        <th style="text-align: center; min-width: 80px;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -310,62 +301,30 @@
 
                         <td class="row-num">{{ forloop.counter }}</td>
                         
-                        <!-- MR No. -->
-                        <td style="font-family: Consolas, monospace; font-weight: bold;">
+                        <!-- 1. MR No. -->
+                        <td style="font-family: Consolas, monospace; font-weight: bold; white-space: nowrap;">
                             <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="Open patient details in new tab">
                                 {{ s.patient.mr_no }}
                             </a>
                         </td>
 
-                        <!-- Patient Name -->
-                        <td style="font-weight: 600; color: #111;">{{ s.patient.pt_name }}</td>
+                        <!-- 2. Patient Name -->
+                        <td style="font-weight: 600; color: #111; white-space: nowrap;">{{ s.patient.pt_name }}</td>
+
+                        <!-- 3. Simulation Date -->
+                        <td style="white-space: nowrap; color: #333;">
+                            {{ s.date_of_sim|date:"d-m-Y"|default:'-' }}
+                        </td>
                         
-                        <!-- RT No. -->
-                        <td style="color: #555;">{{ s.patient.rt_no|default:'-' }}</td>
+                        <!-- 4. RT No. -->
+                        <td style="color: #555; white-space: nowrap;">{{ s.patient.rt_no|default:'-' }}</td>
 
-                        <!-- Age / Sex -->
-                        <td>{{ s.patient.age|default:'-' }} / {{ s.patient.sex }}</td>
-
-                        <!-- Diagnosis -->
-                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="{{ s.patient.diagnosis }}">
-                            {{ s.patient.diagnosis|truncatechars:28 }}
+                        <!-- 5. Diagnosis -->
+                        <td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ s.patient.diagnosis }}">
+                            {{ s.patient.diagnosis|truncatechars:32 }}
                         </td>
 
-                        <!-- Site -->
-                        <td>{{ s.site_of_treatment|default:s.patient.site_of_treatment|default:'-' }}</td>
-
-                        <!-- Technique -->
-                        <td>
-                            {{ s.technique.name|default:'-' }}
-                            {% if s.special_technique and s.special_technique.name != 'None' %}
-                                <span class="badge-locked" style="font-size: 10px;">{{ s.special_technique.name }}</span>
-                            {% endif %}
-                        </td>
-
-                        <!-- Dose / Fractions -->
-                        <td style="font-family: Consolas, monospace;">
-                            {{ s.dose_planned|default:'-' }} Gy / {{ s.no_of_fractions|default:'-' }} Fr
-                        </td>
-
-                        <!-- Consultant -->
-                        <td>{{ s.patient.consultant_display }}</td>
-
-                        <!-- Jr Resident -->
-                        <td>{{ s.jr_resident|default:'-' }}</td>
-
-                        <!-- EDITABLE: Machine -->
-                        <td style="background: #fdfdfd;">
-                            <select name="machine_{{ s.id }}" id="machine_{{ s.id }}" class="excel-cell-select"
-                                    onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
-                                {% for m in all_machines %}
-                                <option value="{{ m.id }}" {% if s.machine_id == m.id %}selected{% endif %}>
-                                    {{ m.code|default:m.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </td>
-
-                        <!-- EDITABLE: Date of Start -->
+                        <!-- 6. EDITABLE: Start Date -->
                         <td style="background: #fdfdfd;">
                             <input type="date" name="start_date_{{ s.id }}" id="start_date_{{ s.id }}"
                                    value="{{ s.date_of_start|date:'Y-m-d' }}"
@@ -373,7 +332,7 @@
                                    onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
                         </td>
 
-                        <!-- EDITABLE: Shift -->
+                        <!-- 7. EDITABLE: Shift -->
                         <td style="background: #fdfdfd;">
                             <select name="shift_{{ s.id }}" id="shift_{{ s.id }}" class="excel-cell-select"
                                     onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
@@ -386,19 +345,37 @@
                             </select>
                         </td>
 
+                        <!-- 8. EDITABLE: Machine -->
+                        <td style="background: #fdfdfd;">
+                            <select name="machine_{{ s.id }}" id="machine_{{ s.id }}" class="excel-cell-select"
+                                    onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
+                                {% for m in all_machines %}
+                                <option value="{{ m.id }}" {% if s.machine_id == m.id %}selected{% endif %}>
+                                    {{ m.code|default:m.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+
+                        <!-- 9. Consultant Name -->
+                        <td style="white-space: nowrap;">{{ s.patient.consultant_display }}</td>
+
+                        <!-- 10. Jr Resident -->
+                        <td style="white-space: nowrap;">{{ s.jr_resident|default:'-' }}</td>
+
                         <!-- Action / Live Save Status -->
-                        <td style="text-align: center;">
+                        <td style="text-align: center; white-space: nowrap;">
                             <span id="indicator-{{ s.id }}" class="save-indicator {% if s.date_of_start %}saved{% else %}dirty{% endif %}">
                                 {% if s.date_of_start %}Saved ✓{% else %}Pending{% endif %}
                             </span>
-                            <button type="button" onclick="liveAutoSave('{{ s.id }}');" class="action-ribbon-btn" style="padding: 1px 6px; font-size: 10px; margin-left: 2px;" title="Manually push this row's changes">
+                            <button type="button" onclick="liveAutoSave('{{ s.id }}');" class="action-ribbon-btn" style="padding: 1px 6px; font-size: 10px; margin-left: 2px;" title="Push row changes immediately">
                                 💾
                             </button>
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="15" style="text-align: center; padding: 40px; color: #666;">
+                        <td colspan="12" style="text-align: center; padding: 40px; color: #666;">
                             <div style="font-size: 28px; margin-bottom: 8px;">📋</div>
                             <strong>No scheduled patients found matching this criteria.</strong>
                             <div style="font-size: 12px; margin-top: 4px;">

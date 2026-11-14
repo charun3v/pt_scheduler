@@ -517,6 +517,14 @@ def run_tests():
     assert resp_export.status_code == 200
     assert 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' in resp_export['Content-Type']
 
+    # Verify Column Order and 'Refresh Changes' button in HTML view
+    resp_grid_view = c.get(f'/reports/manual-grid/?machine_id={la1_mach.id}&start_date={manual_date.isoformat()}&end_date={manual_date.isoformat()}')
+    assert resp_grid_view.status_code == 200
+    grid_html = resp_grid_view.content.decode('utf-8')
+    assert 'Refresh Changes' in grid_html
+    thead_html = grid_html[grid_html.find('<thead>'):grid_html.find('</thead>')]
+    assert thead_html.find('MR No.') < thead_html.find('Patient Name') < thead_html.find('Simulation Date') < thead_html.find('RT No.') < thead_html.find('Diagnosis') < thead_html.find('Start Date') < thead_html.find('Shift') < thead_html.find('Machine') < thead_html.find('Consultant Name') < thead_html.find('Jr Resident')
+
     # Clean up test patients
     pt_manual_1.delete()
     pt_manual_2.delete()
