@@ -761,6 +761,17 @@ def run_tests():
         la1_mapping.allowed_sites = orig_sites
         la1_mapping.save()
 
+    # 4. Test Dynamic Addition of New Treatment Site via API
+    TreatmentSite.objects.filter(name='Spine Test Site').delete()
+    resp_add_site = c.post('/scheduler/api/add-treatment-site/', {
+        'site_name': 'Spine Test Site'
+    }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+    assert resp_add_site.status_code == 200
+    add_site_data = resp_add_site.json()
+    assert add_site_data['success'] is True
+    assert TreatmentSite.objects.filter(name='Spine Test Site', is_active=True).exists()
+    TreatmentSite.objects.filter(name='Spine Test Site').delete()
+
     print("✓ Test 17 Passed: Header badges removed, date_of_start >= date_of_sim strictly enforced, and machine mapping multi-select treatment sites verified.")
 
     print("\n==================================================")

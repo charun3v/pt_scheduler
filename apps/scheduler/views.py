@@ -470,6 +470,62 @@ def edit_machine_mapping_view(request, mapping_id):
 
 
 @login_required
+def add_treatment_site_api(request):
+    """
+    AJAX endpoint to dynamically create a new TreatmentSite from the machine mapping configuration.
+    Restricted to Admin / SubAdmin.
+    """
+    if not can_manage_mappings(request.user):
+        return JsonResponse({'success': False, 'error': 'Access denied. Admin or SubAdmin only.'}, status=403)
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method.'}, status=405)
+
+    name = request.POST.get('site_name', '').strip()
+    if not name:
+        return JsonResponse({'success': False, 'error': 'Treatment site name cannot be empty.'}, status=400)
+
+    # Check if exists (case-insensitive)
+    existing = TreatmentSite.objects.filter(name__iexact=name).first()
+    if existing:
+        if not existing.is_active:
+            existing.is_active = True
+            existing.save()
+        return JsonResponse({
+            'success': True,
+            'id': existing.id,
+            'name': existing.name,
+            'is_new': False,
+            'message': f"Site '{existing.name}' is already available."
+        })
+
+    last_site = TreatmentSite.objects.order_by('-display_order').first()
+    next_order = (last_site.display_order + 1) if last_site else 1
+
+    site = TreatmentSite.objects.create(
+        name=name,
+        display_order=next_order,
+        is_active=True
+    )
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="TREATMENTSITE_CREATE",
+        mr_no="LOOKUP",
+        details=f"Dynamically created new TreatmentSite: {site.name}",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+
+    return JsonResponse({
+        'success': True,
+        'id': site.id,
+        'name': site.name,
+        'is_new': True,
+        'message': f"Successfully added '{site.name}'."
+    })
+
+
+@login_required
 def unscheduled_patients_view(request):
     """Queue of registered patients who have no treatment schedule booked yet."""
     patients = Patient.objects.filter(schedules__isnull=True).order_by('-created_at')
