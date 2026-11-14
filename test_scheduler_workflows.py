@@ -11,7 +11,7 @@ setup_test_environment()
 
 from django.test import Client
 from django.contrib.auth.models import User
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from decimal import Decimal
 from apps.core.models import Role, UserProfile, Consultant, FieldValidationConfig
 from apps.core.validators import get_or_create_field_config, validate_field_value
@@ -568,8 +568,31 @@ def run_tests():
     assert 'machine_name' in first_m
     assert 'shifts' in first_m
     assert len(first_m['shifts']) > 0
+    # Auto-designated shift is present in slot
+    assert 'shift_id' in first_m['slot']
+    assert 'shift_name' in first_m['slot']
 
-    # 3. Test POST with custom date and custom reason notes tracking
+    # 3. Test auto-designation of next open shift (1 patient per shift rule)
+    target_mach = Machine.objects.filter(id=first_m['machine_id']).first()
+    slot_date = datetime.strptime(first_m['slot']['date'], "%Y-%m-%d").date()
+    shift1 = Shift.objects.filter(id=first_m['slot']['shift_id']).first()
+    # Create a temporary schedule on this machine, date, and shift
+    temp_pt = Patient.objects.create(mr_no=999988, pt_name='Temp Shift Test Pt', diagnosis='Ca')
+    temp_sched = TreatmentSchedule.objects.create(
+        patient=temp_pt, machine=target_mach, shift=shift1,
+        date_of_start=slot_date, status='Scheduled'
+    )
+    # Re-query API: slot should advance to next open shift or next day
+    resp_api2 = c.get(api_url)
+    data2 = resp_api2.json()
+    first_m2 = data2['machines'][0]
+    # The new auto-designated slot must NOT be shift1 on slot_date
+    if first_m2['slot']['date'] == first_m['slot']['date']:
+        assert first_m2['slot']['shift_id'] != shift1.id, "Shift 1 should be occupied; system should auto-designate next shift"
+    temp_sched.delete()
+    temp_pt.delete()
+
+    # 4. Test POST with custom date and custom reason notes tracking
     custom_date = date.today() + timedelta(days=7)
     custom_reason_text = "Urgent clinical escalation required for rapid symptom palliation"
     target_mach = Machine.objects.filter(id=first_m['machine_id']).first()

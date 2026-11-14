@@ -395,8 +395,8 @@
                                 <th style="width: 38px; text-align: center;">Select</th>
                                 <th style="width: 140px;">Machine Name</th>
                                 <th style="width: 75px;">Type</th>
-                                <th style="min-width: 250px;">Earliest Available Slot (Recommended)</th>
-                                <th style="min-width: 230px;">Custom Date Selection (After Recommended)</th>
+                                <th style="min-width: 200px;">Earliest Available Date (Recommended)</th>
+                                <th style="min-width: 230px;">Custom Date & Shift Selection (After Recommended)</th>
                                 <th style="min-width: 200px;">Reason for Custom Date</th>
                             </tr>
                         </thead>
@@ -417,8 +417,6 @@
                     });
 
                     const earliestFormatted = m.slot ? m.slot.date_formatted : 'No Free Slot';
-                    const earliestShiftName = m.slot ? `Shift ${m.slot.shift_name}` : '';
-                    const bookedInfo = m.slot ? `(${m.slot.booked_count}/${m.slot.max_quota} starts booked)` : '(Full)';
 
                     // Custom Date can ONLY be strictly AFTER the recommended date
                     const minCustomDate = (m.slot && m.slot.date) ? getDayAfter(m.slot.date) : '';
@@ -448,16 +446,14 @@
                                 ${m.machine_type}
                             </td>
 
-                            <!-- Column 4: Earliest Available Slot (One Line) -->
+                            <!-- Column 4: Earliest Available Date (Recommended - Auto-Designated Shift) -->
                             <td>
-                                <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer; margin: 0;">
+                                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; margin: 0;">
                                     <input type="radio" name="date_choice_${m.machine_id}" id="choiceSystem-${m.machine_id}" value="system" checked
                                            onchange="setChoiceMode(${m.machine_id}, 'system');"
                                            onclick="event.stopPropagation();"
                                            style="cursor: pointer; margin: 0;">
                                     <span style="font-weight: 600; color: #1a7f37;">${earliestFormatted}</span>
-                                    <span style="color: #24292f; font-size: 11px;">${earliestShiftName}</span>
-                                    <span style="color: #57606a; font-size: 10px;">${bookedInfo}</span>
                                 </label>
                             </td>
 
@@ -566,8 +562,8 @@
 
             document.getElementById('selectionSummary').innerHTML = `
                 Selected: <strong>${mObj.machine_name}</strong> on 
-                <strong style="color: #1a7f37;">${mObj.slot ? mObj.slot.date_formatted : 'No Date'}</strong> (${mObj.slot ? mObj.slot.shift_name : ''})
-                <span style="font-size: 11px; color: #1a7f37; margin-left: 4px;">(Earliest Free Slot)</span>
+                <strong style="color: #1a7f37;">${mObj.slot ? mObj.slot.date_formatted : 'No Date'}</strong>
+                <span style="font-size: 11px; color: #1a7f37; margin-left: 4px;">(Earliest Recommended Date)</span>
             `;
         } else {
             const custRadio = document.getElementById('choiceCustom-' + machId);

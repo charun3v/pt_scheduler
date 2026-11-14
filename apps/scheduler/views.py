@@ -336,31 +336,26 @@ def get_mapped_machines_slots_api(request):
             continue
 
         # Find earliest available free slot (skipping Sundays)
+        # Capacity rule: Exactly 1 patient per shift accommodated per day
         curr_date = start_search
         found_slot = None
 
         for _ in range(60):
             if curr_date.weekday() != 6:  # Skip Sunday
-                booked_total = TreatmentSchedule.objects.filter(machine=mach, date_of_start=curr_date).count()
-                if booked_total < max_daily_starts:
-                    # Find which shift has free quota (< 1 start)
-                    free_shift = None
-                    for sh in active_shifts:
-                        sh_booked = TreatmentSchedule.objects.filter(machine=mach, shift=sh, date_of_start=curr_date).count()
-                        if sh_booked < 1:
-                            free_shift = sh
-                            break
-                    if not free_shift:
-                        free_shift = active_shifts[0]
+                # Auto-designate the first open shift on this date with 0 bookings (< 1 patient/shift limit)
+                free_shift = None
+                for sh in active_shifts:
+                    sh_booked = TreatmentSchedule.objects.filter(machine=mach, shift=sh, date_of_start=curr_date).count()
+                    if sh_booked < 1:
+                        free_shift = sh
+                        break
 
+                if free_shift:
                     found_slot = {
                         'date': curr_date.isoformat(),
                         'date_formatted': curr_date.strftime("%a, %d %b %Y"),
                         'shift_id': free_shift.id,
                         'shift_name': free_shift.name,
-                        'booked_count': booked_total,
-                        'max_quota': max_daily_starts,
-                        'remaining': max_daily_starts - booked_total
                     }
                     break
             curr_date += timedelta(days=1)
