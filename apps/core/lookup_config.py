@@ -1,0 +1,105 @@
+from django.apps import apps
+
+LOOKUP_CONFIG = {
+    'machine': {
+        'title': 'Radiotherapy Machines',
+        'icon': '🖥️',
+        'table_name': 'tblMachine',
+        'app': 'scheduler',
+        'model_name': 'Machine',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Machine Name (e.g. TrueBeam, Clinac IX)',
+        'secondary_field': 'code',
+        'secondary_label': 'Machine Code (e.g. LA1, LA2, DBX)',
+        'extra_field': 'machine_type',
+        'extra_label': 'Machine Type',
+        'extra_choices': [
+            ('LINAC', 'LINAC'),
+            ('Brachytherapy', 'Brachytherapy'),
+            ('Orthovoltage', 'Orthovoltage'),
+            ('Intra Op', 'Intra Op'),
+            ('PBT', 'PBT'),
+        ],
+    },
+    'shift': {
+        'title': 'Machine Working Shifts',
+        'icon': '⏰',
+        'table_name': 'tblShift',
+        'app': 'scheduler',
+        'model_name': 'Shift',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Shift Name (e.g. Shift I, Shift II, Shift III)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
+    'technique': {
+        'title': 'Treatment Techniques',
+        'icon': '🎯',
+        'table_name': 'tblTechnique',
+        'app': 'scheduler',
+        'model_name': 'Technique',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Technique Name (e.g. 3DCRT, IMRT, VMAT)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
+    'special_technique': {
+        'title': 'Special Techniques',
+        'icon': '🔬',
+        'table_name': 'tblSpecialTechnique',
+        'app': 'scheduler',
+        'model_name': 'SpecialTechnique',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Special Technique (e.g. DIBH, SRS, SBRT, Gating, None)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
+    'site': {
+        'title': 'Anatomical Treatment Sites',
+        'icon': '🏥',
+        'table_name': 'tblTreatmentSite',
+        'app': 'scheduler',
+        'model_name': 'TreatmentSite',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Treatment Site Name (e.g. Breast, Pelvis, Head and neck)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
+    'consultant': {
+        'title': 'Primary Faculty & Consultants',
+        'icon': '🩺',
+        'table_name': 'tblConsultant',
+        'app': 'core',
+        'model_name': 'Consultant',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Consultant Name (e.g. Dr. Firstname Lastname)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
+    'simulated_for': {
+        'title': 'Simulated For Platforms',
+        'icon': '📋',
+        'table_name': 'tblSimulatedFor',
+        'app': 'scheduler',
+        'model_name': 'SimulatedFor',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Platform Name (e.g. Varian, Elekta, Cobalt)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
+}
+
+
+def get_lookup_model(category: str):
+    cfg = LOOKUP_CONFIG.get(category)
+    if not cfg:
+        return None, None
+    model = apps.get_model(cfg['app'], cfg['model_name'])
+    return model, cfg

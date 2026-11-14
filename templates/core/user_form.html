@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}{% if target_user %}Edit User - {{ target_user.username }}{% else %}New User Account{% endif %}{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 0 auto;">
+    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;">
+        
+        <div style="background: #003366; color: #ffffff; padding: 12px 18px; font-size: 15px; font-weight: bold;">
+            {% if target_user %}✏️ Edit User: {{ target_user.username }}{% else %}➕ Create New User Account{% endif %}
+        </div>
+
+        <form method="POST" style="padding: 20px;">
+            {% csrf_token %}
+
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 4px; font-size: 12px;">Username: *</label>
+                <input type="text" name="username" value="{{ target_user.username|default:'' }}"
+                       {% if target_user %}readonly style="background: #e9ecef; cursor: not-allowed; width: 100%; padding: 8px 10px; border: 1px solid #ced4da; border-radius: 3px;"{% else %}required style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px;"{% endif %}>
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">Full Name / Doctor Name:</label>
+                <input type="text" name="first_name" value="{{ target_user.first_name|default:'' }}"
+                       style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px;">
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 4px; font-size: 12px;">
+                    Password: {% if target_user %}<small style="font-weight: normal; color: #666;">(Leave blank to keep existing password)</small>{% else %}*{% endif %}
+                </label>
+                <input type="password" name="password" {% if not target_user %}required{% endif %}
+                       placeholder="{% if target_user %}Enter new password if changing{% else %}Enter secure password{% endif %}"
+                       style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px;">
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 4px; font-size: 12px;">Role Assignment: *</label>
+                <select name="role_id" required style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; background: #fff;">
+                    {% for r in roles %}
+                        <option value="{{ r.role_id }}" {% if target_user and target_user.profile.role_id == r.role_id %}selected{% endif %}>
+                            {{ r.role_name }} — {{ r.role_description }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            {% if target_user %}
+            <div style="margin-bottom: 20px;">
+                <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+                    <input type="checkbox" name="is_active" {% if target_user.is_active %}checked{% endif %}>
+                    <span>Account Active (Uncheck to suspend login)</span>
+                </label>
+            </div>
+            {% endif %}
+
+            <div style="border-top: 1px solid #eee; padding-top: 16px; display: flex; justify-content: flex-end; gap: 10px;">
+                <a href="{% url 'user_list' %}" class="action-ribbon-btn" style="padding: 8px 16px;">Cancel</a>
+                <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 8px 20px; font-weight: bold; border-radius: 4px; cursor: pointer;">
+                    💾 Save User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

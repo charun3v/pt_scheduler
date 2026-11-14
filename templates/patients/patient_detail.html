@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}{{ patient.pt_name }} (MR: {{ patient.mr_no }}) - Details{% endblock %}
+
+{% block content %}
+<div style="max-width: 1000px; margin: 0 auto;">
+    
+    <!-- Top Patient Header Card -->
+    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 6px; padding: 18px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
+            <div>
+                <h2 style="margin: 0; font-size: 20px; color: #003366;">{{ patient.pt_name }}</h2>
+                <div style="font-size: 13px; color: #555; margin-top: 4px;">
+                    Hospital / MR Number: <strong style="color: #003366;">{{ patient.mr_no }}</strong> | RT No: <strong>{{ patient.rt_no|default:'N/A' }}</strong>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 8px 16px;">
+                    ⚡ {% if patient.has_schedule %}Edit / Add Schedule{% else %}Schedule Treatment Now{% endif %}
+                </a>
+                <a href="{% url 'patient_edit' patient.id %}" class="action-ribbon-btn" style="padding: 8px 14px;">
+                    ✏️ Edit Demographics
+                </a>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; font-size: 13px;">
+            <div>
+                <span style="color: #777; display: block; font-size: 11px;">Age / Sex:</span>
+                <strong>{{ patient.age|default:'-' }} Yrs / {{ patient.get_sex_display }}</strong>
+            </div>
+            <div>
+                <span style="color: #777; display: block; font-size: 11px;">Primary Consultant:</span>
+                <strong>{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
+            </div>
+            <div>
+                <span style="color: #777; display: block; font-size: 11px;">Site of Treatment:</span>
+                <strong>{{ patient.site_of_treatment }}</strong>
+            </div>
+            <div>
+                <span style="color: #777; display: block; font-size: 11px;">Phone Number:</span>
+                <strong>{{ patient.phone_no|default:'N/A' }}</strong>
+            </div>
+            <div style="grid-column: span 4; background: #f8f9fa; padding: 8px 12px; border-radius: 4px; margin-top: 4px;">
+                <span style="color: #777; font-size: 11px; display: block;">Diagnosis:</span>
+                <strong style="color: #2d3748;">{{ patient.diagnosis }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- Treatment Schedules Section -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 2px solid #f0f4f8; padding-bottom: 8px;">
+            <h3 style="margin: 0; font-size: 15px; color: #003366;">Radiotherapy Treatment Schedules ({{ schedules.count }})</h3>
+            <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn">➕ New Treatment Course</a>
+        </div>
+
+        {% if schedules %}
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+            {% for s in schedules %}
+            <div style="border: 1px solid #cbd5e0; border-radius: 4px; padding: 14px; background: {% if s.date_of_start %}#ffffff{% else %}#fffdf0{% endif %};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 6px;">
+                    <div>
+                        <span style="font-weight: bold; font-size: 14px; color: #003366;">{{ s.machine.name|default:'Machine Unassigned' }}</span>
+                        {% if s.shift %}<span class="badge-locked" style="margin-left: 6px;">{{ s.shift.name }}</span>{% endif %}
+                    </div>
+                    <div>
+                        {% if s.date_of_start %}
+                            <span class="badge-success">Start: {{ s.date_of_start|date:"d-M-Y" }}</span>
+                        {% else %}
+                            <span class="badge-warning">Start Date Pending</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 12px;">
+                    <div>
+                        <span style="color: #777; display: block; font-size: 11px;">Simulation Date:</span>
+                        <strong>{{ s.date_of_sim|date:"d-M-Y"|default:'-' }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #777; display: block; font-size: 11px;">Dose Planned:</span>
+                        <strong>{{ s.dose_planned|default:'-' }} Gy</strong>
+                    </div>
+                    <div>
+                        <span style="color: #777; display: block; font-size: 11px;">Fractions:</span>
+                        <strong>{{ s.no_of_fractions|default:'-' }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #777; display: block; font-size: 11px;">Technique:</span>
+                        <strong>{{ s.technique.name|default:'-' }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #777; display: block; font-size: 11px;">Special Technique:</span>
+                        <strong>{{ s.special_technique.name|default:'None' }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #777; display: block; font-size: 11px;">Simulated For:</span>
+                        <strong>{{ s.simulated_for.name|default:'-' }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #777; display: block; font-size: 11px;">Jr. Resident:</span>
+                        <strong>{{ s.jr_resident|default:'-' }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #777; display: block; font-size: 11px;">Status:</span>
+                        <strong>{{ s.status }}</strong>
+                    </div>
+                </div>
+
+                {% if s.notes %}
+                <div style="margin-top: 8px; font-size: 12px; color: #555; background: #f8f9fa; padding: 6px 10px; border-radius: 3px;">
+                    <strong>Notes:</strong> {{ s.notes }}
+                </div>
+                {% endif %}
+
+                <div style="margin-top: 10px; text-align: right;">
+                    <a href="{% url 'schedule_patient' patient.id %}" style="font-size: 12px; color: #003366; text-decoration: underline; font-weight: 600;">
+                        ✏️ Modify this Schedule
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 4px;">
+            <p style="color: #666; margin: 0 0 12px 0;">This patient has been registered but not scheduled for radiotherapy treatment yet.</p>
+            <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 8px 20px;">
+                ⚡ Book Treatment Schedule Now
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

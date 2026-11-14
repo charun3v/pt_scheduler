@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - {{ APP_TITLE }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+    <div>
+        <h1 style="margin: 0; font-size: 20px; color: #003366;">Radiotherapy Clinical Dashboard</h1>
+        <div style="font-size: 12px; color: #666;">Radiation Oncology Patient Scheduling & Machine Capacity Overview</div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="{% url 'patient_register' %}" class="action-ribbon-btn btn-highlight" style="padding: 8px 16px; font-size: 13px;">➕ Register New Patient</a>
+        <a href="{% url 'unscheduled_patients' %}" class="action-ribbon-btn" style="padding: 8px 16px; font-size: 13px;">⏳ Unscheduled Queue</a>
+    </div>
+</div>
+
+<!-- Stat Tiles -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px;">
+    <div style="background: #ffffff; border-left: 4px solid #003366; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <div style="font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold;">Total Registered Patients</div>
+        <div style="font-size: 26px; font-weight: bold; color: #003366; margin: 4px 0;">{{ total_patients }}</div>
+        <div style="font-size: 11px; color: #28a745;">Unique MR Number records</div>
+    </div>
+
+    <div style="background: #ffffff; border-left: 4px solid #28a745; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <div style="font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold;">Total Treatment Schedules</div>
+        <div style="font-size: 26px; font-weight: bold; color: #28a745; margin: 4px 0;">{{ total_schedules }}</div>
+        <div style="font-size: 11px; color: #666;">Historical & Active courses</div>
+    </div>
+
+    <div style="background: #ffffff; border-left: 4px solid #ffc107; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <div style="font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold;">Start Dates Pending</div>
+        <div style="font-size: 26px; font-weight: bold; color: #856404; margin: 4px 0;">{{ pending_starts }}</div>
+        <a href="{% url 'pending_starts_report' %}" style="font-size: 11px; color: #003366; text-decoration: underline;">View pending list & schedule &rarr;</a>
+    </div>
+
+    <div style="background: #ffffff; border-left: 4px solid #17a2b8; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <div style="font-size: 11px; text-transform: uppercase; color: #666; font-weight: bold;">Starts Today ({{ today|date:"d M" }})</div>
+        <div style="font-size: 26px; font-weight: bold; color: #17a2b8; margin: 4px 0;">{{ today_starts }}</div>
+        <a href="{% url 'machine_daily_list' %}?start_date={{ today|date:'Y-m-d' }}&end_date={{ today|date:'Y-m-d' }}" style="font-size: 11px; color: #003366; text-decoration: underline;">View daily schedule &rarr;</a>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+    
+    <!-- Today's Machine Starts Breakdown -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 4px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+            <h3 style="margin: 0; font-size: 14px; color: #003366;">⚡ Today's Starts by Machine ({{ today|date:"d M Y" }})</h3>
+            <a href="{% url 'machine_daily_list' %}" class="action-ribbon-btn">Full Machine Calendar &rarr;</a>
+        </div>
+
+        {% if machine_counts %}
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead>
+                <tr style="background: #f0f4f8; text-align: left;">
+                    <th style="padding: 8px; border-bottom: 2px solid #ddd;">Machine</th>
+                    <th style="padding: 8px; border-bottom: 2px solid #ddd;">Code</th>
+                    <th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: right;">Starts Booked Today</th>
+                    <th style="padding: 8px; border-bottom: 2px solid #ddd; text-align: center;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in machine_counts %}
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px; font-weight: 600;">{{ row.machine__name }}</td>
+                    <td style="padding: 8px;"><span class="badge-locked">{{ row.machine__code }}</span></td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold; color: #003366;">{{ row.patient_count }}</td>
+                    <td style="padding: 8px; text-align: center;">
+                        <a href="{% url 'machine_daily_list' %}?machine_code={{ row.machine__code }}&start_date={{ today|date:'Y-m-d' }}" style="color: #003366; text-decoration: underline;">View Patients</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #666; font-style: italic; margin: 10px 0;">No patient treatment starts scheduled for today yet.</p>
+        {% endif %}
+
+        <!-- Upcoming Starts This Week -->
+        <h3 style="margin: 20px 0 10px 0; font-size: 14px; color: #003366; border-bottom: 1px solid #eee; padding-bottom: 6px;">📅 Upcoming Treatment Starts This Week</h3>
+        {% if upcoming_starts %}
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead>
+                <tr style="background: #f0f4f8; text-align: left;">
+                    <th style="padding: 6px 8px;">Start Date</th>
+                    <th style="padding: 6px 8px;">MR No.</th>
+                    <th style="padding: 6px 8px;">Patient Name</th>
+                    <th style="padding: 6px 8px;">Machine</th>
+                    <th style="padding: 6px 8px;">Shift</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in upcoming_starts %}
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 6px 8px; font-weight: bold;">{{ s.date_of_start|date:"d-m-Y" }}</td>
+                    <td style="padding: 6px 8px;"><a href="{% url 'patient_detail' s.patient.id %}">{{ s.patient.mr_no }}</a></td>
+                    <td style="padding: 6px 8px;">{{ s.patient.pt_name }}</td>
+                    <td style="padding: 6px 8px;">{{ s.machine_display }}</td>
+                    <td style="padding: 6px 8px;">{{ s.shift_display }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #666; font-style: italic;">No upcoming starts in the next 7 days.</p>
+        {% endif %}
+    </div>
+
+    <!-- Right Side: Recent Registrations & Quick Links -->
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 4px; padding: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 6px;">
+                <h3 style="margin: 0; font-size: 13px; color: #003366;">Recent Registrations</h3>
+                <a href="{% url 'patient_search' %}" style="font-size: 11px; color: #003366; text-decoration: underline;">All &rarr;</a>
+            </div>
+            {% if recent_patients %}
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                {% for p in recent_patients %}
+                <div style="border-bottom: 1px dashed #eee; padding-bottom: 6px; font-size: 12px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <a href="{% url 'patient_detail' p.id %}" style="font-weight: 600; color: #003366;">{{ p.pt_name }}</a>
+                        <span style="font-size: 11px; color: #888;">MR: {{ p.mr_no }}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #666; margin-top: 2px;">
+                        <span>{{ p.diagnosis|truncatechars:20 }}</span>
+                        {% if p.has_schedule %}
+                            <span class="badge-success">Scheduled</span>
+                        {% else %}
+                            <a href="{% url 'schedule_patient' p.id %}" class="badge-warning" style="text-decoration: none;">Schedule &rarr;</a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div style="background: #eef4f9; border: 1px solid #c2d6eb; border-radius: 4px; padding: 14px; font-size: 12px;">
+            <h4 style="margin: 0 0 8px 0; color: #003366;">Quick Clinical Actions</h4>
+            <ul style="margin: 0; padding-left: 18px; line-height: 1.8;">
+                <li><a href="{% url 'patient_register' %}" style="color: #003366; font-weight: 600;">Register New Patient</a></li>
+                <li><a href="{% url 'patient_search' %}" style="color: #003366;">Search by MR Number / Name</a></li>
+                <li><a href="{% url 'pending_starts_report' %}" style="color: #003366;">Process Pending Start Dates</a></li>
+                <li><a href="{% url 'machine_daily_list' %}" style="color: #003366;">Generate Machine Schedules</a></li>
+                <li><a href="{% url 'consultant_stats' %}" style="color: #003366;">Consultant Workload Pivot</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

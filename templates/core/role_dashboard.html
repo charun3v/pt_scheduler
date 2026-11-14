@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Roles & Capabilities - EBRT Scheduler{% endblock %}
+
+{% block content %}
+<div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 20px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #003366; padding-bottom: 10px;">
+        <div>
+            <h2 style="margin: 0; font-size: 18px; color: #003366;">🛡️ Role-Based Access Control (RBAC) Matrix</h2>
+            <div style="font-size: 12px; color: #666;">Granular security capabilities across clinical and administrative roles.</div>
+        </div>
+        <span class="badge-admin">Admin & SubAdmin Control</span>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+            <tr style="background: #003366; color: #ffffff; text-align: center;">
+                <th style="padding: 10px; text-align: left;">Role Name</th>
+                <th style="padding: 10px;">View Patients</th>
+                <th style="padding: 10px;">Register</th>
+                <th style="padding: 10px;">Schedule</th>
+                <th style="padding: 10px;">Edit Locked Identity</th>
+                <th style="padding: 10px;">Manage Mappings</th>
+                <th style="padding: 10px;">Manage Users</th>
+                <th style="padding: 10px;">Delete Records</th>
+                <th style="padding: 10px;">Export</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in roles %}
+            <tr style="border-bottom: 1px solid #eee; text-align: center;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
+                <td style="padding: 10px; text-align: left; font-weight: bold; color: #003366;">
+                    {{ r.role_name }}
+                    <small style="display: block; color: #666; font-weight: normal;">{{ r.role_description }}</small>
+                </td>
+                <td style="padding: 10px;">{% if r.cap_view_patients %}✅{% else %}❌{% endif %}</td>
+                <td style="padding: 10px;">{% if r.cap_register_patient %}✅{% else %}❌{% endif %}</td>
+                <td style="padding: 10px;">{% if r.cap_schedule_patient %}✅{% else %}❌{% endif %}</td>
+                <td style="padding: 10px;">
+                    {% if r.cap_edit_locked_identity %}
+                        <span class="badge-success">YES</span>
+                    {% else %}
+                        <span style="color: #bbb;">🔒 No</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px;">{% if r.cap_manage_mappings %}✅{% else %}❌{% endif %}</td>
+                <td style="padding: 10px;">{% if r.cap_manage_users %}✅{% else %}❌{% endif %}</td>
+                <td style="padding: 10px;">{% if r.cap_delete_records %}⚠️ Yes{% else %}❌{% endif %}</td>
+                <td style="padding: 10px;">{% if r.cap_export_data %}✅{% else %}❌{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+{% endblock %}

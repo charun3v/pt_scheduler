@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Patient - {{ patient.pt_name }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 860px; margin: 0 auto;">
+    
+    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;">
+        
+        <div style="background: #003366; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 15px; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                <span>✏️</span>
+                <span>Edit Patient Demographics — {{ patient.pt_name }}</span>
+            </div>
+            <span style="font-size: 11px; background: rgba(255,255,255,0.2); padding: 3px 8px; border-radius: 3px;">
+                MR No: {{ patient.mr_no }}
+            </span>
+        </div>
+
+        <form method="POST" action="{% url 'patient_edit' patient.id %}" style="padding: 20px;">
+            {% csrf_token %}
+
+            {% if can_edit_identity %}
+                <div style="background: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; padding: 10px 14px; margin-bottom: 18px; font-size: 12px; color: #856404;">
+                    <strong>Administrator Authority:</strong> You have permission to modify locked patient identity fields (MR Number and Patient Name).
+                </div>
+            {% else %}
+                <div style="background: #e9ecef; border: 1px solid #ced4da; border-radius: 4px; padding: 10px 14px; margin-bottom: 18px; font-size: 12px; color: #495057;">
+                    🔒 <strong>Locked Identity:</strong> MR Number and Patient Name are locked after registration. To request corrections, please contact an Administrator or SubAdmin.
+                </div>
+            {% endif %}
+
+            <div class="form-grid">
+                <!-- MR Number -->
+                <div>
+                    <label style="display: block; font-weight: bold; margin-bottom: 4px;">
+                        Hospital / MR Number:
+                        {% if not can_edit_identity %}🔒 <small style="color: #666;">(Locked)</small>{% endif %}
+                    </label>
+                    <input type="number" name="mr_no" value="{{ patient.mr_no }}"
+                           {% if not can_edit_identity %}readonly style="background: #e9ecef; cursor: not-allowed; width: 100%; padding: 8px 10px; border: 1px solid #ced4da; border-radius: 3px; font-size: 13px;"{% else %}style="width: 100%; padding: 8px 10px; border: 2px solid #003366; border-radius: 3px; font-size: 13px;"{% endif %}>
+                </div>
+
+                <!-- Patient Name -->
+                <div>
+                    <label style="display: block; font-weight: bold; margin-bottom: 4px;">
+                        Patient Name:
+                        {% if not can_edit_identity %}🔒 <small style="color: #666;">(Locked)</small>{% endif %}
+                    </label>
+                    <input type="text" name="pt_name" value="{{ patient.pt_name }}"
+                           {% if not can_edit_identity %}readonly style="background: #e9ecef; cursor: not-allowed; width: 100%; padding: 8px 10px; border: 1px solid #ced4da; border-radius: 3px; font-size: 13px;"{% else %}style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;"{% endif %}>
+                </div>
+
+                <!-- RT Number -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">RT Number:</label>
+                    <input type="text" name="rt_no" value="{{ patient.rt_no|default:'' }}"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Age -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Age:</label>
+                    <input type="number" name="age" value="{{ patient.age|default:'' }}" min="1" max="120"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Sex -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Sex:</label>
+                    <select name="sex" style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                        {% for val, label in sex_choices %}
+                            <option value="{{ val }}" {% if patient.sex == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Phone Number -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Phone Number:</label>
+                    <input type="text" name="phone_no" value="{{ patient.phone_no|default:'' }}"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Diagnosis (Span 2) -->
+                <div style="grid-column: span 2;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Diagnosis:</label>
+                    <input type="text" name="diagnosis" value="{{ patient.diagnosis }}" required
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Site of Treatment -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Site of Treatment:</label>
+                    <select name="site_of_treatment" required style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                        {% for val, label in site_choices %}
+                            <option value="{{ val }}" {% if patient.site_of_treatment == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Primary Consultant -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Primary Consultant:</label>
+                    <select name="primary_consultant" style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                        <option value="">-- Select Consultant --</option>
+                        {% for c in consultants %}
+                            <option value="{{ c.id }}" {% if patient.primary_consultant_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 12px;">
+                <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="padding: 8px 16px;">Cancel</a>
+                <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 8px 20px; font-weight: bold; border-radius: 4px; cursor: pointer;">
+                    💾 Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

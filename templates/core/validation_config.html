@@ -1,0 +1,250 @@
+{% extends 'base.html' %}
+
+{% block title %}Field Validation Rules - {{ APP_TITLE }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 860px; margin: 0 auto;">
+    <div class="access-subform">
+        <div class="access-subform-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span>🔒</span>
+                <span>frmValidationConfig: Field Character Length & Format Validation Settings</span>
+                <span style="font-size: 10px; background: #e2e8f0; color: #003366; padding: 2px 6px; border-radius: 3px; font-weight: bold;">
+                    ADMIN ONLY
+                </span>
+            </div>
+            <div style="font-weight: normal; font-size: 11px;">
+                <a href="{% url 'dashboard' %}" style="color: #fff; text-decoration: underline;">Back to Dashboard</a>
+            </div>
+        </div>
+
+        <div class="access-subform-body">
+            
+            <div style="background: #eef4fa; border: 1px solid #b8c4d2; padding: 12px 16px; margin-bottom: 20px; border-radius: 3px; font-size: 12px; color: #003366;">
+                <strong>Clinical Validation Authority:</strong>
+                As Administrator, you can define exact character lengths, numeric constraints, or minimum/maximum ranges for core patient fields.
+                These rules apply immediately across Patient Registration, Patient Editing, and Treatment Scheduling.
+                <em>SubAdmins and clinical staff cannot modify these rules.</em>
+            </div>
+
+            <form method="POST" action="{% url 'validation_config' %}">
+                {% csrf_token %}
+
+                <!-- SECTION 1: Hospital / MR Number Validation -->
+                <div style="background: #ffffff; border: 1px solid #003366; border-radius: 4px; padding: 16px; margin-bottom: 20px;">
+                    <div style="font-weight: bold; color: #003366; font-size: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>🏥 Hospital / MR Number (<code>mr_no</code>)</span>
+                        <span style="font-size: 11px; color: #b71c1c; font-weight: bold;">[Mandatory Unique Identifier]</span>
+                    </div>
+
+                    <!-- Validation Mode Radio Selection -->
+                    <div style="margin-bottom: 14px;">
+                        <label class="access-label" style="font-weight: bold; margin-bottom: 6px;">Character Length Mode:</label>
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 4px;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="mr_validation_mode" value="exact" id="mr_mode_exact"
+                                       {% if mr_config.validation_mode == 'exact' %}checked{% endif %}
+                                       onchange="toggleMrFields();">
+                                <strong>Exact Character Length</strong>
+                            </label>
+
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="mr_validation_mode" value="range" id="mr_mode_range"
+                                       {% if mr_config.validation_mode == 'range' %}checked{% endif %}
+                                       onchange="toggleMrFields();">
+                                <strong>Length Range (Min / Max)</strong>
+                            </label>
+
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="mr_validation_mode" value="any" id="mr_mode_any"
+                                       {% if mr_config.validation_mode == 'any' %}checked{% endif %}
+                                       onchange="toggleMrFields();">
+                                <strong>Any Length (No length restriction)</strong>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Mode Inputs Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; background: #f8fafc; padding: 12px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                        <!-- Exact Length -->
+                        <div id="mr_exact_box">
+                            <label class="access-label" style="font-weight: bold;">Exact Characters:</label>
+                            <input type="number" name="mr_exact_length" id="mr_exact_length" min="1" max="25"
+                                   value="{{ mr_config.exact_length|default:'' }}" class="access-input" placeholder="e.g. 7">
+                            <span style="font-size: 10.5px; color: #666;">e.g. Must be exactly 7 digits</span>
+                        </div>
+
+                        <!-- Min Length -->
+                        <div id="mr_min_box">
+                            <label class="access-label" style="font-weight: bold;">Minimum Length:</label>
+                            <input type="number" name="mr_min_length" id="mr_min_length" min="1" max="25"
+                                   value="{{ mr_config.min_length|default:'4' }}" class="access-input" placeholder="e.g. 4">
+                            <span style="font-size: 10.5px; color: #666;">Minimum characters required</span>
+                        </div>
+
+                        <!-- Max Length -->
+                        <div id="mr_max_box">
+                            <label class="access-label" style="font-weight: bold;">Maximum Length:</label>
+                            <input type="number" name="mr_max_length" id="mr_max_length" min="1" max="25"
+                                   value="{{ mr_config.max_length|default:'10' }}" class="access-input" placeholder="e.g. 10">
+                            <span style="font-size: 10.5px; color: #666;">Maximum characters allowed</span>
+                        </div>
+                    </div>
+
+                    <!-- Numeric and Blank Flags -->
+                    <div style="display: flex; gap: 24px; margin-bottom: 14px; padding: 8px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; color: #003366;">
+                            <input type="checkbox" name="mr_numeric_only" value="1" {% if mr_config.numeric_only %}checked{% endif %}>
+                            🔢 Allow ONLY Numbers (Digits 0-9)
+                        </label>
+
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666;">
+                            <input type="checkbox" name="mr_allow_blank" value="1" {% if mr_config.allow_blank %}checked{% endif %}>
+                            Allow Blank (Hospital MR No is strictly required in clinical systems)
+                        </label>
+                    </div>
+
+                    <!-- Custom Error Message -->
+                    <div>
+                        <label class="access-label">Custom Error Message (Optional):</label>
+                        <input type="text" name="mr_custom_error_message" value="{{ mr_config.custom_error_message|default:'' }}"
+                               placeholder="e.g. Hospital MR Number must be numeric and between 4 and 10 digits."
+                               class="access-input" style="width: 100%;">
+                    </div>
+                </div>
+
+
+                <!-- SECTION 2: Phone Number Validation -->
+                <div style="background: #ffffff; border: 1px solid #003366; border-radius: 4px; padding: 16px; margin-bottom: 20px;">
+                    <div style="font-weight: bold; color: #003366; font-size: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>📞 Phone / Contact Number (<code>phone_no</code>)</span>
+                        <span style="font-size: 11px; color: #2e7d32; font-weight: bold;">[Patient Contact]</span>
+                    </div>
+
+                    <!-- Validation Mode Radio Selection -->
+                    <div style="margin-bottom: 14px;">
+                        <label class="access-label" style="font-weight: bold; margin-bottom: 6px;">Character Length Mode:</label>
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 4px;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="ph_validation_mode" value="exact" id="ph_mode_exact"
+                                       {% if phone_config.validation_mode == 'exact' %}checked{% endif %}
+                                       onchange="togglePhoneFields();">
+                                <strong>Exact Character Length</strong>
+                            </label>
+
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="ph_validation_mode" value="range" id="ph_mode_range"
+                                       {% if phone_config.validation_mode == 'range' %}checked{% endif %}
+                                       onchange="togglePhoneFields();">
+                                <strong>Length Range (Min / Max)</strong>
+                            </label>
+
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="ph_validation_mode" value="any" id="ph_mode_any"
+                                       {% if phone_config.validation_mode == 'any' %}checked{% endif %}
+                                       onchange="togglePhoneFields();">
+                                <strong>Any Length (No length restriction)</strong>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Mode Inputs Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; background: #f8fafc; padding: 12px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                        <!-- Exact Length -->
+                        <div id="ph_exact_box">
+                            <label class="access-label" style="font-weight: bold;">Exact Characters:</label>
+                            <input type="number" name="ph_exact_length" id="ph_exact_length" min="1" max="25"
+                                   value="{{ phone_config.exact_length|default:'' }}" class="access-input" placeholder="e.g. 10">
+                            <span style="font-size: 10.5px; color: #666;">e.g. Must be exactly 10 digits</span>
+                        </div>
+
+                        <!-- Min Length -->
+                        <div id="ph_min_box">
+                            <label class="access-label" style="font-weight: bold;">Minimum Length:</label>
+                            <input type="number" name="ph_min_length" id="ph_min_length" min="1" max="25"
+                                   value="{{ phone_config.min_length|default:'10' }}" class="access-input" placeholder="e.g. 10">
+                            <span style="font-size: 10.5px; color: #666;">Minimum digits required</span>
+                        </div>
+
+                        <!-- Max Length -->
+                        <div id="ph_max_box">
+                            <label class="access-label" style="font-weight: bold;">Maximum Length:</label>
+                            <input type="number" name="ph_max_length" id="ph_max_length" min="1" max="25"
+                                   value="{{ phone_config.max_length|default:'15' }}" class="access-input" placeholder="e.g. 15">
+                            <span style="font-size: 10.5px; color: #666;">Maximum digits allowed</span>
+                        </div>
+                    </div>
+
+                    <!-- Numeric and Blank Flags -->
+                    <div style="display: flex; gap: 24px; margin-bottom: 14px; padding: 8px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; color: #003366;">
+                            <input type="checkbox" name="ph_numeric_only" value="1" {% if phone_config.numeric_only %}checked{% endif %}>
+                            🔢 Allow ONLY Numbers (Digits 0-9)
+                        </label>
+
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                            <input type="checkbox" name="ph_allow_blank" value="1" {% if phone_config.allow_blank %}checked{% endif %}>
+                            Allow Blank (Phone number is optional if patient has no phone)
+                        </label>
+                    </div>
+
+                    <!-- Custom Error Message -->
+                    <div>
+                        <label class="access-label">Custom Error Message (Optional):</label>
+                        <input type="text" name="ph_custom_error_message" value="{{ phone_config.custom_error_message|default:'' }}"
+                               placeholder="e.g. Phone number must be numeric and between 10 and 15 digits."
+                               class="access-input" style="width: 100%;">
+                    </div>
+                </div>
+
+                <!-- Submit Toolbar -->
+                <div style="display: flex; justify-content: flex-end; gap: 12px; align-items: center; margin-top: 16px;">
+                    <a href="{% url 'dashboard' %}" class="btn-access" style="padding: 8px 18px;">Cancel</a>
+                    <button type="submit" class="btn-access btn-primary-action" style="padding: 8px 24px; font-size: 13px; font-weight: bold;">
+                        💾 Save Validation Rules
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function toggleMrFields() {
+        const isExact = document.getElementById('mr_mode_exact').checked;
+        const isRange = document.getElementById('mr_mode_range').checked;
+
+        document.getElementById('mr_exact_box').style.opacity = isExact ? '1' : '0.4';
+        document.getElementById('mr_exact_length').disabled = !isExact;
+
+        document.getElementById('mr_min_box').style.opacity = isRange ? '1' : '0.4';
+        document.getElementById('mr_min_length').disabled = !isRange;
+
+        document.getElementById('mr_max_box').style.opacity = isRange ? '1' : '0.4';
+        document.getElementById('mr_max_length').disabled = !isRange;
+    }
+
+    function togglePhoneFields() {
+        const isExact = document.getElementById('ph_mode_exact').checked;
+        const isRange = document.getElementById('ph_mode_range').checked;
+
+        document.getElementById('ph_exact_box').style.opacity = isExact ? '1' : '0.4';
+        document.getElementById('ph_exact_length').disabled = !isExact;
+
+        document.getElementById('ph_min_box').style.opacity = isRange ? '1' : '0.4';
+        document.getElementById('ph_min_length').disabled = !isRange;
+
+        document.getElementById('ph_max_box').style.opacity = isRange ? '1' : '0.4';
+        document.getElementById('ph_max_length').disabled = !isRange;
+    }
+
+    // Initialize field states on load
+    document.addEventListener('DOMContentLoaded', function() {
+        toggleMrFields();
+        togglePhoneFields();
+    });
+</script>
+{% endblock %}

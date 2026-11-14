@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule Treatment - {{ patient.pt_name }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 980px; margin: 0 auto;">
+
+    <!-- TOP CARD: Registration Details (Uneditable except Age, Diagnosis, Site, Phone) -->
+    <div class="top-patient-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #003366; padding-bottom: 8px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">📋</span>
+                <span style="font-size: 15px; font-weight: bold; color: #003366;">Patient Registration Summary</span>
+                <span style="font-size: 11px; color: #666; font-style: italic;">(Uneditable except Age, Diagnosis, Site & Phone)</span>
+            </div>
+            <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="font-size: 11px;">View Full Profile</a>
+        </div>
+
+        <!-- Form encapsulates both top-card editable fields and scheduling fields -->
+        <form method="POST" id="scheduleForm">
+            {% csrf_token %}
+
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 12px; margin-bottom: 12px;">
+                <!-- UNEDITABLE: MR No -->
+                <div style="background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                    <span style="color: #666; display: block; font-size: 10px;">MR NUMBER 🔒</span>
+                    <strong style="color: #003366; font-size: 14px;">{{ patient.mr_no }}</strong>
+                </div>
+
+                <!-- UNEDITABLE: Patient Name -->
+                <div style="background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                    <span style="color: #666; display: block; font-size: 10px;">PATIENT NAME 🔒</span>
+                    <strong style="color: #222; font-size: 13px;">{{ patient.pt_name }}</strong>
+                </div>
+
+                <!-- UNEDITABLE: RT No -->
+                <div style="background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                    <span style="color: #666; display: block; font-size: 10px;">RT NUMBER 🔒</span>
+                    <strong style="color: #222;">{{ patient.rt_no|default:'N/A' }}</strong>
+                </div>
+
+                <!-- UNEDITABLE: Sex -->
+                <div style="background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                    <span style="color: #666; display: block; font-size: 10px;">SEX 🔒</span>
+                    <strong style="color: #222;">{{ patient.get_sex_display }}</strong>
+                </div>
+
+                <!-- UNEDITABLE: Primary Consultant -->
+                <div style="grid-column: span 2; background: #f8f9fa; padding: 6px 10px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                    <span style="color: #666; display: block; font-size: 10px;">PRIMARY CONSULTANT 🔒</span>
+                    <strong style="color: #003366;">{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
+                </div>
+
+                <!-- EDITABLE: Age -->
+                <div style="background: #fffdf0; padding: 6px 10px; border-radius: 3px; border: 1px solid #e6db8f;">
+                    <label style="color: #856404; display: block; font-size: 10px; font-weight: bold;">AGE (Editable ✏️)</label>
+                    <input type="number" name="age" value="{{ patient.age|default:'' }}" min="1" max="120"
+                           style="width: 100%; border: 1px solid #c9b952; padding: 4px; border-radius: 2px; font-weight: bold; font-size: 12px; background: #fff;">
+                </div>
+
+                <!-- EDITABLE: Phone Number -->
+                <div style="background: #fffdf0; padding: 6px 10px; border-radius: 3px; border: 1px solid #e6db8f;">
+                    <label style="color: #856404; display: block; font-size: 10px; font-weight: bold;">PHONE NUMBER (Editable ✏️)</label>
+                    <input type="text" name="phone_no" value="{{ patient.phone_no|default:'' }}"
+                           style="width: 100%; border: 1px solid #c9b952; padding: 4px; border-radius: 2px; font-size: 12px; background: #fff;">
+                </div>
+
+                <!-- EDITABLE: Site of Treatment -->
+                <div style="grid-column: span 2; background: #fffdf0; padding: 6px 10px; border-radius: 3px; border: 1px solid #e6db8f;">
+                    <label style="color: #856404; display: block; font-size: 10px; font-weight: bold;">SITE OF TREATMENT (Editable ✏️)</label>
+                    <select name="site_of_treatment" id="top_site_dropdown"
+                            style="width: 100%; border: 1px solid #c9b952; padding: 4px; border-radius: 2px; font-size: 12px; background: #fff;">
+                        <option value="">-- Select Treatment Site --</option>
+                        {% for s in treatment_sites %}
+                            <option value="{{ s.name }}" {% if patient.site_of_treatment == s.name or schedule.site_of_treatment == s.name %}selected{% endif %}>{{ s.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- EDITABLE: Diagnosis -->
+                <div style="grid-column: span 2; background: #fffdf0; padding: 6px 10px; border-radius: 3px; border: 1px solid #e6db8f;">
+                    <label style="color: #856404; display: block; font-size: 10px; font-weight: bold;">DIAGNOSIS (Editable ✏️)</label>
+                    <input type="text" name="diagnosis" value="{{ patient.diagnosis }}" required
+                           style="width: 100%; border: 1px solid #c9b952; padding: 4px; border-radius: 2px; font-size: 12px; background: #fff;">
+                </div>
+            </div>
+    </div>
+
+    <!-- SCHEDULING FORM CARD -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); overflow: hidden;">
+        
+        <div style="background: #f0f4f8; padding: 12px 18px; border-bottom: 2px solid #003366; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 15px; font-weight: bold; color: #003366; display: flex; align-items: center; gap: 8px;">
+                <span>⚡</span>
+                <span>Radiotherapy Treatment Scheduling & Machine Slot Allocation</span>
+            </div>
+            <span style="font-size: 11px; color: #555;">Option A Quota Engine</span>
+        </div>
+
+        <div style="padding: 20px;">
+            <div class="form-grid">
+                
+                <!-- Machine Selection (Dynamic Trigger) -->
+                <div>
+                    <label style="display: block; font-weight: bold; margin-bottom: 4px; color: #003366;">Machine: *</label>
+                    <select name="machine" id="machineSelect" required onchange="handleMachineChange(this.value);"
+                            style="width: 100%; padding: 8px 10px; border: 2px solid #003366; border-radius: 3px; font-size: 13px; font-weight: bold; background: #fff;">
+                        <option value="">-- Select Machine --</option>
+                        {% for m in machines %}
+                            <option value="{{ m.id }}" {% if schedule and schedule.machine_id == m.id %}selected{% endif %}>
+                                {{ m.name }} ({{ m.code }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <span id="machineQuotaNotice" style="font-size: 11px; color: #666; display: block; margin-top: 2px;">
+                        Select machine to load dynamic shifts & techniques
+                    </span>
+                </div>
+
+                <!-- Shift Selection -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Shift: *</label>
+                    <select name="shift" id="shiftSelect" required onchange="clearFreeSlotBox();"
+                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                        <option value="">-- Select Shift --</option>
+                        {% for s in shifts %}
+                            <option value="{{ s.id }}" {% if schedule and schedule.shift_id == s.id %}selected{% endif %}>
+                                {{ s.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Technique Selection -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Technique: *</label>
+                    <select name="technique" id="techniqueSelect" required
+                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                        <option value="">-- Select Technique --</option>
+                        {% for t in techniques %}
+                            <option value="{{ t.id }}" {% if schedule and schedule.technique_id == t.id %}selected{% endif %}>
+                                {{ t.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Special Technique -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Special Technique:</label>
+                    <select name="special_technique" id="specialTechSelect"
+                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                        {% for st in special_techniques %}
+                            <option value="{{ st.id }}" {% if schedule and schedule.special_technique_id == st.id %}selected{% elif not schedule and st.name == 'None' %}selected{% endif %}>
+                                {{ st.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Simulation Date -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Simulation Date:</label>
+                    <input type="date" name="date_of_sim" id="dateOfSim"
+                           value="{{ schedule.date_of_sim|date:'Y-m-d'|default:today }}"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Simulated For -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Simulated For:</label>
+                    <select name="simulated_for"
+                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                        <option value="">-- Select --</option>
+                        {% for sf in simulated_for_list %}
+                            <option value="{{ sf.id }}" {% if schedule and schedule.simulated_for_id == sf.id %}selected{% endif %}>
+                                {{ sf.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Dose Planned (Gy) -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Dose Planned (Gy):</label>
+                    <input type="number" step="0.01" name="dose_planned" value="{{ schedule.dose_planned|default:'' }}" placeholder="e.g. 50.00"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Number of Fractions -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Number of Fractions:</label>
+                    <input type="number" name="no_of_fractions" value="{{ schedule.no_of_fractions|default:'' }}" min="1" max="60" placeholder="e.g. 25"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Junior Resident -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Junior Resident:</label>
+                    <input type="text" name="jr_resident" value="{{ schedule.jr_resident|default:'' }}" placeholder="Dr. Resident Name"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Treatment Start Date with Slot Finder Trigger -->
+                <div>
+                    <label style="display: block; font-weight: bold; margin-bottom: 4px; color: #003366;">
+                        Treatment Start Date:
+                    </label>
+                    <div style="display: flex; gap: 6px;">
+                        <input type="date" name="date_of_start" id="dateOfStart"
+                               value="{{ schedule.date_of_start|date:'Y-m-d'|default:'' }}"
+                               style="flex-grow: 1; padding: 8px 10px; border: 2px solid #003366; border-radius: 3px; font-size: 13px; font-weight: bold;">
+                        <button type="button" onclick="findNearestSlot();"
+                                style="background: #28a745; color: #ffffff; border: 1px solid #1e7e34; padding: 6px 12px; border-radius: 3px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap;"
+                                title="Automatically search calendar for the nearest free machine quota slot">
+                            🔍 Find Slot
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Notes (Span 2) -->
+                <div style="grid-column: span 2;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Clinical / Scheduling Notes:</label>
+                    <input type="text" name="notes" value="{{ schedule.notes|default:'' }}" placeholder="Any special setup, immobilization, or scheduling notes"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+            </div>
+
+            <!-- FREE SLOT RECOMMENDATION CONTAINER (AJAX) -->
+            <div id="slotRecommendationBox" style="display: none; margin-top: 16px;"></div>
+
+            <!-- Action Buttons -->
+            <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="padding: 10px 18px;">Cancel</a>
+                
+                <button type="submit"
+                        style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 10px 24px; font-weight: bold; font-size: 13px; border-radius: 4px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.15);">
+                    💾 Save Treatment Schedule
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Dynamic Mapping AJAX Handler
+    function handleMachineChange(machineId) {
+        clearFreeSlotBox();
+        if (!machineId) return;
+
+        fetch(`/scheduler/api/machine-options/${machineId}/`)
+            .then(res => res.json())
+            .then(data => {
+                // Update quota notice
+                document.getElementById('machineQuotaNotice').innerText =
+                    `Quota: Maximum ${data.max_daily_starts} new starts/day on this machine`;
+
+                // Update Shifts
+                const shiftSelect = document.getElementById('shiftSelect');
+                const currShift = shiftSelect.value;
+                shiftSelect.innerHTML = '<option value="">-- Select Shift --</option>';
+                data.shifts.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.text = s.name;
+                    if (s.id == currShift) opt.selected = true;
+                    shiftSelect.appendChild(opt);
+                });
+
+                // Update Techniques
+                const techSelect = document.getElementById('techniqueSelect');
+                const currTech = techSelect.value;
+                techSelect.innerHTML = '<option value="">-- Select Technique --</option>';
+                data.techniques.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.text = t.name;
+                    if (t.id == currTech) opt.selected = true;
+                    techSelect.appendChild(opt);
+                });
+
+                // Update Special Techniques
+                const specSelect = document.getElementById('specialTechSelect');
+                const currSpec = specSelect.value;
+                specSelect.innerHTML = '';
+                data.special_techniques.forEach(st => {
+                    const opt = document.createElement('option');
+                    opt.value = st.id;
+                    opt.text = st.name;
+                    if (st.id == currSpec) opt.selected = true;
+                    specSelect.appendChild(opt);
+                });
+            })
+            .catch(err => console.error("Could not fetch machine options:", err));
+    }
+
+    // Nearest Free Slot Recommendation Engine
+    function findNearestSlot() {
+        const machineId = document.getElementById('machineSelect').value;
+        const shiftId = document.getElementById('shiftSelect').value;
+        const simDate = document.getElementById('dateOfSim').value;
+        const box = document.getElementById('slotRecommendationBox');
+
+        if (!machineId) {
+            alert("Please select a Machine first to check available slots.");
+            return;
+        }
+
+        box.style.display = 'block';
+        box.innerHTML = '<div style="padding: 10px; background: #f0f4f8; border-radius: 4px; color: #003366;">🔍 Evaluating machine workload and slot availability...</div>';
+
+        const url = `/scheduler/api/nearest-free-slot/?machine_id=${machineId}&shift_id=${shiftId}&start_from=${simDate}`;
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.found) {
+                    box.innerHTML = `<div class="slot-busy-card">⚠️ ${data.message}</div>`;
+                    return;
+                }
+
+                const n = data.nearest_slot;
+                let html = `
+                    <div class="slot-free-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span style="font-weight: bold; color: #155724; font-size: 13px;">✅ Nearest Available Free Slot Found:</span>
+                                <div style="font-size: 15px; font-weight: bold; color: #003366; margin: 4px 0;">
+                                    ${n.formatted} (${data.machine_name} - ${data.shift_name})
+                                </div>
+                                <span style="font-size: 11px; color: #2e7d32;">
+                                    Starts Booked: ${n.booked_count} / ${n.max_quota} (Remaining: <strong>${n.remaining}</strong> slot${n.remaining > 1 ? 's' : ''})
+                                </span>
+                            </div>
+                            <button type="button" onclick="applySlotDate('${n.date}')"
+                                    style="background: #28a745; color: #fff; border: 1px solid #1e7e34; padding: 8px 16px; font-weight: bold; border-radius: 4px; cursor: pointer;">
+                                Apply This Date ➡️
+                            </button>
+                        </div>
+                `;
+
+                if (data.alternative_slots && data.alternative_slots.length > 0) {
+                    html += `
+                        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #a5d6a7; font-size: 11px;">
+                            <span style="color: #444; font-weight: bold;">Alternative Available Dates:</span>
+                            <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
+                    `;
+                    data.alternative_slots.forEach(alt => {
+                        html += `
+                            <button type="button" onclick="applySlotDate('${alt.date}')"
+                                    style="background: #ffffff; border: 1px solid #81c784; padding: 4px 8px; border-radius: 3px; font-size: 11px; cursor: pointer;">
+                                ${alt.formatted} (${alt.remaining} free)
+                            </button>
+                        `;
+                    });
+                    html += `</div></div>`;
+                }
+
+                html += `</div>`;
+                box.innerHTML = html;
+            })
+            .catch(err => {
+                box.innerHTML = '<div class="slot-busy-card">Error calculating slot availability. Please try again.</div>';
+            });
+    }
+
+    function applySlotDate(slotDateStr) {
+        document.getElementById('dateOfStart').value = slotDateStr;
+        const box = document.getElementById('slotRecommendationBox');
+        box.innerHTML = `<div style="padding: 8px 12px; background: #e8f5e9; border: 1px solid #81c784; border-radius: 4px; color: #155724; font-size: 12px;">
+            ✓ Treatment start date set to <strong>${slotDateStr}</strong>! Click "Save Treatment Schedule" below to finalize.
+        </div>`;
+    }
+
+    function clearFreeSlotBox() {
+        const box = document.getElementById('slotRecommendationBox');
+        if (box) box.style.display = 'none';
+    }
+</script>
+{% endblock %}

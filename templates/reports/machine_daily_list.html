@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Machine Treatment Schedules - EBRT Scheduler{% endblock %}
+
+{% block content %}
+<div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 20px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #003366; padding-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+        <div>
+            <h2 style="margin: 0; font-size: 18px; color: #003366;">
+                ⚡ Machine Treatment Start Lists
+                {% if selected_machine %}— {{ selected_machine.name }}{% endif %}
+            </h2>
+            <div style="font-size: 12px; color: #666;">
+                Treatment starts query replicating Access LA1-4, DBX, DHX, UNIQUE start sheets.
+            </div>
+        </div>
+        
+        {% if schedules %}
+        <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}&export=excel"
+           class="action-ribbon-btn" style="background: #28a745; color: #ffffff; border-color: #1e7e34; font-weight: bold;">
+            📊 Export to Excel (.xlsx)
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Filter Form -->
+    <form method="GET" style="display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; align-items: flex-end; background: #f8f9fa; padding: 12px; border-radius: 4px; border: 1px solid #e2e8f0;">
+        <div>
+            <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 3px;">Machine:</label>
+            <select name="machine_id" style="padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px; background: #fff; min-width: 180px;">
+                <option value="">All Machines</option>
+                {% for m in machines %}
+                    <option value="{{ m.id }}" {% if selected_machine_id == m.id|stringformat:"s" %}selected{% endif %}>
+                        {{ m.name }} ({{ m.code }})
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 3px;">From Start Date:</label>
+            <input type="date" name="start_date" value="{{ start_date_str }}"
+                   style="padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px;">
+        </div>
+
+        <div>
+            <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 3px;">To Start Date:</label>
+            <input type="date" name="end_date" value="{{ end_date_str }}"
+                   style="padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px;">
+        </div>
+
+        <div>
+            <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 7px 16px; border-radius: 3px; font-weight: bold; cursor: pointer; font-size: 12px;">
+                Filter List
+            </button>
+            <a href="{% url 'machine_daily_list' %}" class="action-ribbon-btn" style="padding: 6px 12px; font-size: 12px;">Reset</a>
+        </div>
+    </form>
+
+    <!-- Results Table -->
+    <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
+        Found <strong>{{ total_count }}</strong> patient starts between {{ start_date_str }} and {{ end_date_str }}:
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+            <tr style="background: #003366; color: #ffffff; text-align: left;">
+                <th style="padding: 8px;">Date of Start</th>
+                <th style="padding: 8px;">Shift</th>
+                <th style="padding: 8px;">MR No.</th>
+                <th style="padding: 8px;">RT No.</th>
+                <th style="padding: 8px;">Patient Name</th>
+                <th style="padding: 8px;">Diagnosis</th>
+                <th style="padding: 8px;">Primary Consultant</th>
+                <th style="padding: 8px;">Jr. Resident</th>
+                <th style="padding: 8px;">Machine</th>
+                <th style="padding: 8px; text-align: center;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in schedules %}
+            <tr style="border-bottom: 1px solid #eee;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
+                <td style="padding: 8px; font-weight: bold; white-space: nowrap;">
+                    {{ s.date_of_start|date:"d-m-Y"|default:'Pending' }}
+                </td>
+                <td style="padding: 8px;"><span class="badge-locked">{{ s.shift_display }}</span></td>
+                <td style="padding: 8px; font-weight: 600;">
+                    <a href="{% url 'patient_detail' s.patient.id %}" style="color: #003366;">{{ s.patient.mr_no }}</a>
+                </td>
+                <td style="padding: 8px;">{{ s.patient.rt_no|default:'-' }}</td>
+                <td style="padding: 8px; font-weight: 600;">{{ s.patient.pt_name }}</td>
+                <td style="padding: 8px;">{{ s.patient.diagnosis|truncatechars:28 }}</td>
+                <td style="padding: 8px;">{{ s.patient.consultant_display }}</td>
+                <td style="padding: 8px;">{{ s.jr_resident|default:'-' }}</td>
+                <td style="padding: 8px; font-weight: 500;">{{ s.machine_display }}</td>
+                <td style="padding: 8px; text-align: center;">
+                    <a href="{% url 'schedule_patient' s.patient.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px;">
+                        Edit
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="10" style="padding: 24px; text-align: center; color: #777;">
+                    No patient treatment starts scheduled in this date range.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+{% endblock %}

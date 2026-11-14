@@ -1,0 +1,118 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ APP_TITLE }}{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/access_theme.css' %}">
+    <style>
+        .badge-locked { background: #6c757d; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
+        .badge-admin { background: #d9534f; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+        .badge-subadmin { background: #f0ad4e; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+        .badge-success { background: #28a745; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
+        .badge-warning { background: #ffc107; color: #212529; padding: 2px 6px; border-radius: 3px; font-size: 11px; }
+        .slot-free-card { background: #e8f5e9; border: 1px solid #81c784; padding: 12px; border-radius: 4px; margin-top: 8px; }
+        .slot-busy-card { background: #ffebee; border: 1px solid #e57373; padding: 12px; border-radius: 4px; margin-top: 8px; }
+        .top-patient-card { background: #ffffff; border: 2px solid #003366; border-radius: 4px; padding: 14px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .top-patient-card table { width: 100%; border-collapse: collapse; }
+        .top-patient-card td { padding: 4px 8px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+        .action-ribbon-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; text-decoration: none; padding: 4px 10px; border-radius: 3px; border: 1px solid var(--ms-btn-border); background: var(--ms-btn-bg); color: #222; }
+        .action-ribbon-btn:hover { background: var(--ms-btn-hover); border-color: var(--ms-btn-hover-border); color: #003366; }
+        .action-ribbon-btn.btn-highlight { background: #003366; color: #ffffff; border-color: #001f3f; font-weight: bold; }
+        .action-ribbon-btn.btn-highlight:hover { background: #002244; color: #ffffff; }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Top Institutional Access Header -->
+    <header class="access-app-header">
+        <div class="app-title" style="display: flex; flex-direction: column; line-height: 1.25; padding: 2px 0;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">🏥</span>
+                <span style="font-size: 15px; font-weight: bold; letter-spacing: 0.5px;">{{ APP_TITLE }}</span>
+                <span style="font-size: 10px; font-weight: normal; opacity: 0.85; margin-left: 6px;">[{{ APP_VERSION }}]</span>
+            </div>
+            <div style="font-size: 11px; opacity: 0.92; font-weight: 500; margin-left: 24px; color: #e2edfa;">
+                Kidwai Memorial Institute of Oncology — Radiation Oncology
+            </div>
+        </div>
+        <div class="app-user">
+            {% if user.is_authenticated %}
+                <span>👤 <strong>{{ user.first_name|default:user.username }}</strong>
+                    {% if CURRENT_ROLE %}
+                        {% if CURRENT_ROLE.role_name == 'Admin' %}
+                            <span class="badge-admin">Admin</span>
+                        {% elif CURRENT_ROLE.role_name == 'SubAdmin' %}
+                            <span class="badge-subadmin">SubAdmin</span>
+                        {% else %}
+                            <span class="badge-locked">{{ CURRENT_ROLE.role_name }}</span>
+                        {% endif %}
+                    {% endif %}
+                </span>
+                <span style="opacity: 0.5;">|</span>
+                <a href="{% url 'logout' %}" style="color: #ffffff; text-decoration: underline;">Logout</a>
+            {% else %}
+                <a href="{% url 'login' %}" style="color: #ffffff;">Login</a>
+            {% endif %}
+        </div>
+    </header>
+
+    <!-- Ribbon Action Toolbar -->
+    {% if user.is_authenticated %}
+    <nav class="access-toolbar" style="display: flex; gap: 6px; padding: 6px 12px; background: var(--ms-toolbar-bg); border-bottom: 1px solid var(--ms-border); flex-wrap: wrap; align-items: center;">
+        <a href="{% url 'dashboard' %}" class="action-ribbon-btn">🏠 Dashboard</a>
+        <a href="{% url 'patient_register' %}" class="action-ribbon-btn btn-highlight">➕ Register Patient</a>
+        <a href="{% url 'patient_search' %}" class="action-ribbon-btn">🔍 Search Patients</a>
+        <a href="{% url 'unscheduled_patients' %}" class="action-ribbon-btn">⏳ Unscheduled Queue</a>
+        <a href="{% url 'pending_starts_report' %}" class="action-ribbon-btn">📋 Start Dates Pending</a>
+        <a href="{% url 'machine_daily_list' %}" class="action-ribbon-btn">⚡ Machine Schedules</a>
+        <a href="{% url 'consultant_stats' %}" class="action-ribbon-btn">📊 Consultant Stats</a>
+
+        {% if IS_ADMIN_OR_SUBADMIN %}
+        <span style="color: #888; margin: 0 4px;">|</span>
+        <a href="{% url 'machine_mappings' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;" title="Configure Machine-Shift-Technique Mappings & Quotas">⚙️ Machine Mappings</a>
+        {% endif %}
+
+        {% if CAN_MANAGE_USERS %}
+        <a href="{% url 'user_list' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;">👥 Users</a>
+        {% endif %}
+
+        {% if CAN_MANAGE_ROLES %}
+        <a href="{% url 'role_dashboard' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;">🛡️ Roles</a>
+        {% endif %}
+
+        {% if CAN_MANAGE_LOOKUPS %}
+        <a href="{% url 'lookup_manager' 'machine' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;" title="Clinical Dropdown Options & Reference Tables">🗄️ Reference Lookups</a>
+        {% endif %}
+
+        {% if CAN_MANAGE_VALIDATION_RULES %}
+        <a href="{% url 'validation_config' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;" title="Configure Character Length and Format Validation Rules">🔒 Field Validations</a>
+        {% endif %}
+
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 11px; color: #555555; margin-right: 6px;">{{ "now"|date:"D, d M Y" }}</span>
+    </nav>
+    {% endif %}
+
+    <!-- Main Container -->
+    <main class="access-container" style="padding: 16px; max-width: 1300px; margin: 0 auto;">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="msg-alert msg-{{ message.tags }}" style="margin-bottom: 12px; padding: 10px 14px; border-radius: 4px; border: 1px solid;
+                    {% if message.tags == 'success' %}background: #d4edda; border-color: #c3e6cb; color: #155724;
+                    {% elif message.tags == 'error' %}background: #f8d7da; border-color: #f5c6cb; color: #721c24;
+                    {% elif message.tags == 'warning' %}background: #fff3cd; border-color: #ffeeba; color: #856404;
+                    {% else %}background: #e2edfa; border-color: #b8daff; color: #004085;{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

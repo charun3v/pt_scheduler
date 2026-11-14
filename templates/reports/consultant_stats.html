@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Consultant Monthly Starts - EBRT Scheduler{% endblock %}
+
+{% block content %}
+<div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 20px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #003366; padding-bottom: 10px;">
+        <div>
+            <h2 style="margin: 0; font-size: 18px; color: #003366;">📊 Consultant Workload Matrix (Year {{ year }})</h2>
+            <div style="font-size: 12px; color: #666;">
+                Replicates Access query 'Query_RT_Starts_consultant_monthwise': treatment starts by primary consultant month-by-month.
+            </div>
+        </div>
+
+        <form method="GET" style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 12px; font-weight: bold;">Select Year:</label>
+            <select name="year" onchange="this.form.submit();" style="padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px; font-weight: bold;">
+                {% for y in available_years %}
+                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+            <tr style="background: #003366; color: #ffffff; text-align: right;">
+                <th style="padding: 8px; text-align: left;">Primary Consultant</th>
+                {% for m in months %}
+                    <th style="padding: 8px; width: 55px;">{{ m }}</th>
+                {% endfor %}
+                <th style="padding: 8px; background: #001f3f; width: 75px;">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in data_rows %}
+            <tr style="border-bottom: 1px solid #eee; text-align: right;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
+                <td style="padding: 8px; text-align: left; font-weight: 600; color: #003366;">
+                    {{ r.consultant }}
+                </td>
+                {% for count in r.counts %}
+                    <td style="padding: 8px; {% if count > 0 %}font-weight: 500; color: #222;{% else %}color: #ccc;{% endif %}">
+                        {{ count|default:'-' }}
+                    </td>
+                {% endfor %}
+                <td style="padding: 8px; font-weight: bold; background: #f0f4f8; color: #003366;">
+                    {{ r.total }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="background: #e2edfa; font-weight: bold; border-top: 2px solid #003366; text-align: right;">
+                <td style="padding: 10px; text-align: left; font-size: 13px; color: #003366;">Monthly Totals</td>
+                {% for mt in month_totals %}
+                    <td style="padding: 10px; font-size: 12px; color: #003366;">{{ mt }}</td>
+                {% endfor %}
+                <td style="padding: 10px; font-size: 14px; background: #cce0f5; color: #002244;">{{ grand_total }}</td>
+            </tr>
+        </tfoot>
+    </table>
+
+</div>
+{% endblock %}

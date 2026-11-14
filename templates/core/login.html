@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Please Login - {{ APP_TITLE }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: center; align-items: center; min-height: 70vh;">
+    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 6px; width: 440px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden;">
+        
+        <!-- Access Window Header -->
+        <div style="background: #003366; color: #ffffff; padding: 10px 16px; font-weight: bold; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+            <span>🔐 Access Login — {{ APP_TITLE }}</span>
+            <span style="font-family: 'Brush Script MT', cursive; font-size: 16px; opacity: 0.85;">n3v</span>
+        </div>
+
+        <div style="padding: 24px;">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 28px;">🏥</div>
+                <h2 style="margin: 4px 0 2px 0; font-size: 16px; color: #003366;">Radiation Oncology</h2>
+                <div style="font-size: 12px; color: #666;">Kidwai Memorial Institute of Oncology</div>
+            </div>
+
+            <form method="POST" action="{% url 'login' %}">
+                {% csrf_token %}
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">User Name:</label>
+                    <input type="text" name="username" list="user_suggestions" required autofocus
+                           placeholder="Type or select username"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                    <datalist id="user_suggestions">
+                        {% for u in user_list %}
+                            <option value="{{ u.username }}">{{ u.first_name|default:u.username }} ({{ u.profile.role.role_name|default:'User' }})</option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">Password:</label>
+                    <input type="password" name="password" required placeholder="Enter password"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 8px 20px; font-weight: bold; border-radius: 3px; cursor: pointer;">
+                        Login
+                    </button>
+                </div>
+            </form>
+
+            <div style="margin-top: 20px; padding-top: 12px; border-top: 1px solid #eee; font-size: 11px; color: #777; text-align: center;">
+                Administrative login: <code>admin</code> or <code>n3v</code> (using your Gynae database credentials)
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
