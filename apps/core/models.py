@@ -50,6 +50,15 @@ class UserProfile(models.Model):
     locked_until = models.DateTimeField(null=True, blank=True)
     last_failed_login = models.DateTimeField(null=True, blank=True)
 
+    # Admin Approval & Dashboard Visibility Tracking
+    is_approved = models.BooleanField(default=True, db_index=True, verbose_name="Approved by Admin")
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_user_profiles', verbose_name="Approved By")
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="Approved At")
+
+    is_hidden_from_dashboard = models.BooleanField(default=False, db_index=True, verbose_name="Hide from Dashboard")
+    hidden_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='hidden_user_profiles', verbose_name="Hidden By")
+    hidden_at = models.DateTimeField(null=True, blank=True, verbose_name="Hidden At")
+
     def __str__(self):
         prefix_str = f"{self.prefix} " if self.prefix else ""
         return f"{prefix_str}{self.user.username} ({self.role.role_name if self.role else 'No Role'})"

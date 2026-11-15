@@ -35,8 +35,12 @@ def login_view(request):
         user = authenticate(request, username=uname, password=pword)
         if user is not None:
             if not user.is_active:
-                messages.error(request, "Your account is deactivated. Please contact an administrator.")
-                return render(request, 'core/login.html')
+                profile = getattr(user, 'profile', None)
+                if profile and not profile.is_approved:
+                    messages.warning(request, "Your account is awaiting Admin approval. Please wait for Admin approval before logging in.")
+                else:
+                    messages.error(request, "Your account is deactivated. Please contact an Administrator.")
+                return render(request, 'core/login.html', {'user_list': User.objects.filter(is_active=True).order_by('username')})
 
             login(request, user)
             profile = getattr(user, 'profile', None)
@@ -51,14 +55,107 @@ def login_view(request):
             )
 
             messages.success(request, f"Welcome back, {user.first_name or user.username} ({profile_role})!")
-            # User requirement: on logging in - patient has to be registered
             return redirect('patient_register')
         else:
+            # Check if this user exists with valid password but is pending approval or inactive
+            existing_user = User.objects.filter(username__iexact=uname).first()
+            if existing_user and existing_user.check_password(pword):
+                profile = getattr(existing_user, 'profile', None)
+                if profile and not profile.is_approved:
+                    messages.warning(request, "Your account is awaiting Admin approval. Please wait for Admin approval before logging in.")
+                    return render(request, 'core/login.html', {'user_list': User.objects.filter(is_active=True).order_by('username')})
+                elif not existing_user.is_active:
+                    messages.error(request, "Your account is deactivated. Please contact an Administrator.")
+                    return render(request, 'core/login.html', {'user_list': User.objects.filter(is_active=True).order_by('username')})
+
             messages.error(request, "Wrong Username or Password! Please verify your credentials.")
 
     # Get user list for convenient dropdown selection similar to MS Access Login
     users = User.objects.filter(is_active=True).order_by('username')
     return render(request, 'core/login.html', {'user_list': users})
+
+
+def register_account_view(request):
+    """
+    Public registration page accessible from Login screen.
+    Prompts for: Prefix (Dr., Mr, Mrs, Miss), Name, Username, Create Password, Retype Password, Desired Role.
+    Upon completion, saves account as inactive and pending approval (is_approved=False, is_active=False).
+    Displays message: "Wait for Admin approval".
+    """
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+
+    prefixes = ['Dr.', 'Mr', 'Mrs', 'Miss']
+    roles = Role.objects.filter(is_active=True).order_by('display_order')
+
+    if request.method == 'POST':
+        prefix = request.POST.get('prefix', 'Dr.').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        username = request.POST.get('username', '').strip().lower()
+        password = request.POST.get('password', '').strip()
+        confirm_password = request.POST.get('confirm_password', '').strip()
+        role_id = request.POST.get('role_id', '').strip()
+
+        errors = []
+        if not first_name:
+            errors.append("Full Name is required.")
+        if not username:
+            errors.append("Username / Login ID is required.")
+        if not password:
+            errors.append("Password is required.")
+        if password != confirm_password:
+            errors.append("Passwords do not match. Please retype carefully.")
+        if len(password) < 6:
+            errors.append("Password must be at least 6 characters long.")
+        if User.objects.filter(username__iexact=username).exists():
+            errors.append(f"Username '{username}' already exists. Please choose a different username.")
+
+        if errors:
+            for err in errors:
+                messages.error(request, err)
+            return render(request, 'core/register_account.html', {
+                'prefixes': prefixes,
+                'roles': roles,
+                'selected_prefix': prefix,
+                'first_name': first_name,
+                'username': username,
+                'selected_role_id': int(role_id) if role_id.isdigit() else None,
+            })
+
+        role_obj = Role.objects.filter(role_id=role_id).first() if role_id.isdigit() else None
+        if not role_obj:
+            role_obj = Role.objects.filter(role_name__icontains='Resident').first() or Role.objects.first()
+
+        new_user = User.objects.create_user(
+            username=username,
+            first_name=first_name,
+            password=password,
+            is_active=False  # Crucial: login blocked until approved
+        )
+        UserProfile.objects.create(
+            user=new_user,
+            prefix=prefix,
+            role=role_obj,
+            user_level=role_obj.role_name.upper() if role_obj else 'USER',
+            is_approved=False,
+            is_hidden_from_dashboard=False
+        )
+
+        AuditLog.objects.create(
+            user=new_user,
+            action="USER_REGISTRATION_SUBMITTED",
+            details=f"New user registration submitted for {prefix} {first_name} (Username: {username}, Role: {role_obj.role_name if role_obj else 'None'}). Awaiting Admin approval.",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, "Account registration submitted successfully! Please wait for Admin approval before logging in.")
+        return redirect('login')
+
+    return render(request, 'core/register_account.html', {
+        'prefixes': prefixes,
+        'roles': roles,
+        'selected_prefix': 'Dr.',
+    })
 
 
 def logout_view(request):
@@ -80,10 +177,11 @@ def dashboard_view(request):
     Radiotherapy Clinical Dashboard.
     Provides two primary clinical options: Register patients, Schedule patients.
     Displays a table for non-scheduled patients with pagination of 15 patients.
-    Admin (not SubAdmin) has permissions to delete patients or remove them from schedule.
+    Admin (not SubAdmin) can manage pending user accounts, approve them, and hide/show them.
     """
     query = request.GET.get('q', '').strip()
     show_hidden = request.GET.get('show_hidden') == '1'
+    show_hidden_accounts = request.GET.get('show_hidden_accounts') == '1'
     user_is_admin = is_admin_only(request.user)
 
     if show_hidden and user_is_admin:
@@ -119,12 +217,34 @@ def dashboard_view(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
+    # Pending User Account Approvals for Admin (strictly Admin only, not SubAdmin)
+    pending_accounts = []
+    hidden_accounts_count = 0
+    active_pending_count = 0
+    total_pending_count = 0
+
+    if user_is_admin:
+        pending_base = UserProfile.objects.select_related('user', 'role').filter(is_approved=False)
+        total_pending_count = pending_base.count()
+        hidden_accounts_count = pending_base.filter(is_hidden_from_dashboard=True).count()
+        active_pending_count = pending_base.filter(is_hidden_from_dashboard=False).count()
+
+        if show_hidden_accounts:
+            pending_accounts = pending_base.filter(is_hidden_from_dashboard=True).order_by('-user__date_joined')
+        else:
+            pending_accounts = pending_base.filter(is_hidden_from_dashboard=False).order_by('-user__date_joined')
+
     context = {
         'page_obj': page_obj,
         'query': query,
         'show_hidden': show_hidden,
         'hidden_count': hidden_count,
         'total_non_scheduled': paginator.count,
+        'pending_accounts': pending_accounts,
+        'show_hidden_accounts': show_hidden_accounts,
+        'hidden_accounts_count': hidden_accounts_count,
+        'active_pending_count': active_pending_count,
+        'total_pending_count': total_pending_count,
     }
     return render(request, 'core/dashboard.html', context)
 
@@ -138,6 +258,7 @@ def user_list_view(request):
     query = request.GET.get('q', '').strip()
     role_id = request.GET.get('role_id', '').strip()
     status_filter = request.GET.get('status', '').strip()
+    show_hidden_accounts = request.GET.get('show_hidden_accounts') == '1'
 
     users_qs = User.objects.select_related('profile__role').order_by('username')
 
@@ -152,12 +273,22 @@ def user_list_view(request):
         users_qs = users_qs.filter(profile__role__role_id=role_id)
 
     if status_filter == 'active':
-        users_qs = users_qs.filter(is_active=True)
+        users_qs = users_qs.filter(is_active=True, profile__is_approved=True)
     elif status_filter == 'inactive':
-        users_qs = users_qs.filter(is_active=False)
+        users_qs = users_qs.filter(is_active=False, profile__is_approved=True)
+    elif status_filter == 'pending':
+        users_qs = users_qs.filter(profile__is_approved=False)
+    elif status_filter == 'hidden':
+        users_qs = users_qs.filter(profile__is_hidden_from_dashboard=True)
+
+    if show_hidden_accounts:
+        users_qs = users_qs.filter(profile__is_hidden_from_dashboard=True)
 
     roles = Role.objects.filter(is_active=True).order_by('display_order')
     is_admin = is_admin_only(request.user)
+
+    pending_approvals_count = UserProfile.objects.filter(is_approved=False).count()
+    hidden_users_count = UserProfile.objects.filter(is_hidden_from_dashboard=True).count()
 
     context = {
         'users': users_qs,
@@ -166,9 +297,90 @@ def user_list_view(request):
         'selected_role_id': int(role_id) if role_id.isdigit() else None,
         'status_filter': status_filter,
         'is_admin': is_admin,
+        'show_hidden_accounts': show_hidden_accounts,
+        'hidden_users_count': hidden_users_count,
+        'pending_approvals_count': pending_approvals_count,
         'total_count': users_qs.count(),
     }
     return render(request, 'core/user_list.html', context)
+
+
+@login_required
+def user_approve_view(request, user_id):
+    """
+    Approve pending user account registration. Strictly Admin only (not SubAdmin).
+    Activates login and marks account as approved.
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access denied. Only Administrators can approve user accounts.")
+        return redirect('dashboard')
+
+    target_user = get_object_or_404(User, id=user_id)
+    profile, _ = UserProfile.objects.get_or_create(user=target_user)
+
+    target_user.is_active = True
+    target_user.save()
+
+    profile.is_approved = True
+    profile.approved_by = request.user
+    profile.approved_at = timezone.now()
+    profile.save()
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="USER_APPROVED",
+        details=f"Admin {request.user.username} approved and activated user account {target_user.username} ({profile.display_name}).",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+
+    messages.success(request, f"User account '{profile.display_name}' ({target_user.username}) approved and activated successfully.")
+    next_url = request.GET.get('next') or request.META.get('HTTP_REFERER')
+    if next_url and ('/dashboard' in next_url or '/users' in next_url):
+        return redirect(next_url)
+    return redirect('user_list')
+
+
+@login_required
+def user_toggle_hide_dashboard_view(request, user_id):
+    """
+    Hide or Unhide a user account from dashboard. Strictly Admin only (not SubAdmin).
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access denied. Only Administrators can hide accounts from dashboard.")
+        return redirect('dashboard')
+
+    target_user = get_object_or_404(User, id=user_id)
+    if target_user.id == request.user.id:
+        messages.error(request, "You cannot hide your own administrative account.")
+        return redirect('dashboard')
+
+    profile, _ = UserProfile.objects.get_or_create(user=target_user)
+    profile.is_hidden_from_dashboard = not profile.is_hidden_from_dashboard
+
+    if profile.is_hidden_from_dashboard:
+        profile.hidden_by = request.user
+        profile.hidden_at = timezone.now()
+        status_action = "USER_DASHBOARD_HIDDEN"
+        msg = f"User '{profile.display_name}' ({target_user.username}) has been hidden from dashboard."
+    else:
+        profile.hidden_by = None
+        profile.hidden_at = None
+        status_action = "USER_DASHBOARD_UNHIDDEN"
+        msg = f"User '{profile.display_name}' ({target_user.username}) is now visible on dashboard."
+    profile.save()
+
+    AuditLog.objects.create(
+        user=request.user,
+        action=status_action,
+        details=f"Admin {request.user.username} toggled dashboard visibility for user {target_user.username} (Hidden: {profile.is_hidden_from_dashboard}).",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+
+    messages.success(request, msg)
+    next_url = request.GET.get('next') or request.META.get('HTTP_REFERER')
+    if next_url and ('/dashboard' in next_url or '/users' in next_url):
+        return redirect(next_url)
+    return redirect('dashboard')
 
 
 @login_required

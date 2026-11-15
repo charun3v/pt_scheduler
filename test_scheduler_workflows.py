@@ -36,7 +36,7 @@ def run_tests():
     # Clean up test patients & test holidays
     Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 9999021, 9999022, 7654321, 12345]).delete()
     Holiday.objects.filter(date__in=[date(2026, 11, 20), date(2026, 11, 25)]).delete()
-    User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix']).delete()
+    User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix', 'test_new_reg_user']).delete()
 
     # 1. Test Admin vs SubAdmin vs Resident Granular Permissions
     print("\n--- Test 1: Role Permissions (Admin vs SubAdmin vs Resident) ---")
@@ -1495,6 +1495,154 @@ def run_tests():
     test_toggle_user.delete()
     doc_user.delete()
     print("✓ Test 21 Passed: User management compact/filters/Admin-only inactive, User prefix, Patient Unit, CSV/Excel exports (Consultant, Unit, Simulations), and Emergency Slot workflow fully verified.")
+
+    # 22. Test Login Self-Registration, Wait for Admin Approval, Admin Dashboard Pending Queue, and Hide/Unhide Accounts
+    print("\n--- Test 22: Login Self-Registration, Wait for Admin Approval, Admin Dashboard Pending Queue, and Hide/Unhide Accounts ---")
+    User.objects.filter(username='test_new_reg_user').delete()
+
+    # 1. Login Page has "Create new user" option
+    c.logout()
+    resp_login = c.get('/login/')
+    assert resp_login.status_code == 200
+    login_html = resp_login.content.decode('utf-8')
+    assert "Create new user" in login_html or "Create New User" in login_html
+    assert "/register-account/" in login_html
+
+    # 2. Registration Form renders required fields and "Wait for Admin approval" notice
+    resp_reg_page = c.get('/register-account/')
+    assert resp_reg_page.status_code == 200
+    reg_html = resp_reg_page.content.decode('utf-8')
+    assert "Create New User Account" in reg_html
+    assert "Prefix" in reg_html
+    assert "Dr." in reg_html
+    assert "Mr" in reg_html
+    assert "Mrs" in reg_html
+    assert "Miss" in reg_html
+    assert "Create Password" in reg_html
+    assert "Retype Password" in reg_html
+    assert "wait for admin approval" in reg_html.lower()
+
+    # 3. Password mismatch validation
+    resp_mismatch = c.post('/register-account/', {
+        'prefix': 'Dr.',
+        'first_name': 'Preethi Nair',
+        'username': 'test_new_reg_user',
+        'password': 'PassWord123!',
+        'confirm_password': 'WrongConfirmPassword!',
+        'role_id': str(res_role.role_id)
+    })
+    assert resp_mismatch.status_code == 200
+    assert "Passwords do not match" in resp_mismatch.content.decode('utf-8')
+    assert not User.objects.filter(username='test_new_reg_user').exists()
+
+    # 4. Successful Registration -> Inactive, Pending Approval, "Wait for Admin approval" message
+    resp_reg_post = c.post('/register-account/', {
+        'prefix': 'Dr.',
+        'first_name': 'Preethi Nair',
+        'username': 'test_new_reg_user',
+        'password': 'PassWord123!',
+        'confirm_password': 'PassWord123!',
+        'role_id': str(res_role.role_id)
+    }, follow=True)
+    assert resp_reg_post.status_code == 200
+    reg_messages = [m.message for m in resp_reg_post.context['messages']]
+    assert any("wait for admin approval" in m.lower() for m in reg_messages), "Success message must instruct user to wait for Admin approval"
+
+    # Verify DB state of registered user
+    reg_user = User.objects.get(username='test_new_reg_user')
+    assert reg_user.is_active is False, "Newly registered user must be inactive"
+    assert reg_user.profile.is_approved is False, "Newly registered user must have is_approved=False"
+    assert reg_user.profile.is_hidden_from_dashboard is False
+    assert reg_user.profile.prefix == 'Dr.'
+    assert reg_user.profile.display_name == 'Dr. Preethi Nair'
+
+    reg_audit = AuditLog.objects.filter(action='USER_REGISTRATION_SUBMITTED', details__icontains='test_new_reg_user').first()
+    assert reg_audit is not None, "USER_REGISTRATION_SUBMITTED audit log must be recorded"
+
+    # 5. Attempting to log in before approval is blocked with clear message
+    client_unapproved = Client()
+    resp_attempt_login = client_unapproved.post('/login/', {
+        'username': 'test_new_reg_user',
+        'password': 'PassWord123!'
+    })
+    assert resp_attempt_login.status_code == 200
+    login_msgs = [m.message for m in resp_attempt_login.context['messages']]
+    assert any("admin approval" in m.lower() for m in login_msgs), "Login must inform user that account is awaiting Admin approval"
+
+    # 6. Security Boundary: SubAdmin CANNOT see pending approval queue or approve
+    c.force_login(subadmin_user)
+    resp_subadmin_dash = c.get('/dashboard/')
+    assert resp_subadmin_dash.status_code == 200
+    subadmin_html = resp_subadmin_dash.content.decode('utf-8')
+    assert "Pending User Account Approvals" not in subadmin_html, "SubAdmin must NOT see the Admin-exclusive pending approvals card"
+
+    resp_subadmin_approve = c.get(f'/users/{reg_user.id}/approve/')
+    reg_user.refresh_from_db()
+    assert reg_user.is_active is False, "SubAdmin must NOT be permitted to approve users"
+    assert reg_user.profile.is_approved is False
+
+    resp_subadmin_hide = c.get(f'/users/{reg_user.id}/toggle-hide-dashboard/')
+    reg_user.profile.refresh_from_db()
+    assert reg_user.profile.is_hidden_from_dashboard is False, "SubAdmin must NOT be permitted to hide accounts"
+
+    # 7. Admin Dashboard: Pending Queue visible, Hide/Unhide toggle
+    c.force_login(admin_user)
+    resp_admin_dash = c.get('/dashboard/')
+    assert resp_admin_dash.status_code == 200
+    dash_html = resp_admin_dash.content.decode('utf-8')
+    assert "Pending User Account Approvals" in dash_html, "Admin must see pending user account approvals"
+    assert "test_new_reg_user" in dash_html
+    assert "Dr. Preethi Nair" in dash_html
+    assert "Show Hidden Accounts" in dash_html or "show_hidden_accounts" in dash_html
+
+    # Admin hides account from dashboard
+    resp_hide_acc = c.get(f'/users/{reg_user.id}/toggle-hide-dashboard/')
+    reg_user.profile.refresh_from_db()
+    assert reg_user.profile.is_hidden_from_dashboard is True, "Account must be marked as hidden from dashboard"
+    assert reg_user.profile.hidden_by == admin_user
+    assert reg_user.profile.hidden_at is not None
+
+    hide_acc_audit = AuditLog.objects.filter(action='USER_DASHBOARD_HIDDEN', details__icontains='test_new_reg_user').first()
+    assert hide_acc_audit is not None, "USER_DASHBOARD_HIDDEN audit log must be recorded"
+
+    # Verify hidden account is EXCLUDED from active dashboard pending queue
+    resp_admin_dash2 = c.get('/dashboard/')
+    assert reg_user.profile not in resp_admin_dash2.context['pending_accounts'], "Hidden account must not appear in active pending queue"
+
+    # Verify hidden account IS INCLUDED when Admin toggles ?show_hidden_accounts=1
+    resp_admin_dash_hidden = c.get('/dashboard/?show_hidden_accounts=1')
+    assert resp_admin_dash_hidden.status_code == 200
+    assert reg_user.profile in resp_admin_dash_hidden.context['pending_accounts'], "Hidden account must appear in hidden accounts view"
+    assert "Hidden User Accounts" in resp_admin_dash_hidden.content.decode('utf-8')
+    assert "Back to Active Pending Accounts" in resp_admin_dash_hidden.content.decode('utf-8')
+
+    # Admin unhides account
+    resp_unhide_acc = c.get(f'/users/{reg_user.id}/toggle-hide-dashboard/')
+    reg_user.profile.refresh_from_db()
+    assert reg_user.profile.is_hidden_from_dashboard is False, "Account must be restored to visible"
+
+    unhide_acc_audit = AuditLog.objects.filter(action='USER_DASHBOARD_UNHIDDEN', details__icontains='test_new_reg_user').first()
+    assert unhide_acc_audit is not None, "USER_DASHBOARD_UNHIDDEN audit log must be recorded"
+
+    # 8. Admin Approves Account
+    resp_approve = c.get(f'/users/{reg_user.id}/approve/')
+    reg_user.refresh_from_db()
+    assert reg_user.is_active is True, "Approved user must be active"
+    assert reg_user.profile.is_approved is True, "Approved user must have is_approved=True"
+    assert reg_user.profile.approved_by == admin_user
+    assert reg_user.profile.approved_at is not None
+
+    appr_audit = AuditLog.objects.filter(action='USER_APPROVED', details__icontains='test_new_reg_user').first()
+    assert appr_audit is not None, "USER_APPROVED audit log must be recorded"
+
+    # Now the approved user can log in successfully
+    client_approved = Client()
+    login_ok = client_approved.login(username='test_new_reg_user', password='PassWord123!')
+    assert login_ok is True, "Approved user must be able to log in successfully"
+
+    # Cleanup
+    reg_user.delete()
+    print("✓ Test 22 Passed: Login self-registration, 'Wait for Admin approval' flow, Admin-exclusive pending approvals, hide/unhide dashboard toggle, and user activation fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

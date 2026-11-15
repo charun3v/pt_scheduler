@@ -74,6 +74,120 @@
         </div>
     </div>
 
+    <!-- Admin Only: Pending User Account Registrations & Approval Queue -->
+    {% if IS_ADMIN_ONLY %}
+        {% if total_pending_count > 0 or show_hidden_accounts or hidden_accounts_count > 0 %}
+        <div style="background: #ffffff; border: 2px solid #b45309; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px; overflow: hidden;">
+            <div style="background: #fffbeb; border-bottom: 1px solid #fde68a; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 16px;">👥</span>
+                    <h3 style="margin: 0; font-size: 14px; color: #92400e; font-weight: bold;">
+                        {% if show_hidden_accounts %}
+                            Hidden User Accounts ({{ hidden_accounts_count }})
+                        {% else %}
+                            Pending User Account Approvals ({{ active_pending_count }})
+                        {% endif %}
+                    </h3>
+                    <span style="font-size: 11px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 1px 8px; border-radius: 10px; font-weight: 600;">
+                        Admin Exclusive
+                    </span>
+                </div>
+
+                <!-- Option for Show / Hide hidden accounts -->
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    {% if show_hidden_accounts %}
+                        <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="font-size: 11px; padding: 3px 10px; background: #e0f2fe; color: #0369a1; border-color: #7dd3fc; font-weight: 600;">
+                            ← Back to Active Pending Accounts
+                        </a>
+                    {% else %}
+                        <a href="{% url 'dashboard' %}?show_hidden_accounts=1" class="action-ribbon-btn" style="font-size: 11px; padding: 3px 10px; color: #64748b;" title="View user accounts hidden from dashboard">
+                            👁️ Show Hidden Accounts {% if hidden_accounts_count > 0 %}({{ hidden_accounts_count }}){% endif %}
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="background: #fdf6ec; color: #78350f; text-align: left; height: 26px; border-bottom: 1px solid #fed7aa;">
+                            <th style="padding: 4px 10px; width: 40px; text-align: center;">#</th>
+                            <th style="padding: 4px 10px;">Username</th>
+                            <th style="padding: 4px 10px;">Prefix & Full Name</th>
+                            <th style="padding: 4px 10px;">Requested Role</th>
+                            <th style="padding: 4px 10px;">Registration Date</th>
+                            <th style="padding: 4px 10px; text-align: center;">Approval Status</th>
+                            <th style="padding: 4px 10px; text-align: center; width: 200px;">Admin Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for prof in pending_accounts %}
+                        <tr style="border-bottom: 1px solid #fef3c7; height: 32px;" onmouseover="this.style.background='#fffbeb';" onmouseout="this.style.background='#ffffff';">
+                            <td style="padding: 4px 10px; text-align: center; color: #666; font-size: 11px;">{{ forloop.counter }}</td>
+                            <td style="padding: 4px 10px; font-weight: bold; font-family: Consolas, monospace; color: #003366;">
+                                {{ prof.user.username }}
+                            </td>
+                            <td style="padding: 4px 10px; font-weight: 600;">
+                                {% if prof.prefix %}<span style="color: #003366; font-weight: bold;">{{ prof.prefix }}</span>{% endif %}
+                                {{ prof.user.first_name|default:'-' }}
+                            </td>
+                            <td style="padding: 4px 10px;">
+                                <span class="badge-locked" style="font-size: 11px;">{{ prof.role.role_name|default:'Resident' }}</span>
+                            </td>
+                            <td style="padding: 4px 10px; color: #555; font-size: 11px;">
+                                {{ prof.user.date_joined|date:"d-M-Y H:i" }}
+                            </td>
+                            <td style="padding: 4px 10px; text-align: center;">
+                                {% if prof.is_approved %}
+                                    <span class="badge-success" style="font-size: 10px;">Approved</span>
+                                {% else %}
+                                    <span class="badge-warning" style="font-size: 10px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a;">
+                                        ⏳ Pending Approval
+                                    </span>
+                                {% endif %}
+                                {% if prof.is_hidden_from_dashboard %}
+                                    <span style="font-size: 9px; background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">
+                                        Hidden
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 4px 10px; text-align: center; white-space: nowrap;">
+                                <div style="display: inline-flex; gap: 4px; align-items: center;">
+                                    {% if not prof.is_approved %}
+                                    <a href="{% url 'user_approve' prof.user.id %}?next={{ request.get_full_path|urlencode }}"
+                                       onclick="return confirm('Approve account for {{ prof.display_name }} ({{ prof.user.username }}) and grant active system access?');"
+                                       class="action-ribbon-btn"
+                                       style="padding: 2px 10px; font-size: 11px; font-weight: bold; background: #16a34a; color: #fff; border-color: #15803d;">
+                                        ✓ Approve
+                                    </a>
+                                    {% endif %}
+                                    <a href="{% url 'user_toggle_hide_dashboard' prof.user.id %}?next={{ request.get_full_path|urlencode }}"
+                                       class="action-ribbon-btn"
+                                       style="padding: 2px 8px; font-size: 11px; color: #4b5563; border-color: #d1d5db;"
+                                       title="{% if prof.is_hidden_from_dashboard %}Unhide account on dashboard{% else %}Hide account from dashboard{% endif %}">
+                                        {% if prof.is_hidden_from_dashboard %}👁️ Unhide{% else %}🙈 Hide{% endif %}
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 16px; color: #666; font-style: italic;">
+                                {% if show_hidden_accounts %}
+                                    No hidden user accounts found.
+                                {% else %}
+                                    No pending user registration requests.
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+
     <!-- Table of Non-Scheduled Patients (Strict Single Line per Row) -->
     <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden;">
         

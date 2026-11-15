@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Create New User - {{ APP_TITLE }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: center; align-items: center; min-height: 75vh; padding: 20px 0;">
+    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 6px; width: 480px; box-shadow: 0 4px 14px rgba(0,0,0,0.15); overflow: hidden;">
+        
+        <!-- Window Header -->
+        <div style="background: #003366; color: #ffffff; padding: 10px 16px; font-weight: bold; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+            <span>➕ Create New User Account</span>
+            <span style="font-family: 'Brush Script MT', cursive; font-size: 16px; opacity: 0.85;">n3v</span>
+        </div>
+
+        <div style="padding: 24px;">
+            <div style="text-align: center; margin-bottom: 18px;">
+                <div style="font-size: 26px;">🏥</div>
+                <h2 style="margin: 4px 0 2px 0; font-size: 16px; color: #003366; font-weight: 700;">Radiation Oncology Portal</h2>
+                <div style="font-size: 12px; color: #666;">Kidwai Memorial Institute of Oncology</div>
+            </div>
+
+            <!-- Approval Policy Notice -->
+            <div style="background: #fff8e1; border: 1px solid #ffe082; border-radius: 4px; padding: 10px 12px; margin-bottom: 18px; font-size: 12px; color: #856404; display: flex; gap: 8px; align-items: flex-start;">
+                <span style="font-size: 16px;">⏳</span>
+                <div>
+                    <strong>Admin Approval Required:</strong> Once you submit this form, your account is queued for administrator review. You must <em>wait for Admin approval</em> before your login will be activated.
+                </div>
+            </div>
+
+            <form method="POST" action="{% url 'register_account' %}">
+                {% csrf_token %}
+
+                <!-- Prefix & Full Name -->
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px; color: #333;">
+                        Prefix & Full Name: <span style="color: #c00;">*</span>
+                    </label>
+                    <div style="display: flex; gap: 8px;">
+                        <select name="prefix" style="width: 100px; padding: 8px 6px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; font-weight: 600; background: #fff;">
+                            {% for p in prefixes %}
+                            <option value="{{ p }}" {% if selected_prefix == p %}selected{% endif %}>{{ p }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="text" name="first_name" required value="{{ first_name|default:'' }}"
+                               placeholder="e.g. Ramesh Kumar"
+                               style="flex: 1; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                    </div>
+                </div>
+
+                <!-- Username (Login ID) -->
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px; color: #333;">
+                        Username / Login ID: <span style="color: #c00;">*</span>
+                    </label>
+                    <input type="text" name="username" required value="{{ username|default:'' }}"
+                           placeholder="Choose username (e.g. ramesh.k)"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                    <span style="font-size: 11px; color: #777;">Used to log into the application. Letters, numbers, and dots only.</span>
+                </div>
+
+                <!-- Desired Role / Clinical Role -->
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px; color: #333;">
+                        Designation / Role:
+                    </label>
+                    <select name="role_id" style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                        {% for r in roles %}
+                        <option value="{{ r.role_id }}" {% if selected_role_id == r.role_id or r.role_name == 'Resident' %}selected{% endif %}>
+                            {{ r.role_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Create Password -->
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px; color: #333;">
+                        Create Password: <span style="color: #c00;">*</span>
+                    </label>
+                    <input type="password" name="password" required placeholder="Minimum 6 characters"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Retype Password -->
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px; color: #333;">
+                        Retype Password: <span style="color: #c00;">*</span>
+                    </label>
+                    <input type="password" name="confirm_password" required placeholder="Retype password to confirm"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Form Action Buttons -->
+                <div style="display: flex; gap: 10px; justify-content: space-between; align-items: center;">
+                    <a href="{% url 'login' %}" style="font-size: 12px; color: #555; text-decoration: underline;">
+                        ← Back to Login
+                    </a>
+                    <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 8px 20px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                        ✓ Create Account (Wait for Approval)
+                    </button>
+                </div>
+            </form>
+
+            <div style="margin-top: 18px; padding-top: 12px; border-top: 1px solid #eee; font-size: 11px; color: #777; text-align: center;">
+                Already have an approved account? <a href="{% url 'login' %}" style="color: #003366; font-weight: bold;">Login here</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

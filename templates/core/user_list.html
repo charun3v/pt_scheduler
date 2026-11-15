@@ -11,21 +11,47 @@
             <span style="font-size: 20px;">👥</span>
             <div>
                 <h2 style="margin: 0; font-size: 16px; color: #003366; font-weight: 700;">User Account Management</h2>
-                <div style="font-size: 11px; color: #555;">Manage credentials, prefixes, role permissions, and active login status.</div>
+                <div style="font-size: 11px; color: #555;">Manage credentials, prefixes, role permissions, approval status, and dashboard visibility.</div>
             </div>
         </div>
-        <a href="{% url 'user_create' %}" class="action-ribbon-btn btn-highlight" style="padding: 4px 12px; font-size: 11px; font-weight: bold;">
-            ➕ Add New User
+        <div style="display: flex; gap: 6px; align-items: center;">
+            {% if is_admin %}
+                {% if show_hidden_accounts %}
+                <a href="{% url 'user_list' %}" class="action-ribbon-btn" style="padding: 4px 10px; font-size: 11px; font-weight: bold; background: #e0f2fe; color: #0369a1; border-color: #7dd3fc;">
+                    ← Back to Active Accounts
+                </a>
+                {% elif hidden_users_count > 0 %}
+                <a href="{% url 'user_list' %}?show_hidden_accounts=1" class="action-ribbon-btn" style="padding: 4px 10px; font-size: 11px; color: #64748b;" title="View accounts hidden from dashboard">
+                    👁️ Show Hidden Accounts ({{ hidden_users_count }})
+                </a>
+                {% endif %}
+            {% endif %}
+            <a href="{% url 'user_create' %}" class="action-ribbon-btn btn-highlight" style="padding: 4px 12px; font-size: 11px; font-weight: bold;">
+                ➕ Add New User
+            </a>
+        </div>
+    </div>
+
+    <!-- Pending Requests Banner (Admin Only) -->
+    {% if is_admin and pending_approvals_count > 0 %}
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 12px; color: #92400e; font-weight: 600;">
+            🔔 <strong>{{ pending_approvals_count }}</strong> pending user account registration{{ pending_approvals_count|pluralize }} awaiting Admin approval.
+        </span>
+        <a href="{% url 'user_list' %}?status=pending" class="action-ribbon-btn" style="font-size: 11px; padding: 2px 8px; background: #d97706; color: #fff; border-color: #b45309; font-weight: bold;">
+            Review Pending Requests →
         </a>
     </div>
+    {% endif %}
 
     <!-- Filter & Search Toolbar (Single line compact) -->
     <form method="GET" action="{% url 'user_list' %}" style="display: flex; gap: 8px; align-items: center; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 4px; padding: 6px 10px; margin-bottom: 12px; flex-wrap: wrap;">
+        {% if show_hidden_accounts %}<input type="hidden" name="show_hidden_accounts" value="1">{% endif %}
         
         <div style="display: flex; align-items: center; gap: 4px;">
             <label style="font-size: 11px; font-weight: 600; color: #333;">Search:</label>
             <input type="text" name="q" value="{{ query }}" placeholder="Search username, doctor name..."
-                   style="padding: 3px 8px; font-size: 11px; border: 1px solid #707070; border-radius: 3px; width: 200px;">
+                   style="padding: 3px 8px; font-size: 11px; border: 1px solid #707070; border-radius: 3px; width: 190px;">
         </div>
 
         <div style="display: flex; align-items: center; gap: 4px;">
@@ -46,6 +72,8 @@
                 <option value="">-- All Status --</option>
                 <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active Only</option>
                 <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive / Deactivated Only</option>
+                <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending Approval Only ({{ pending_approvals_count }})</option>
+                <option value="hidden" {% if status_filter == 'hidden' %}selected{% endif %}>Hidden from Dashboard Only ({{ hidden_users_count }})</option>
             </select>
         </div>
 
@@ -53,7 +81,7 @@
             🔍 Filter
         </button>
 
-        {% if query or selected_role_id or status_filter %}
+        {% if query or selected_role_id or status_filter or show_hidden_accounts %}
         <a href="{% url 'user_list' %}" class="action-ribbon-btn" style="padding: 3px 8px; font-size: 11px;">
             Reset
         </a>
@@ -103,22 +131,48 @@
                     {{ u.profile.user_level|default:'USER' }}
                 </td>
                 <td style="padding: 4px 8px; text-align: center;">
-                    {% if u.is_active %}
+                    {% if not u.profile.is_approved %}
+                        <span class="badge-warning" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 10px; padding: 2px 6px;">
+                            ⏳ Pending Approval
+                        </span>
+                    {% elif u.is_active %}
                         <span class="badge-success" style="font-size: 10px; padding: 2px 6px;">Active</span>
                     {% else %}
                         <span class="badge-locked" style="background: #ffebe9; color: #cf222e; border: 1px solid #ff8182; font-size: 10px; padding: 2px 6px;">
                             Inactive / Blocked
                         </span>
                     {% endif %}
+                    {% if u.profile.is_hidden_from_dashboard %}
+                        <span style="font-size: 9px; background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; padding: 1px 4px; border-radius: 3px; display: block; margin-top: 2px;">
+                            Hidden on Dashboard
+                        </span>
+                    {% endif %}
                 </td>
                 <td style="padding: 4px 8px; text-align: center; white-space: nowrap;">
                     <div style="display: inline-flex; gap: 4px; align-items: center;">
+                        {% if is_admin and not u.profile.is_approved %}
+                            <a href="{% url 'user_approve' u.id %}"
+                               onclick="return confirm('Approve account for {{ u.username }} and grant active access?');"
+                               class="action-ribbon-btn"
+                               style="padding: 2px 8px; font-size: 11px; font-weight: bold; background: #16a34a; color: #fff; border-color: #15803d;"
+                               title="Approve user registration request">
+                                ✓ Approve
+                            </a>
+                        {% endif %}
+
                         <a href="{% url 'user_edit' u.id %}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px;" title="Edit user details & credentials">
                             ✏️ Edit
                         </a>
 
                         {% if is_admin %}
                             {% if u.id != request.user.id %}
+                                <a href="{% url 'user_toggle_hide_dashboard' u.id %}"
+                                   class="action-ribbon-btn"
+                                   style="padding: 2px 6px; font-size: 11px; color: #4b5563; border-color: #d1d5db;"
+                                   title="{% if u.profile.is_hidden_from_dashboard %}Unhide account on dashboard{% else %}Hide account from dashboard{% endif %}">
+                                    {% if u.profile.is_hidden_from_dashboard %}👁️ Unhide{% else %}🙈 Hide{% endif %}
+                                </a>
+
                                 <a href="{% url 'user_toggle_active' u.id %}"
                                    onclick="return confirm('Are you sure you want to {% if u.is_active %}DEACTIVATE{% else %}ACTIVATE{% endif %} user {{ u.username }}? {% if u.is_active %}Login will be blocked and their name hidden from clinical dropdowns.{% endif %}');"
                                    class="action-ribbon-btn"
