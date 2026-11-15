@@ -126,6 +126,23 @@ class PrintTemplateConfig(models.Model):
         verbose_name="Section Title Format"
     )
     
+    emergency_intro_paragraph = models.TextField(
+        default=(
+            "The scheduled patient lists are handed over to Chief Radiotherapy Technologists and RTTs posted in the "
+            "respective machines to start radiotherapy for the new patients as scheduled in the table below. "
+            "The following are the list of the patients for whom radiotherapy is to be started on an emergency basis on the respective "
+            "dates. RTTs are required to perofrm the necessary procedures as per instructions on the RT chart, "
+            "including setup and verification"
+        ),
+        verbose_name="Emergency Introductory Instructions / Notice"
+    )
+    
+    emergency_table_title = models.CharField(
+        max_length=255,
+        default="Emergency/Vacant Slot list",
+        verbose_name="Emergency Section Title Format"
+    )
+    
     note_paragraph_1 = models.TextField(
         default=(
             "Both the Consultant Radiation oncologist and the Radiation Physicist should have signed and dated the "

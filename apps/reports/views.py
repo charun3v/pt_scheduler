@@ -333,13 +333,97 @@ def emergency_slots_report_view(request):
     """
     Emergency & Vacant Slots Queue.
     Lists all patients assigned to Emergency or Vacant slot filling.
-    Allows viewing indication, intended start date, and management.
+    Allows filtering by Machine (All Machines Consolidated default), Start Date, End Date, Presets.
+    Provides instant live search, editing, reverting, and official PDF/browser print designer.
     """
-    schedules = TreatmentSchedule.objects.select_related(
+    all_machines = Machine.objects.filter(is_active=True).order_by('display_order')
+    all_shifts = Shift.objects.filter(is_active=True).order_by('display_order')
+
+    machine_id = request.GET.get('machine_id', 'all')
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    preset = request.GET.get('preset', '')
+
+    today = date.today()
+    default_start = get_upcoming_monday(today)
+    default_end = add_six_months(default_start)
+
+    start_date = None
+    end_date = None
+
+    if preset == 'this_month':
+        start_date = today.replace(day=1)
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        end_date = today.replace(day=last_day)
+        start_date_str = start_date.isoformat()
+        end_date_str = end_date.isoformat()
+    elif preset == 'next_30':
+        start_date = today
+        end_date = today + timedelta(days=30)
+        start_date_str = start_date.isoformat()
+        end_date_str = end_date.isoformat()
+    elif preset == 'all_2026':
+        start_date = date(2026, 1, 1)
+        end_date = date(2026, 12, 31)
+        start_date_str = start_date.isoformat()
+        end_date_str = end_date.isoformat()
+    elif preset == 'all':
+        start_date = None
+        end_date = None
+        start_date_str = ''
+        end_date_str = ''
+    else:
+        if start_date_str:
+            try:
+                start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+                start_date_str = start_date.isoformat()
+            except ValueError:
+                start_date = None
+                start_date_str = ''
+        else:
+            start_date = None
+            start_date_str = ''
+
+        if end_date_str:
+            try:
+                end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                end_date_str = end_date.isoformat()
+            except ValueError:
+                end_date = None
+                end_date_str = ''
+        else:
+            end_date = None
+            end_date_str = ''
+
+    base_qs = TreatmentSchedule.objects.select_related(
         'patient', 'patient__primary_consultant', 'machine', 'shift', 'technique'
     ).filter(
         Q(is_emergency_slot=True) | Q(status__in=['Emergency', 'Vacant'])
-    ).order_by('-intended_start_date', '-created_at')
+    )
+
+    selected_machine = None
+    if machine_id and machine_id != 'all':
+        try:
+            m_id = int(machine_id)
+            base_qs = base_qs.filter(machine_id=m_id)
+            selected_machine = Machine.objects.filter(id=m_id).first()
+        except (ValueError, TypeError):
+            pass
+
+    if start_date and end_date:
+        base_qs = base_qs.filter(
+            Q(intended_start_date__range=[start_date, end_date]) | Q(intended_start_date__isnull=True)
+        )
+    elif start_date:
+        base_qs = base_qs.filter(
+            Q(intended_start_date__gte=start_date) | Q(intended_start_date__isnull=True)
+        )
+    elif end_date:
+        base_qs = base_qs.filter(
+            Q(intended_start_date__lte=end_date) | Q(intended_start_date__isnull=True)
+        )
+
+    schedules = base_qs.order_by('intended_start_date', 'machine__display_order', 'patient__pt_name')
 
     export_fmt = request.GET.get('export')
     if export_fmt == 'excel':
@@ -347,9 +431,55 @@ def emergency_slots_report_view(request):
     elif export_fmt == 'csv':
         return export_emergency_slots_csv(schedules)
 
+    # For Print Modal: Consultant options, designations, and template config
+    active_print_cfg = PrintTemplateConfig.get_active()
+    consultant_users = User.objects.filter(
+        Q(profile__role__role_name__icontains='Consultant') | 
+        Q(profile__role__role_description__icontains='Consultant'),
+        is_active=True
+    ).select_related('profile').order_by('first_name', 'username')
+
+    consultant_options = []
+    seen = set()
+    if active_print_cfg.default_signing_authority:
+        consultant_options.append(active_print_cfg.default_signing_authority)
+        seen.add(active_print_cfg.default_signing_authority.strip().lower())
+
+    for u in consultant_users:
+        prefix = u.profile.prefix if hasattr(u, 'profile') and u.profile and u.profile.prefix else 'Dr.'
+        full = u.get_full_name().strip()
+        if full:
+            name_str = f"{prefix} {full}".strip()
+        elif u.first_name:
+            name_str = f"{prefix} {u.first_name}".strip()
+        else:
+            name_str = f"{prefix} {u.username.title()}".strip()
+        if name_str.strip().lower() not in seen:
+            consultant_options.append(name_str)
+            seen.add(name_str.strip().lower())
+
+    for c in Consultant.objects.filter(is_active=True).order_by('name'):
+        if c.name.strip().lower() not in seen:
+            consultant_options.append(c.name)
+            seen.add(c.name.strip().lower())
+
+    designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
+
     context = {
         'schedules': schedules,
         'total_count': schedules.count(),
+        'all_machines': all_machines,
+        'all_shifts': all_shifts,
+        'selected_machine': selected_machine,
+        'selected_machine_id': machine_id,
+        'start_date_str': start_date_str,
+        'end_date_str': end_date_str,
+        'print_default_start': default_start.isoformat(),
+        'print_default_end': default_end.isoformat(),
+        'preset': preset,
+        'consultant_options': consultant_options,
+        'designations': designations,
+        'print_template_config': active_print_cfg,
     }
     return render(request, 'reports/emergency_slots.html', context)
 
@@ -1620,6 +1750,14 @@ def print_template_settings_view(request):
                 "including setup and verification"
             )
             config.table_section_title = "New Patient starts from {start_date} to {end_date}"
+            config.emergency_intro_paragraph = (
+                "The scheduled patient lists are handed over to Chief Radiotherapy Technologists and RTTs posted in the "
+                "respective machines to start radiotherapy for the new patients as scheduled in the table below. "
+                "The following are the list of the patients for whom radiotherapy is to be started on an emergency basis on the respective "
+                "dates. RTTs are required to perofrm the necessary procedures as per instructions on the RT chart, "
+                "including setup and verification"
+            )
+            config.emergency_table_title = "Emergency/Vacant Slot list"
             config.note_paragraph_1 = (
                 "Both the Consultant Radiation oncologist and the Radiation Physicist should have signed and dated the "
                 "RT Chart and ensure that informed written consent should be signed by the patient and his/her attendant."
@@ -1658,6 +1796,8 @@ def print_template_settings_view(request):
         config.header_line_3 = request.POST.get('header_line_3', config.header_line_3).strip()
         config.intro_paragraph = request.POST.get('intro_paragraph', config.intro_paragraph).strip()
         config.table_section_title = request.POST.get('table_section_title', config.table_section_title).strip()
+        config.emergency_intro_paragraph = request.POST.get('emergency_intro_paragraph', config.emergency_intro_paragraph).strip()
+        config.emergency_table_title = request.POST.get('emergency_table_title', config.emergency_table_title).strip()
         config.note_paragraph_1 = request.POST.get('note_paragraph_1', config.note_paragraph_1).strip()
         config.note_paragraph_2 = request.POST.get('note_paragraph_2', config.note_paragraph_2).strip()
         config.copy_to_recipients = request.POST.get('copy_to_recipients', config.copy_to_recipients).strip()
@@ -1723,5 +1863,406 @@ def print_template_settings_view(request):
         'designations': designations,
     }
     return render(request, 'reports/print_template_settings.html', context)
+
+
+# ==============================================================================
+# EMERGENCY & VACANT SLOT SCHEDULE (PRINT & PDF EXPORT)
+# ==============================================================================
+
+def get_print_emergency_schedule_data(request):
+    """
+    Shared helper to query and prepare Emergency / Vacant Slot records for printing and PDF generation.
+    Supports:
+    - 'All machines consolidated' (first & default): single consolidated sheet of all emergency patients.
+    - Individual machine selections: separate sheet per selected machine.
+    - Start Date & End Date filtering on intended_start_date.
+    - Modality (Teletherapy / Brachytherapy).
+    - Institutional headers, signing authority, and designation.
+    """
+    config = PrintTemplateConfig.get_active()
+
+    modality = request.GET.get('modality', 'Teletherapy')
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+
+    signing_authority = request.GET.get('signing_authority')
+    if not signing_authority or not signing_authority.strip():
+        signing_authority = config.default_signing_authority
+    else:
+        signing_authority = signing_authority.strip()
+
+    designation = request.GET.get('designation')
+    if not designation or not designation.strip():
+        designation = config.default_designation
+    else:
+        designation = designation.strip()
+
+    copy_to_list = [line.strip() for line in config.copy_to_recipients.strip().splitlines() if line.strip()]
+
+    today = date.today()
+    default_start = get_upcoming_monday(today)
+    default_end = add_six_months(default_start)
+
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            start_date = default_start
+    else:
+        start_date = default_start
+
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            end_date = default_end
+    else:
+        end_date = default_end
+
+    machine_param_list = request.GET.getlist('machines')
+    if len(machine_param_list) == 1 and ',' in machine_param_list[0]:
+        machine_param_list = [m.strip() for m in machine_param_list[0].split(',') if m.strip()]
+
+    # If 'all' is selected or nothing selected or machine_id == 'all', it is consolidated!
+    is_consolidated = ('all' in machine_param_list) or (not machine_param_list) or (request.GET.get('machine_id') == 'all')
+
+    schedules_qs = TreatmentSchedule.objects.select_related(
+        'patient', 'machine', 'shift', 'technique', 'patient__primary_consultant'
+    ).filter(
+        Q(is_emergency_slot=True) | Q(status__in=['Emergency', 'Vacant'])
+    )
+
+    if modality:
+        schedules_qs = schedules_qs.filter(treatment_type=modality)
+
+    if start_date and end_date:
+        schedules_qs = schedules_qs.filter(
+            Q(intended_start_date__range=[start_date, end_date]) | Q(intended_start_date__isnull=True)
+        )
+
+    schedules_qs = schedules_qs.order_by(
+        'intended_start_date', 'machine__display_order', 'patient__pt_name'
+    )
+
+    all_schedules = list(schedules_qs)
+
+    sheets = []
+    if is_consolidated:
+        sheets.append({
+            'is_consolidated': True,
+            'machine': None,
+            'box_title': 'Consolidated',
+            'schedules': all_schedules,
+            'count': len(all_schedules)
+        })
+    else:
+        selected_machines = list(Machine.objects.filter(id__in=machine_param_list, is_active=True).order_by('display_order'))
+        for m in selected_machines:
+            m_schedules = [s for s in all_schedules if s.machine_id == m.id]
+            sheets.append({
+                'is_consolidated': False,
+                'machine': m,
+                'box_title': m.name,
+                'schedules': m_schedules,
+                'count': len(m_schedules)
+            })
+
+    now_dt = datetime.now()
+    return {
+        'modality': modality,
+        'start_date': start_date,
+        'end_date': end_date,
+        'start_date_str': start_date.isoformat(),
+        'end_date_str': end_date.isoformat(),
+        'start_date_formatted': f"{start_date.day}/{start_date.month}/{start_date.strftime('%y')}",
+        'end_date_formatted': f"{end_date.day}/{end_date.month}/{end_date.strftime('%y')}",
+        'is_consolidated': is_consolidated,
+        'sheets': sheets,
+        'total_patients': len(all_schedules),
+        'today_str': today.strftime("%d-%m-%Y"),
+        'now_time_str': now_dt.strftime("%H:%M"),
+        'now_date_str': now_dt.strftime("%d %B %Y"),
+        'config': config,
+        'signing_authority': signing_authority,
+        'designation': designation,
+        'copy_to_list': copy_to_list,
+    }
+
+
+def generate_emergency_sheet_pdf(data):
+    """
+    Generates official KMIO Emergency / Vacant Slot list PDF matching the institutional
+    template (Template_-_EmergencySlotReport.pdf):
+    - 7 Columns: Start Date, Hospital no, Patient name, Diagnosis, Primary Consultant, Machine, Jr. Resident.
+    - A4 size with 2.5 cm margins on all sides.
+    - Consolidated mode: all machines continuous table.
+    - Machine mode: individual machine sheets with top-right machine box.
+    - Vertical padding: 2.7 pt (+0.5 mm).
+    - Footer with timestamp and no page/sheet numbering.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.pdfgen import canvas
+    import io
+
+    config = data.get('config') or PrintTemplateConfig.get_active()
+    buffer = io.BytesIO()
+
+    margin_cm = config.page_margin_cm or 2.5
+    margin_25mm = margin_cm * cm
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=margin_25mm,
+        rightMargin=margin_25mm,
+        topMargin=margin_25mm,
+        bottomMargin=margin_25mm
+    )
+
+    class NumberedCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                self.saveState()
+                self.setFont('Helvetica', 7.5)
+                self.setFillColor(colors.HexColor('#222222'))
+                self.drawString(margin_25mm, 1.4 * cm, f"Report Generated on:   {data['now_time_str']}    {data['now_date_str']}")
+                self.restoreState()
+                super().showPage()
+            super().save()
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('KMIO_Title', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=1, leading=13)
+    dept_style = ParagraphStyle('KMIO_Dept', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=10, alignment=1, leading=12)
+    sub_style = ParagraphStyle('KMIO_Sub', parent=styles['Normal'], fontName='Helvetica-Oblique', fontSize=8.5, alignment=1, leading=10)
+    box_style = ParagraphStyle('KMIO_Box', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9.5, alignment=1, leading=11)
+    left_ref_style = ParagraphStyle('KMIO_LeftRef', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=10)
+    date_style = ParagraphStyle('KMIO_Date', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, alignment=2, leading=10)
+
+    intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9.5, alignment=4)
+    sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
+
+    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=6.8, leading=8.5, alignment=0)
+
+    note_title_style = ParagraphStyle('KMIO_NoteTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9)
+    note_text_style = ParagraphStyle('KMIO_NoteText', parent=styles['Normal'], fontName='Helvetica', fontSize=6.5, leading=8.5, alignment=4)
+
+    copy_style = ParagraphStyle('KMIO_Copy', parent=styles['Normal'], fontName='Helvetica', fontSize=6.5, leading=8.5)
+    copy_bold = ParagraphStyle('KMIO_CopyB', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7, leading=9)
+    sig_name = ParagraphStyle('KMIO_SigName', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9.5, leading=11, alignment=2)
+    sig_title = ParagraphStyle('KMIO_SigTitle', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=8, leading=10, alignment=2)
+    sig_dept = ParagraphStyle('KMIO_SigDept', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2)
+
+    story = []
+    # Usable width: 453.5 pt on A4 with 2.5cm margins
+    col_widths = [50, 52, 72, 98, 80, 55, 46.5]
+
+    for sheet_idx, sheet in enumerate(data['sheets']):
+        if sheet_idx > 0:
+            story.append(PageBreak())
+
+        # Header block
+        if sheet.get('is_consolidated', False):
+            header_data = [
+                [
+                    Paragraph(config.ref_code_prefix, left_ref_style),
+                    [
+                        Paragraph(config.header_line_1, title_style),
+                        Spacer(1, 1),
+                        Paragraph(config.header_line_2, dept_style),
+                        Spacer(1, 1),
+                        Paragraph(config.header_line_3, sub_style)
+                    ],
+                    Paragraph(data['today_str'], date_style)
+                ]
+            ]
+        else:
+            header_data = [
+                [
+                    Paragraph(config.ref_code_prefix, left_ref_style),
+                    [
+                        Paragraph(config.header_line_1, title_style),
+                        Spacer(1, 1),
+                        Paragraph(config.header_line_2, dept_style),
+                        Spacer(1, 1),
+                        Paragraph(config.header_line_3, sub_style)
+                    ],
+                    [
+                        Paragraph(data['today_str'], date_style),
+                        Spacer(1, 3),
+                        Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
+                            ('BOX', (0,0), (-1,-1), 1.2, colors.black),
+                            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                            ('TOPPADDING', (0,0), (-1,-1), 3),
+                            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                            ('LEFTPADDING', (0,0), (-1,-1), 2),
+                            ('RIGHTPADDING', (0,0), (-1,-1), 2),
+                        ])
+                    ]
+                ]
+            ]
+        ht = Table(header_data, colWidths=[100, 253.5, 100])
+        ht.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
+        story.append(ht)
+        story.append(Spacer(1, 5))
+
+        # Narrative paragraph
+        intro_text = config.emergency_intro_paragraph or config.intro_paragraph
+        story.append(Paragraph(intro_text, intro_style))
+        story.append(Spacer(1, 5))
+
+        # Table section title
+        sec_title = config.emergency_table_title or "Emergency/Vacant Slot list"
+        story.append(Paragraph(sec_title, sec_title_style))
+        story.append(Spacer(1, 5))
+
+        # 7-Column Table
+        table_rows = [
+            [
+                Paragraph('Start Date', th_style),
+                Paragraph('Hospital no', th_style),
+                Paragraph('Patient name', th_style),
+                Paragraph('Diagnosis', th_style),
+                Paragraph('Primary Consultant', th_style),
+                Paragraph('Machine', th_style),
+                Paragraph('Jr. Resident', th_style),
+            ]
+        ]
+
+        if sheet['schedules']:
+            for s in sheet['schedules']:
+                d_str = s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else '-'
+                mr_str = str(s.patient.mr_no)
+                pt_str = str(s.patient.pt_name or '-').replace('\n', ' ').strip()[:18]
+                diag_str = str(s.patient.diagnosis or '-').replace('\n', ' ').strip()[:28]
+                cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
+                mach_str = str(s.machine.name if s.machine else 'Unassigned').replace('\n', ' ').strip()[:14]
+                jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:14]
+
+                table_rows.append([
+                    d_str, mr_str, pt_str, diag_str, cons_str, mach_str, jr_str
+                ])
+        else:
+            label = "Emergency / Vacant slot queue" if sheet.get('is_consolidated') else sheet['machine'].name
+            table_rows.append([
+                f"No patients currently assigned to {label} between {data['start_date_formatted']} and {data['end_date_formatted']}.",
+                '', '', '', '', '', ''
+            ])
+
+        v_pad = config.row_vertical_padding_pt or 2.7
+        pt_table = Table(table_rows, colWidths=col_widths, repeatRows=1)
+        ts = [
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
+            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
+            ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+            ('FONTSIZE', (0,1), (-1,-1), 6.5),
+            ('LEADING', (0,1), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), v_pad),
+            ('BOTTOMPADDING', (0,0), (-1,-1), v_pad),
+            ('LEFTPADDING', (0,0), (-1,-1), 2),
+            ('RIGHTPADDING', (0,0), (-1,-1), 2),
+        ]
+        if not sheet['schedules']:
+            ts.append(('SPAN', (0,1), (-1,1)))
+            ts.append(('ALIGN', (0,1), (-1,1), 'CENTER'))
+            ts.append(('TOPPADDING', (0,1), (-1,1), 10))
+            ts.append(('BOTTOMPADDING', (0,1), (-1,1), 10))
+
+        pt_table.setStyle(TableStyle(ts))
+        story.append(pt_table)
+        story.append(Spacer(1, 6))
+
+        # Bottom block (Please note, Copy to & Signature Authority)
+        note_p1 = config.note_paragraph_1
+        note_p2 = config.note_paragraph_2
+
+        copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
+        for c_item in data.get('copy_to_list', []):
+            copy_to_flowables.append(Paragraph(c_item, copy_style))
+
+        sig_name_val = data.get('signing_authority') or config.default_signing_authority
+        sig_desig_val = data.get('designation') or config.default_designation
+        sig_flowables = [
+            Paragraph(sig_name_val, sig_name),
+            Paragraph(sig_desig_val, sig_title),
+            Paragraph(config.department_signature_line, sig_dept),
+        ]
+
+        bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
+        bottom_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
+
+        footer_elements = [
+            Paragraph('Please note:', note_title_style),
+            Spacer(1, 1),
+            Paragraph(note_p1, note_text_style),
+            Spacer(1, 2),
+            Paragraph(note_p2, note_text_style),
+            Spacer(1, 6),
+            bottom_table
+        ]
+        story.append(KeepTogether(footer_elements))
+
+    doc.build(story, canvasmaker=NumberedCanvas)
+    return buffer.getvalue()
+
+
+@login_required
+def print_emergency_schedule_view(request):
+    """
+    Browser-optimised HTML print view of the Emergency / Vacant Slot list.
+    Supports consolidated list across all machines or individual machine sheets.
+    """
+    if not is_admin_or_subadmin(request.user):
+        messages.error(request, "Access restricted. Printing emergency schedules is only available to clinical administrators.")
+        return redirect('dashboard')
+    data = get_print_emergency_schedule_data(request)
+    return render(request, 'reports/print_emergency_sheet.html', data)
+
+
+@login_required
+def print_emergency_schedule_pdf_view(request):
+    """
+    Streams official KMIO Emergency/Vacant Slot list PDF download.
+    Generated via ReportLab with pixel-perfect 7-column fidelity to institutional template.
+    """
+    if not is_admin_or_subadmin(request.user):
+        messages.error(request, "Access restricted. Printing emergency schedules is only available to clinical administrators.")
+        return redirect('dashboard')
+    data = get_print_emergency_schedule_data(request)
+    pdf_bytes = generate_emergency_sheet_pdf(data)
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    start_tag = data['start_date_str']
+    end_tag = data['end_date_str']
+    response['Content-Disposition'] = f'inline; filename="KMIO_Emergency_Slot_List_{start_tag}_to_{end_tag}.pdf"'
+    return response
 
 

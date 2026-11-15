@@ -7,6 +7,7 @@ urlpatterns = [
     path('schedule/<int:schedule_id>/delete/', views.schedule_delete_view, name='schedule_delete'),
     path('course/<int:schedule_id>/tag/', views.tag_treatment_course_view, name='tag_treatment_course'),
     path('course/<int:schedule_id>/emergency-slot/', views.emergency_slot_view, name='emergency_slot_view'),
+    path('emergency-slot/<int:schedule_id>/', views.emergency_slot_view, name='emergency_slot_direct'),
     path('course/<int:schedule_id>/revert-emergency/', views.revert_emergency_slot_view, name='revert_emergency_slot'),
     path('unscheduled/', views.unscheduled_patients_view, name='unscheduled_patients'),
     path('mappings/', views.machine_mappings_view, name='machine_mappings'),

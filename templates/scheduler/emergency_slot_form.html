@@ -14,14 +14,14 @@
                 <span style="font-size: 20px;">🚨</span>
                 <div>
                     <h2 style="margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.3px;">
-                        Emergency / Vacant Slot Assignment
+                        {% if is_editing %}Edit Emergency / Vacant Slot{% else %}Emergency / Vacant Slot Assignment{% endif %}
                     </h2>
                     <div style="font-size: 11px; opacity: 0.9; margin-top: 2px;">
                         Course #{{ sched.id }} &bull; {{ sched.treatment_type }}
                     </div>
                 </div>
             </div>
-            <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="background: rgba(255,255,255,0.2); color: #fff; border-color: rgba(255,255,255,0.4); font-size: 11px;">
+            <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'patient_detail' patient.id %}{% endif %}" class="action-ribbon-btn" style="background: rgba(255,255,255,0.2); color: #fff; border-color: rgba(255,255,255,0.4); font-size: 11px;">
                 Cancel / Return
             </a>
         </div>
@@ -79,14 +79,18 @@
         <!-- Form Body -->
         <form method="POST" style="padding: 20px;">
             {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next_url }}">
 
             <!-- Notice Banner -->
             <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 10px 14px; margin-bottom: 18px; font-size: 12px; color: #92400e; display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 18px;">⚠️</span>
                 <div>
-                    <strong>Clinical Notice:</strong> Once approved, 
-                    <em>"Patient has been shifted to Emergency / Vacant slot list - will be removed from the normal schedule list."</em>
-                    This action will be recorded in the system audit trail.
+                    <strong>Clinical Notice:</strong> 
+                    {% if is_editing %}
+                        Updating dedicated Emergency / Vacant slot attributes. These patients remain isolated from the regular daily machine start quota.
+                    {% else %}
+                        Once approved, <em>"Patient has been shifted to Emergency / Vacant slot list - will be removed from the normal schedule list."</em> This action will be recorded in the system audit trail.
+                    {% endif %}
                 </div>
             </div>
 
@@ -97,11 +101,11 @@
                 </label>
                 <div style="display: flex; gap: 16px; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px 14px; border-radius: 4px;">
                     <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: #991b1b;">
-                        <input type="radio" name="slot_category" value="Emergency" id="catEmergency" checked onchange="toggleReasonField();">
+                        <input type="radio" name="slot_category" value="Emergency" id="catEmergency" {% if sched.slot_category != 'Vacant' %}checked{% endif %} onchange="toggleReasonField();">
                         <span>🚨 Emergency Slot</span>
                     </label>
                     <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: #0369a1;">
-                        <input type="radio" name="slot_category" value="Vacant" id="catVacant" onchange="toggleReasonField();">
+                        <input type="radio" name="slot_category" value="Vacant" id="catVacant" {% if sched.slot_category == 'Vacant' %}checked{% endif %} onchange="toggleReasonField();">
                         <span>⚡ Vacant Slot Filling</span>
                     </label>
                 </div>
@@ -118,7 +122,7 @@
             </div>
 
             <!-- Field 3: Reason for Emergency (Editable Dropdown) -->
-            <div id="reasonContainer" style="margin-bottom: 16px;">
+            <div id="reasonContainer" style="margin-bottom: 16px; {% if sched.slot_category == 'Vacant' %}display: none;{% endif %}">
                 <label style="display: block; font-weight: bold; font-size: 12px; color: #111; margin-bottom: 4px;">
                     Reason for Emergency: *
                 </label>
@@ -138,7 +142,65 @@
                 </div>
             </div>
 
-            <!-- Field 4: Clinical Notes -->
+            <!-- Field 4: Machine, Shift & Junior Resident Assignment -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; margin-bottom: 18px;">
+                <div style="font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 10px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">
+                    🏥 Machine, Shift & Resident Allocation
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                    <!-- Machine -->
+                    <div>
+                        <label for="machineSelect" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 3px; color: #334155;">
+                            Assigned Machine:
+                        </label>
+                        <select name="machine_id" id="machineSelect" style="width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; background: #fff;">
+                            <option value="">-- Machine Unassigned --</option>
+                            {% for m in all_machines %}
+                            <option value="{{ m.id }}" {% if sched.machine_id == m.id %}selected{% endif %}>
+                                {{ m.name }} [{{ m.alias|default:m.name }}]
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Shift -->
+                    <div>
+                        <label for="shiftSelect" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 3px; color: #334155;">
+                            Treatment Shift:
+                        </label>
+                        <select name="shift_id" id="shiftSelect" style="width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; background: #fff;">
+                            <option value="">-- Shift Unassigned --</option>
+                            {% for sh in all_shifts %}
+                            <option value="{{ sh.id }}" {% if sched.shift_id == sh.id %}selected{% endif %}>
+                                {{ sh.name }} ({{ sh.start_time|time:"H:i" }}-{{ sh.end_time|time:"H:i" }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Junior Resident -->
+                    <div>
+                        <label for="jrResidentSelect" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 3px; color: #334155;">
+                            Junior Resident:
+                        </label>
+                        <select name="jr_resident" id="jrResidentSelect" style="width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; background: #fff;">
+                            <option value="">-- None / Unassigned --</option>
+                            {% for jr in jr_users %}
+                                {% with jr_name=jr.get_full_name|default:jr.username %}
+                                <option value="{{ jr_name }}" {% if sched.jr_resident == jr_name %}selected{% endif %}>
+                                    {{ jr_name }} ({{ jr.username }})
+                                </option>
+                                {% endwith %}
+                            {% endfor %}
+                            {% if sched.jr_resident and sched.jr_resident not in jr_user_names %}
+                                <option value="{{ sched.jr_resident }}" selected>{{ sched.jr_resident }} (Legacy)</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Field 5: Clinical Notes -->
             <div style="margin-bottom: 20px;">
                 <label style="display: block; font-weight: 600; font-size: 12px; color: #333; margin-bottom: 4px;">
                     Clinical / Setup Notes:
@@ -149,12 +211,16 @@
 
             <!-- Footer Action Buttons -->
             <div style="border-top: 1px solid #e5e7eb; padding-top: 14px; display: flex; justify-content: flex-end; gap: 10px; align-items: center;">
-                <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="padding: 7px 16px; font-size: 12px;">
+                <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'patient_detail' patient.id %}{% endif %}" class="action-ribbon-btn" style="padding: 7px 16px; font-size: 12px;">
                     Cancel
                 </a>
                 <button type="submit"
                         style="background: #b91c1c; color: #ffffff; border: 1px solid #991b1b; padding: 8px 22px; font-weight: bold; font-size: 13px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(185,28,28,0.2);">
-                    ⚡ Approve & Shift to Emergency / Vacant Slot List
+                    {% if is_editing %}
+                        💾 Save Emergency / Vacant Slot Changes
+                    {% else %}
+                        ⚡ Approve & Shift to Emergency / Vacant Slot List
+                    {% endif %}
                 </button>
             </div>
         </form>
@@ -175,5 +241,7 @@
             reasonInput.required = false;
         }
     }
+    // Run on page load
+    document.addEventListener('DOMContentLoaded', toggleReasonField);
 </script>
 {% endblock %}

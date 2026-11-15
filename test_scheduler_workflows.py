@@ -34,7 +34,7 @@ def run_tests():
     print("==================================================")
 
     # Clean up test patients & test holidays
-    Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 9999021, 9999022, 7654321, 12345]).delete()
+    Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 9999021, 9999022, 9999031, 9999032, 7654321, 12345]).delete()
     Holiday.objects.filter(date__in=[date(2026, 11, 20), date(2026, 11, 25)]).delete()
     User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix', 'test_new_reg_user', 'test_landing_user']).delete()
     from apps.core.models import PrintTemplateConfig, Designation
@@ -1969,6 +1969,213 @@ def run_tests():
     # Cleanup added designation
     Designation.objects.filter(name='Additional Professor & Unit Chief').delete()
     print("✓ Test 24 Passed: Print Template Settings, Designation Reference Lookup, Signing Authority, +0.5mm PDF vertical space, and removal of sheet/page numbering fully verified.")
+
+    # =========================================================================
+    # TEST 25: Emergency / Vacant Slot Filtering, Dedicated Editor & Official 7-Column Print/PDF
+    # =========================================================================
+    print("\n--- Running Test 25: Emergency / Vacant Slot Filtering, Dedicated Editor & Official 7-Column Print/PDF ---")
+    
+    active_machines = list(Machine.objects.filter(is_active=True).order_by('display_order'))
+    m_test_1 = active_machines[0]
+    m_test_2 = active_machines[1] if len(active_machines) > 1 else active_machines[0]
+    m_test_3 = active_machines[2] if len(active_machines) > 2 else active_machines[0]
+    s_test_1 = Shift.objects.filter(is_active=True).first()
+    s_test_2 = Shift.objects.filter(is_active=True).last()
+
+    # 1. Setup emergency and vacant slot test courses
+    Patient.objects.filter(mr_no__in=[9999031, 9999032]).delete()
+    pt_em1 = Patient.objects.create(
+        mr_no=9999031,
+        pt_name="Emergency Pt Spinal Cord",
+        age=58,
+        sex="Male",
+        diagnosis="Metastatic Ca Spine with Cord Compression",
+        primary_consultant=cons_test,
+        unit="I",
+        phone_no="9988776655"
+    )
+    sched_em1 = TreatmentSchedule.objects.create(
+        patient=pt_em1,
+        treatment_type="Teletherapy",
+        technique=tech_imrt,
+        machine=m_test_2,
+        shift=s_test_1,
+        is_emergency_slot=True,
+        slot_category="Emergency",
+        emergency_reason="Spinal cord compression",
+        intended_start_date=date(2026, 1, 15),
+        status="Emergency",
+        date_of_start=None,
+        jr_resident="Dr. Initial Resident"
+    )
+
+    pt_em2 = Patient.objects.create(
+        mr_no=9999032,
+        pt_name="Vacant Slot Pt Glottis",
+        age=62,
+        sex="Female",
+        diagnosis="Ca Glottis T2N0",
+        primary_consultant=cons_test,
+        unit="II",
+        phone_no="9988776656"
+    )
+    sched_em2 = TreatmentSchedule.objects.create(
+        patient=pt_em2,
+        treatment_type="Teletherapy",
+        technique=tech_imrt,
+        machine=m_test_3,
+        shift=s_test_2,
+        is_emergency_slot=True,
+        slot_category="Vacant",
+        intended_start_date=date(2026, 2, 10),
+        status="Vacant",
+        date_of_start=None
+    )
+
+    # 2. Emergency Slots Queue Filtering: Machine dropdown, Start/End dates, Presets
+    c.force_login(admin_user)
+    resp_em_queue = c.get('/reports/emergency-slots/')
+    assert resp_em_queue.status_code == 200
+    em_queue_html = resp_em_queue.content.decode('utf-8')
+    assert "⭐ All Machines Consolidated" in em_queue_html
+    assert "Start Date:" in em_queue_html
+    assert "End Date:" in em_queue_html
+    assert "Next 30 Days" in em_queue_html
+    assert "All 2026" in em_queue_html
+    assert "🖨️ Print Emergency Schedule" in em_queue_html
+    assert "✏️ Edit Slot" in em_queue_html
+
+    # Filter by specific machine m_test_2
+    resp_filter_m2 = c.get(f'/reports/emergency-slots/?machine_id={m_test_2.id}&preset=all_2026')
+    assert resp_filter_m2.status_code == 200
+    m2_html = resp_filter_m2.content.decode('utf-8')
+    assert "Emergency Pt Spinal Cord" in m2_html
+    assert "Vacant Slot Pt Glottis" not in m2_html
+
+    # Filter by date range (January 2026 only)
+    resp_filter_jan = c.get('/reports/emergency-slots/?start_date=2026-01-01&end_date=2026-01-31')
+    assert resp_filter_jan.status_code == 200
+    jan_html = resp_filter_jan.content.decode('utf-8')
+    assert "Emergency Pt Spinal Cord" in jan_html
+    assert "Vacant Slot Pt Glottis" not in jan_html
+
+    # 3. Dedicated Emergency / Vacant Slot Editor (Separate from Regular Scheduler)
+    # Open edit form directly
+    resp_edit_form = c.get(f'/scheduler/course/{sched_em1.id}/emergency-slot/?next=/reports/emergency-slots/')
+    assert resp_edit_form.status_code == 200
+    edit_form_html = resp_edit_form.content.decode('utf-8')
+    assert "Edit Emergency / Vacant Slot" in edit_form_html
+    assert "Assigned Machine:" in edit_form_html
+    assert "Treatment Shift:" in edit_form_html
+    assert "Junior Resident:" in edit_form_html
+    assert "Spinal cord compression" in edit_form_html
+
+    # Post updates via dedicated emergency slot editor
+    resp_post_edit = c.post(f'/scheduler/course/{sched_em1.id}/emergency-slot/', {
+        'slot_category': 'Emergency',
+        'intended_start_date': '2026-01-20',
+        'emergency_reason': 'Pain',
+        'machine_id': str(m_test_1.id),
+        'shift_id': str(s_test_1.id),
+        'jr_resident': 'Dr. Updated Resident',
+        'notes': 'Coordinated with on-call consultant for early slot',
+        'next': '/reports/emergency-slots/'
+    }, follow=False)
+    assert resp_post_edit.status_code == 302
+    assert resp_post_edit['Location'] == '/reports/emergency-slots/'
+
+    # Verify changes committed to DB without adding to daily treatment start quota
+    sched_em1.refresh_from_db()
+    assert sched_em1.is_emergency_slot is True
+    assert sched_em1.intended_start_date == date(2026, 1, 20)
+    assert sched_em1.emergency_reason == 'Pain'
+    assert sched_em1.machine_id == m_test_1.id
+    assert sched_em1.jr_resident == 'Dr. Updated Resident'
+    assert sched_em1.date_of_start is None, "Emergency slot must keep date_of_start None to stay isolated from normal daily quota"
+    assert "Coordinated with on-call consultant" in sched_em1.notes
+
+    # Verify AuditLog recorded EMERGENCY_SLOT_UPDATE
+    edit_audit = AuditLog.objects.filter(action='EMERGENCY_SLOT_UPDATE', mr_no='9999031').first()
+    assert edit_audit is not None, "EMERGENCY_SLOT_UPDATE audit log must be recorded"
+
+    # 4. Emergency Schedule Print View (Browser HTML) - Consolidated & Individual
+    # Consolidated Print View: All machines unified table
+    resp_print_cons_html = c.get('/reports/print-emergency-schedule/?machines=all&modality=Teletherapy&start_date=2026-01-01&end_date=2026-02-28')
+    assert resp_print_cons_html.status_code == 200
+    cons_html_content = resp_print_cons_html.content.decode('utf-8')
+    assert "Emergency/Vacant Slot list" in cons_html_content
+    assert "Start Date" in cons_html_content
+    assert "Hospital no" in cons_html_content
+    assert "Patient name" in cons_html_content
+    assert "Diagnosis" in cons_html_content
+    assert "Primary Consultant" in cons_html_content
+    assert "Machine" in cons_html_content
+    assert "Jr. Resident" in cons_html_content
+    assert "Emergency Pt Spinal Cord" in cons_html_content
+    assert "Vacant Slot Pt Glottis" in cons_html_content
+    assert "Dr. Naveen T" in cons_html_content
+    assert "Sheet 1 of" not in cons_html_content
+
+    # Individual Machine Print View: Specific machine sheets
+    resp_print_ind_html = c.get(f'/reports/print-emergency-schedule/?machines={m_test_1.id}&modality=Teletherapy&start_date=2026-01-01&end_date=2026-02-28')
+    assert resp_print_ind_html.status_code == 200
+    ind_html_content = resp_print_ind_html.content.decode('utf-8')
+    assert "Emergency Pt Spinal Cord" in ind_html_content
+    assert "Vacant Slot Pt Glottis" not in ind_html_content
+
+    # 5. Emergency Schedule PDF Export
+    # Consolidated PDF download
+    resp_cons_pdf = c.get('/reports/print-emergency-schedule/pdf/?machines=all&modality=Teletherapy&start_date=2026-01-01&end_date=2026-02-28')
+    assert resp_cons_pdf.status_code == 200
+    assert resp_cons_pdf['Content-Type'] == 'application/pdf'
+    assert resp_cons_pdf.content.startswith(b'%PDF')
+    assert len(resp_cons_pdf.content) > 1000
+
+    # Individual machine PDF download
+    resp_ind_pdf = c.get(f'/reports/print-emergency-schedule/pdf/?machines={m_test_1.id}&modality=Teletherapy&start_date=2026-01-01&end_date=2026-02-28')
+    assert resp_ind_pdf.status_code == 200
+    assert resp_ind_pdf['Content-Type'] == 'application/pdf'
+    assert resp_ind_pdf.content.startswith(b'%PDF')
+
+    # 6. Admin can edit emergency layout/texts via Print Template Settings
+    resp_edit_tmpl = c.post('/reports/print-template-settings/', {
+        'ref_code_prefix': 'KMIO/EMERGENCY/2026/',
+        'header_line_1': 'KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY',
+        'header_line_2': 'Department of Radiation Oncology',
+        'header_line_3': 'Emergency Radiotherapy Technician List',
+        'intro_paragraph': 'Standard intro',
+        'table_section_title': 'Starts from {start_date} to {end_date}',
+        'emergency_intro_paragraph': 'Special emergency setup directives for acute radiation oncology starts.',
+        'emergency_table_title': 'Urgent & Emergency Slot Allocation List',
+        'note_paragraph_1': 'Consent mandatory prior to emergency fraction.',
+        'note_paragraph_2': 'On-call physicist setup mandatory.',
+        'copy_to_recipients': '1. Emergency Ward\n2. HOD Office',
+        'default_signing_authority': 'Dr. Naveen T',
+        'default_designation': 'Professor and Head of the Department',
+        'department_signature_line': 'Department of Radiation Oncology',
+        'page_margin_cm': 2.5,
+        'row_vertical_padding_pt': 2.7,
+        'action': 'save'
+    }, follow=True)
+    assert resp_edit_tmpl.status_code == 200
+
+    # Verify custom emergency table title and intro reflected in print HTML
+    resp_custom_em_html = c.get('/reports/print-emergency-schedule/?machines=all&modality=Teletherapy')
+    assert resp_custom_em_html.status_code == 200
+    custom_em_text = resp_custom_em_html.content.decode('utf-8')
+    assert ("Urgent & Emergency Slot Allocation List" in custom_em_text or "Urgent &amp; Emergency Slot Allocation List" in custom_em_text)
+    assert "Special emergency setup directives for acute radiation oncology starts." in custom_em_text
+
+    # Reset print template to institutional defaults
+    c.post('/reports/print-template-settings/', {'action': 'reset_defaults'}, follow=True)
+
+    # Cleanup test emergency patients
+    sched_em1.delete()
+    sched_em2.delete()
+    pt_em1.delete()
+    pt_em2.delete()
+
+    print("✓ Test 25 Passed: Emergency / Vacant Slot filtering, dedicated editor, All machines consolidated default option, and 7-column PDF/HTML reports fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

@@ -805,16 +805,25 @@ def holiday_manager_view(request):
 @login_required
 def emergency_slot_view(request, schedule_id):
     """
-    Assign patient course to Emergency / Vacant Slot Filling.
+    Assign or Edit patient course for Emergency / Vacant Slot Filling.
     Removes patient from the normal daily start schedule list and logs the transition.
-    Prepopulates patient details, current scheduled date, and provides editable dropdown
-    for Emergency Reason: [Spinal cord compression, Bleeding, Pain, SVCO, Others].
+    Prepopulates patient details, current scheduled date, machine, shift, and junior resident.
+    Provides editable dropdown for Emergency Reason: [Spinal cord compression, Bleeding, Pain, SVCO, Others].
+    Completely separate from the regular treatment scheduler.
     """
     sched = get_object_or_404(
         TreatmentSchedule.objects.select_related('patient', 'machine', 'shift', 'technique', 'patient__primary_consultant'),
         id=schedule_id
     )
     patient = sched.patient
+
+    all_machines = Machine.objects.filter(is_active=True).order_by('display_order')
+    all_shifts = Shift.objects.filter(is_active=True).order_by('display_order')
+    jr_users = User.objects.filter(
+        Q(profile__role__role_name__icontains='Resident') | 
+        Q(profile__role__role_description__icontains='Resident'),
+        is_active=True
+    ).select_related('profile').order_by('first_name', 'username')
 
     db_reasons = list(EmergencyReason.objects.filter(is_active=True).values_list('name', flat=True))
     emergency_reasons = db_reasons if db_reasons else [
@@ -825,6 +834,8 @@ def emergency_slot_view(request, schedule_id):
         'Others'
     ]
 
+    next_url = request.GET.get('next') or request.POST.get('next') or ''
+
     if request.method == 'POST':
         slot_category = request.POST.get('slot_category', 'Emergency').strip()
         if slot_category not in ('Emergency', 'Vacant'):
@@ -832,6 +843,9 @@ def emergency_slot_view(request, schedule_id):
 
         intended_date_raw = request.POST.get('intended_start_date', '').strip()
         emergency_reason = request.POST.get('emergency_reason', '').strip()
+        machine_id_val = request.POST.get('machine_id', '').strip()
+        shift_id_val = request.POST.get('shift_id', '').strip()
+        jr_resident_val = request.POST.get('jr_resident', '').strip()
         notes = request.POST.get('notes', '').strip()
 
         def parse_d(val):
@@ -851,7 +865,28 @@ def emergency_slot_view(request, schedule_id):
         if not sched.original_scheduled_date:
             sched.original_scheduled_date = sched.date_of_start
 
+        # Update machine and shift if provided
+        if machine_id_val:
+            try:
+                sched.machine_id = int(machine_id_val)
+            except (ValueError, TypeError):
+                pass
+        elif machine_id_val == '':
+            sched.machine = None
+
+        if shift_id_val:
+            try:
+                sched.shift_id = int(shift_id_val)
+            except (ValueError, TypeError):
+                pass
+        elif shift_id_val == '':
+            sched.shift = None
+
+        if jr_resident_val:
+            sched.jr_resident = jr_resident_val
+
         # Update schedule to Emergency / Vacant slot status
+        was_already_emergency = sched.is_emergency_slot
         sched.is_emergency_slot = True
         sched.slot_category = slot_category
         sched.emergency_reason = emergency_reason if slot_category == 'Emergency' else ''
@@ -864,7 +899,8 @@ def emergency_slot_view(request, schedule_id):
         sched.date_of_start = None
 
         stamp = timezone.now().strftime("%d-%b-%Y %H:%M")
-        log_entry = f"[{stamp}] Shifted to {slot_category} slot (Reason: {emergency_reason or 'None'}, Intended Start: {intended_date or 'TBD'}, Prior Date: {old_scheduled_date_str})."
+        action_type = "EMERGENCY_SLOT_UPDATE" if was_already_emergency else "EMERGENCY_SLOT_ASSIGNED"
+        log_entry = f"[{stamp}] {slot_category} slot update (Reason: {emergency_reason or 'None'}, Intended Start: {intended_date or 'TBD'}, Machine: {sched.machine.name if sched.machine else 'Unassigned'}, Shift: {sched.shift.name if sched.shift else 'Unassigned'}, JR: {sched.jr_resident or 'None'})."
         if notes:
             log_entry += f" Notes: {notes}"
         sched.notes = f"{sched.notes}\n{log_entry}".strip() if sched.notes else log_entry
@@ -872,24 +908,37 @@ def emergency_slot_view(request, schedule_id):
 
         AuditLog.objects.create(
             user=request.user,
-            action="EMERGENCY_SLOT_ASSIGNED",
+            action=action_type,
             mr_no=str(patient.mr_no),
-            details=f"Patient {patient.pt_name} (MR: {patient.mr_no}) shifted to {slot_category} slot list (Reason: {emergency_reason or 'None'}, Intended Start: {intended_date}). Removed from normal schedule list.",
+            details=f"Patient {patient.pt_name} (MR: {patient.mr_no}) {slot_category} slot (Machine: {sched.machine.name if sched.machine else 'None'}, Intended Start: {intended_date}, Reason: {emergency_reason or 'None'}).",
             ip_address=request.META.get('REMOTE_ADDR')
         )
 
-        messages.success(request, "Patient has been shifted to Emergency / Vacant slot list - will be removed from the normal schedule list")
+        msg = "Emergency / Vacant slot details updated successfully." if was_already_emergency else "Patient has been shifted to Emergency / Vacant slot list - will be removed from the normal schedule list"
+        messages.success(request, msg)
+
+        if next_url:
+            return redirect(next_url)
+        if was_already_emergency:
+            return redirect('emergency_slots_report')
         return redirect('patient_detail', patient_id=patient.id)
 
     today = date.today().isoformat()
     default_intended_date = sched.intended_start_date.isoformat() if sched.intended_start_date else today
+    jr_user_names = [u.get_full_name().strip() or u.username for u in jr_users]
 
     context = {
         'sched': sched,
         'patient': patient,
+        'all_machines': all_machines,
+        'all_shifts': all_shifts,
+        'jr_users': jr_users,
+        'jr_user_names': jr_user_names,
         'emergency_reasons': emergency_reasons,
         'today': today,
         'default_intended_date': default_intended_date,
+        'next_url': next_url,
+        'is_editing': sched.is_emergency_slot,
     }
     return render(request, 'scheduler/emergency_slot_form.html', context)
 

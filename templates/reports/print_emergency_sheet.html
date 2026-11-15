@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emergency / Vacant Slot list - KMIO</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        /* Non-printing Control Toolbar */
+        .no-print-toolbar {
+            background: #991b1b;
+            color: #ffffff;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .no-print-toolbar .btn {
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid transparent;
+        }
+        .btn-print {
+            background: #22c55e;
+            color: #ffffff;
+        }
+        .btn-print:hover {
+            background: #16a34a;
+        }
+        .btn-pdf {
+            background: #38bdf8;
+            color: #0f172a;
+        }
+        .btn-pdf:hover {
+            background: #0ea5e9;
+        }
+        .btn-back {
+            background: rgba(255,255,255,0.15);
+            color: #ffffff;
+            border-color: rgba(255,255,255,0.3);
+        }
+        .btn-back:hover {
+            background: rgba(255,255,255,0.25);
+        }
+
+        /* Printable Sheet Page */
+        .sheet-container {
+            max-width: 210mm;
+            margin: 20px auto;
+        }
+        .sheet-page {
+            background: #ffffff;
+            padding: 25mm;
+            margin-bottom: 24px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border: 1px solid #cbd5e1;
+            min-height: 297mm;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Header Layout */
+        .sheet-header-grid {
+            display: grid;
+            grid-template-columns: 100px 1fr 100px;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+        .header-ref {
+            font-weight: 700;
+            font-size: 10px;
+            color: #000;
+        }
+        .header-center {
+            text-align: center;
+        }
+        .header-center h1 {
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+            color: #000;
+            margin-bottom: 2px;
+        }
+        .header-center h2 {
+            font-size: 12px;
+            font-weight: 700;
+            font-style: italic;
+            color: #000;
+            margin-bottom: 2px;
+        }
+        .header-center p {
+            font-size: 10.5px;
+            font-style: italic;
+            color: #111;
+        }
+        .header-right {
+            text-align: right;
+        }
+        .header-date {
+            font-weight: 700;
+            font-size: 10.5px;
+            margin-bottom: 4px;
+        }
+        .machine-box {
+            display: inline-block;
+            border: 1.8px solid #000;
+            padding: 3px 10px;
+            font-size: 12px;
+            font-weight: 800;
+            color: #000;
+            background: #fff;
+            white-space: nowrap;
+        }
+
+        /* Descriptive Paragraph */
+        .narrative-intro {
+            font-size: 9.5px;
+            line-height: 1.3;
+            text-align: justify;
+            margin-bottom: 8px;
+            color: #111;
+        }
+
+        /* Section Title */
+        .section-title {
+            text-align: center;
+            font-size: 12px;
+            font-weight: 800;
+            color: #000;
+            margin: 4px 0 8px 0;
+            letter-spacing: 0.2px;
+        }
+
+        /* 7-Column Table matching institutional template */
+        .emergency-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9.5px;
+            margin-bottom: 12px;
+            table-layout: fixed;
+        }
+        .emergency-table th {
+            background-color: #cbd5e1;
+            color: #000;
+            font-weight: 700;
+            border: 1px solid #94a3b8;
+            padding: 3.5px 4px;
+            text-align: left;
+            vertical-align: middle;
+            font-size: 9px;
+            line-height: 1.15;
+            overflow: hidden;
+        }
+        .emergency-table td {
+            border: 1px solid #cbd5e1;
+            padding: 3.8px 4px;
+            color: #000;
+            vertical-align: middle;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.15;
+            font-size: 8.5px;
+        }
+        .emergency-table tr:nth-child(even) td {
+            background-color: #f8fafc;
+        }
+
+        /* Notes block */
+        .notes-section {
+            font-size: 9px;
+            line-height: 1.3;
+            margin-top: 8px;
+            color: #111;
+        }
+        .notes-title {
+            font-weight: 800;
+            margin-bottom: 2px;
+        }
+        .notes-text {
+            margin-bottom: 4px;
+            text-align: justify;
+        }
+
+        /* Bottom Section: Copy To & Signature */
+        .bottom-signatures-grid {
+            display: grid;
+            grid-template-columns: 1.25fr 1fr;
+            margin-top: 14px;
+            align-items: end;
+        }
+        .copy-to-block {
+            font-size: 9px;
+            line-height: 1.3;
+            color: #111;
+        }
+        .copy-to-block strong {
+            display: block;
+            margin-bottom: 2px;
+        }
+        .copy-to-block ol {
+            margin-left: 16px;
+        }
+        .signature-block {
+            text-align: right;
+            font-size: 10px;
+            line-height: 1.25;
+        }
+        .signature-name {
+            font-size: 11px;
+            font-weight: 800;
+            color: #000;
+        }
+        .signature-title {
+            font-style: italic;
+            font-weight: 700;
+            color: #111;
+        }
+        .signature-dept {
+            font-style: italic;
+            font-weight: 700;
+            color: #111;
+        }
+
+        .sheet-footer {
+            margin-top: 14px;
+            font-size: 8.5px;
+            color: #475569;
+            display: flex;
+            justify-content: flex-start;
+        }
+
+        /* Print Media Styles */
+        @media print {
+            body {
+                background: #ffffff;
+                color: #000000;
+                font-size: 10px;
+            }
+            .no-print-toolbar {
+                display: none !important;
+            }
+            .sheet-container {
+                margin: 0;
+                max-width: 100%;
+            }
+            .sheet-page {
+                box-shadow: none;
+                border: none;
+                padding: 0;
+                margin: 0;
+                width: 100%;
+                min-height: auto;
+                page-break-after: always;
+            }
+            .sheet-page:last-child {
+                page-break-after: avoid;
+            }
+            @page {
+                size: A4;
+                margin: 25mm;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Non-printing Control Toolbar -->
+    <div class="no-print-toolbar">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 18px;">🚨</span>
+            <div>
+                <strong style="font-size: 13px;">Emergency / Vacant Slot list — Official KMIO Printout</strong>
+                <span style="font-size: 11px; opacity: 0.9; margin-left: 8px;">
+                    Format: A4 (2.5 cm institutional margins) &bull; {% if is_consolidated %}All Machines Consolidated{% else %}{{ sheets|length }} Machine Sheet(s){% endif %} &bull; {{ total_patients }} Patient(s)
+                </span>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <a href="{% url 'print_emergency_schedule_pdf' %}?{{ request.GET.urlencode }}" class="btn btn-pdf" title="Download official vector PDF generated via ReportLab">
+                📄 Download Official PDF
+            </a>
+            <button onclick="window.print()" class="btn btn-print" title="Trigger browser print dialogue">
+                🖨️ Print Document
+            </button>
+            <a href="{% url 'emergency_slots_report' %}" class="btn btn-back" title="Return to Emergency Slots Queue">
+                ✖ Close / Return
+            </a>
+        </div>
+    </div>
+
+    <!-- Printable Content -->
+    <div class="sheet-container">
+        {% for sheet in sheets %}
+        <div class="sheet-page">
+            <div>
+                <!-- Institutional Header Grid -->
+                <div class="sheet-header-grid">
+                    <div class="header-ref">
+                        {{ config.ref_code_prefix }}
+                    </div>
+                    <div class="header-center">
+                        <h1>{{ config.header_line_1 }}</h1>
+                        <h2>{{ config.header_line_2 }}</h2>
+                        <p>{{ config.header_line_3 }}</p>
+                    </div>
+                    <div class="header-right">
+                        <div class="header-date">{{ today_str }}</div>
+                        {% if not sheet.is_consolidated and sheet.machine %}
+                        <div class="machine-box">{{ sheet.box_title }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Narrative Notice Paragraph -->
+                <p class="narrative-intro">
+                    {{ config.emergency_intro_paragraph|default:config.intro_paragraph }}
+                </p>
+
+                <!-- Section Title: Emergency/Vacant Slot list -->
+                <div class="section-title">
+                    {{ config.emergency_table_title|default:'Emergency/Vacant Slot list' }}
+                </div>
+
+                <!-- 7-Column Emergency Schedule Table -->
+                <table class="emergency-table">
+                    <colgroup>
+                        <col style="width: 50px;">
+                        <col style="width: 52px;">
+                        <col style="width: 72px;">
+                        <col style="width: 98px;">
+                        <col style="width: 80px;">
+                        <col style="width: 55px;">
+                        <col style="width: 46.5px;">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>Start Date</th>
+                            <th>Hospital no</th>
+                            <th>Patient name</th>
+                            <th>Diagnosis</th>
+                            <th>Primary Consultant</th>
+                            <th>Machine</th>
+                            <th>Jr. Resident</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if sheet.schedules %}
+                            {% for s in sheet.schedules %}
+                            <tr>
+                                <td>{{ s.intended_start_date|date:"d-m-Y"|default:"-" }}</td>
+                                <td style="font-weight: 700; font-family: Consolas, monospace;">{{ s.patient.mr_no }}</td>
+                                <td style="font-weight: 700;" title="{{ s.patient.pt_name }}">{{ s.patient.pt_name|truncatechars:18 }}</td>
+                                <td title="{{ s.patient.diagnosis }}">{{ s.patient.diagnosis|truncatechars:28 }}</td>
+                                <td>{{ s.patient.consultant_display|truncatechars:20 }}</td>
+                                <td><strong>{{ s.machine.name|default:"Unassigned"|truncatechars:14 }}</strong></td>
+                                <td>{{ s.jr_resident|default:"-"|truncatechars:14 }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 18px 0; color: #64748b; font-style: italic;">
+                                    {% if sheet.is_consolidated %}
+                                        No patients currently assigned to Emergency / Vacant slot queue between {{ start_date_formatted }} and {{ end_date_formatted }}.
+                                    {% else %}
+                                        No patients currently assigned to {{ sheet.machine.name }} between {{ start_date_formatted }} and {{ end_date_formatted }}.
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Bottom Disclaimer, Notes, Copy-To and Sign-Off -->
+            <div>
+                <!-- Clinical Instructions & Notes -->
+                <div class="notes-section">
+                    <div class="notes-title">Please note:</div>
+                    <div class="notes-text">
+                        {{ config.note_paragraph_1 }}
+                    </div>
+                    <div class="notes-text">
+                        {{ config.note_paragraph_2 }}
+                    </div>
+                </div>
+
+                <!-- Sign-Off & Distribution -->
+                <div class="bottom-signatures-grid">
+                    <div class="copy-to-block">
+                        <strong>Copy to:</strong>
+                        <ol>
+                            {% for c in copy_to_list %}
+                            <li>{{ c|slice:"3:" }}</li>
+                            {% endfor %}
+                        </ol>
+                    </div>
+
+                    <div class="signature-block">
+                        <div class="signature-name"><em>{{ signing_authority }}</em></div>
+                        <div class="signature-title">{{ designation }}</div>
+                        <div class="signature-dept">{{ config.department_signature_line }}</div>
+                    </div>
+                </div>
+
+                <!-- Sheet Footer with Timestamp (Page/Sheet numbers omitted) -->
+                <div class="sheet-footer">
+                    <span>Report Generated on: &nbsp; {{ now_time_str }} &nbsp;&nbsp;&nbsp; {{ now_date_str }}</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</body>
+</html>
