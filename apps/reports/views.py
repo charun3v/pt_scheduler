@@ -1269,6 +1269,7 @@ def generate_technician_sheet_pdf(data):
     using ReportLab, matching the layout, typography, and sign-offs of the template PDF.
     """
     from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
     from reportlab.lib import colors
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
@@ -1278,13 +1279,15 @@ def generate_technician_sheet_pdf(data):
     import io
 
     buffer = io.BytesIO()
+    # A4 size with 2.5 cm margins on all sides (Top, Bottom, Left, Right)
+    margin_25mm = 2.5 * cm
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=32,
-        rightMargin=32,
-        topMargin=26,
-        bottomMargin=32
+        leftMargin=margin_25mm,
+        rightMargin=margin_25mm,
+        topMargin=margin_25mm,
+        bottomMargin=margin_25mm
     )
 
     class NumberedCanvas(canvas.Canvas):
@@ -1301,75 +1304,75 @@ def generate_technician_sheet_pdf(data):
             for state in self._saved_page_states:
                 self.__dict__.update(state)
                 self.saveState()
-                self.setFont('Helvetica', 8)
+                self.setFont('Helvetica', 7.5)
                 self.setFillColor(colors.HexColor('#222222'))
-                self.drawString(32, 18, f"Report Generated on:   {data['now_time_str']}    {data['now_date_str']}")
-                self.drawRightString(A4[0] - 32, 18, f"Page {self._pageNumber} of {num_pages}")
+                # Footer Left (at 2.5 cm left margin, 1.4 cm from bottom)
+                self.drawString(margin_25mm, 1.4 * cm, f"Report Generated on:   {data['now_time_str']}    {data['now_date_str']}")
+                # Footer Right (at 2.5 cm right margin)
+                self.drawRightString(A4[0] - margin_25mm, 1.4 * cm, f"Page {self._pageNumber} of {num_pages}")
                 self.restoreState()
                 super().showPage()
             super().save()
 
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('KMIO_Title', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=1, leading=14)
-    dept_style = ParagraphStyle('KMIO_Dept', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=11, alignment=1, leading=13)
-    sub_style = ParagraphStyle('KMIO_Sub', parent=styles['Normal'], fontName='Helvetica-Oblique', fontSize=9, alignment=1, leading=11)
-    box_style = ParagraphStyle('KMIO_Box', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, alignment=1, leading=12)
-    left_ref_style = ParagraphStyle('KMIO_LeftRef', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11)
-    date_style = ParagraphStyle('KMIO_Date', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, alignment=2, leading=11)
+    title_style = ParagraphStyle('KMIO_Title', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=1, leading=13)
+    dept_style = ParagraphStyle('KMIO_Dept', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=10, alignment=1, leading=12)
+    sub_style = ParagraphStyle('KMIO_Sub', parent=styles['Normal'], fontName='Helvetica-Oblique', fontSize=8.5, alignment=1, leading=10)
+    box_style = ParagraphStyle('KMIO_Box', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9.5, alignment=1, leading=11)
+    left_ref_style = ParagraphStyle('KMIO_LeftRef', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=10)
+    date_style = ParagraphStyle('KMIO_Date', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, alignment=2, leading=10)
 
-    intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=10, alignment=4)
-    sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10.5, leading=13, alignment=1)
+    intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9.5, alignment=4)
+    sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
 
-    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, alignment=0)
-    th_center = ParagraphStyle('KMIO_THC', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, alignment=1)
-    td_style = ParagraphStyle('KMIO_TD', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9, alignment=0)
-    td_bold = ParagraphStyle('KMIO_TDB', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, alignment=0)
-    td_center = ParagraphStyle('KMIO_TDC', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9, alignment=1)
+    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=6.5, leading=8, alignment=0)
+    th_center = ParagraphStyle('KMIO_THC', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=6.5, leading=8, alignment=1)
 
-    note_title_style = ParagraphStyle('KMIO_NoteTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10)
-    note_text_style = ParagraphStyle('KMIO_NoteText', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9.5, alignment=4)
+    note_title_style = ParagraphStyle('KMIO_NoteTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9)
+    note_text_style = ParagraphStyle('KMIO_NoteText', parent=styles['Normal'], fontName='Helvetica', fontSize=6.5, leading=8.5, alignment=4)
 
-    copy_style = ParagraphStyle('KMIO_Copy', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=10)
-    copy_bold = ParagraphStyle('KMIO_CopyB', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10)
-    sig_name = ParagraphStyle('KMIO_SigName', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10.5, leading=12, alignment=2)
-    sig_title = ParagraphStyle('KMIO_SigTitle', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=9, leading=11, alignment=2)
-    sig_dept = ParagraphStyle('KMIO_SigDept', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=2)
+    copy_style = ParagraphStyle('KMIO_Copy', parent=styles['Normal'], fontName='Helvetica', fontSize=6.5, leading=8.5)
+    copy_bold = ParagraphStyle('KMIO_CopyB', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7, leading=9)
+    sig_name = ParagraphStyle('KMIO_SigName', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9.5, leading=11, alignment=2)
+    sig_title = ParagraphStyle('KMIO_SigTitle', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=8, leading=10, alignment=2)
+    sig_dept = ParagraphStyle('KMIO_SigDept', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2)
 
     story = []
-    # Printable width: A4[0] - 64 = 531.27pt
-    col_widths = [56, 24, 68, 36, 76, 62, 95, 62, 52]
+    # Usable width: A4[0] - 2 * 2.5 * cm = 453.54 pt (16.0 cm)
+    # Column allocation ensuring Consultant accommodates 20 chars and Resident accommodates 15 chars:
+    col_widths = [33, 17, 47, 24, 65, 43, 85, 81, 58.5]  # Total = 453.5 pt
 
     for sheet_idx, sheet in enumerate(data['sheets']):
         if sheet_idx > 0:
             story.append(PageBreak())
 
-        # Top Header (Left Ref, Center Titles, Right Date & Machine Box)
+        # Top Header (Left Ref 100pt, Center 253.5pt, Right 100pt = 453.5pt)
         header_data = [
             [
                 Paragraph('KMIO/DRO/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/20___', left_ref_style),
                 [
                     Paragraph('KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY', title_style),
-                    Spacer(1, 2),
+                    Spacer(1, 1),
                     Paragraph('Department of Radiation Oncology', dept_style),
-                    Spacer(1, 2),
+                    Spacer(1, 1),
                     Paragraph('Radiation Therapy Technician information sheet', sub_style)
                 ],
                 [
                     Paragraph(data['today_str'], date_style),
-                    Spacer(1, 4),
-                    Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[116], style=[
+                    Spacer(1, 3),
+                    Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
                         ('BOX', (0,0), (-1,-1), 1.2, colors.black),
                         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
                         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                        ('TOPPADDING', (0,0), (-1,-1), 4),
-                        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                        ('LEFTPADDING', (0,0), (-1,-1), 4),
-                        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+                        ('TOPPADDING', (0,0), (-1,-1), 3),
+                        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                        ('LEFTPADDING', (0,0), (-1,-1), 2),
+                        ('RIGHTPADDING', (0,0), (-1,-1), 2),
                     ])
                 ]
             ]
         ]
-        ht = Table(header_data, colWidths=[120, 291, 120])
+        ht = Table(header_data, colWidths=[100, 253.5, 100])
         ht.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
             ('LEFTPADDING', (0,0), (-1,-1), 0),
@@ -1378,7 +1381,7 @@ def generate_technician_sheet_pdf(data):
             ('BOTTOMPADDING', (0,0), (-1,-1), 0),
         ]))
         story.append(ht)
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 5))
 
         # Narrative paragraph
         intro_text = (
@@ -1389,14 +1392,14 @@ def generate_technician_sheet_pdf(data):
             "including setup and verification"
         )
         story.append(Paragraph(intro_text, intro_style))
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 5))
 
         # Section Subtitle
         sec_title = f"New Patient starts from {data['start_date_formatted']} to {data['end_date_formatted']}"
         story.append(Paragraph(sec_title, sec_title_style))
-        story.append(Spacer(1, 6))
+        story.append(Spacer(1, 5))
 
-        # 9-Column Table
+        # 9-Column Table: Plain strings for data cells to guarantee single-line display with NO text wrapping
         table_rows = [
             [
                 Paragraph('Date', th_style),
@@ -1406,30 +1409,29 @@ def generate_technician_sheet_pdf(data):
                 Paragraph('Patient name', th_style),
                 Paragraph('Phone No.', th_style),
                 Paragraph('Diagnosis', th_style),
-                Paragraph('Consultant<br/>Radiation<br/>Oncologist', th_style),
+                Paragraph('Consultant<br/>Radiation Oncologist', th_style),
                 Paragraph('Junior<br/>Resident', th_style),
             ]
         ]
 
         if sheet['schedules']:
             for s in sheet['schedules']:
-                shift_txt = s.shift.name if s.shift else '-'
-                cons_name = s.patient.primary_consultant.name if s.patient.primary_consultant else '-'
-                jr_name = s.jr_resident if s.jr_resident else '-'
+                d_str = s.date_of_start.strftime("%d-%b-%y") if s.date_of_start else '-'
+                sh_str = str(s.shift.name if s.shift else '-')
+                mr_str = str(s.patient.mr_no)
+                rt_str = str(s.patient.rt_no or '-')
+                pt_str = str(s.patient.pt_name or '-').replace('\n', ' ').strip()[:16]
+                ph_str = str(s.patient.phone_no or '-').replace('\n', ' ').strip()[:11]
+                diag_str = str(s.patient.diagnosis or '-').replace('\n', ' ').strip()[:26]
+                cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
+                jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:15]
+
                 table_rows.append([
-                    Paragraph(s.date_of_start.strftime("%d-%b-%y") if s.date_of_start else '-', td_bold),
-                    Paragraph(str(shift_txt), td_center),
-                    Paragraph(str(s.patient.mr_no), td_bold),
-                    Paragraph(str(s.patient.rt_no or '-'), td_style),
-                    Paragraph(str(s.patient.pt_name), td_bold),
-                    Paragraph(str(s.patient.phone_no or '-'), td_style),
-                    Paragraph(str(s.patient.diagnosis or '-'), td_style),
-                    Paragraph(str(cons_name), td_style),
-                    Paragraph(str(jr_name), td_style),
+                    d_str, sh_str, mr_str, rt_str, pt_str, ph_str, diag_str, cons_str, jr_str
                 ])
         else:
             table_rows.append([
-                Paragraph(f"No new patient starts scheduled for {sheet['machine'].name} between {data['start_date_formatted']} and {data['end_date_formatted']}.", td_center),
+                f"No new patient starts scheduled for {sheet['machine'].name} between {data['start_date_formatted']} and {data['end_date_formatted']}.",
                 '', '', '', '', '', '', '', ''
             ])
 
@@ -1437,23 +1439,27 @@ def generate_technician_sheet_pdf(data):
         ts = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
             ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('ALIGN', (1,0), (1,-1), 'CENTER'),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
             ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
-            ('TOPPADDING', (0,0), (-1,-1), 3),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-            ('LEFTPADDING', (0,0), (-1,-1), 3),
-            ('RIGHTPADDING', (0,0), (-1,-1), 3),
+            ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+            ('FONTSIZE', (0,1), (-1,-1), 6.5),
+            ('LEADING', (0,1), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 2),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ('LEFTPADDING', (0,0), (-1,-1), 2),
+            ('RIGHTPADDING', (0,0), (-1,-1), 2),
         ]
         if not sheet['schedules']:
             ts.append(('SPAN', (0,1), (-1,1)))
             ts.append(('ALIGN', (0,1), (-1,1), 'CENTER'))
-            ts.append(('TOPPADDING', (0,1), (-1,1), 12))
-            ts.append(('BOTTOMPADDING', (0,1), (-1,1), 12))
+            ts.append(('TOPPADDING', (0,1), (-1,1), 10))
+            ts.append(('BOTTOMPADDING', (0,1), (-1,1), 10))
 
         pt_table.setStyle(TableStyle(ts))
         story.append(pt_table)
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 6))
 
         # Bottom block (Please note, Copy to & Dr. Naveen T Signature)
         note_p1 = (
@@ -1480,7 +1486,7 @@ def generate_technician_sheet_pdf(data):
             Paragraph('Department of Radiation Oncology', sig_dept),
         ]
 
-        bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[311, 220])
+        bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
         bottom_table.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
             ('LEFTPADDING', (0,0), (-1,-1), 0),
@@ -1491,11 +1497,11 @@ def generate_technician_sheet_pdf(data):
 
         footer_elements = [
             Paragraph('Please note:', note_title_style),
-            Spacer(1, 2),
+            Spacer(1, 1),
             Paragraph(note_p1, note_text_style),
-            Spacer(1, 3),
+            Spacer(1, 2),
             Paragraph(note_p2, note_text_style),
-            Spacer(1, 8),
+            Spacer(1, 6),
             bottom_table
         ]
         story.append(KeepTogether(footer_elements))

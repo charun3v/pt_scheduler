@@ -50,55 +50,66 @@
         width: 100%;
         border-collapse: collapse;
         font-family: "Segoe UI", Tahoma, Calibri, sans-serif;
-        font-size: 12px;
+        font-size: 11px;
         color: #201f1e;
+    }
+    .excel-table tr {
+        height: 22px;
     }
     .excel-table th {
         background: #e1dfdd;
         border: 1px solid #c8c6c4;
-        padding: 5px 8px;
+        padding: 3px 6px;
         font-weight: 600;
         text-align: left;
         position: sticky;
         top: 0;
         z-index: 10;
         white-space: nowrap;
+        font-size: 11px;
+        line-height: 1.2;
     }
     .excel-table th.col-letter {
         background: #edebe9;
         color: #605e5c;
         text-align: center;
-        font-size: 10px;
-        padding: 2px 4px;
+        font-size: 9px;
+        padding: 1px 3px;
         font-weight: normal;
+        line-height: 1;
     }
     .excel-table td {
         border: 1px solid #e1dfdd;
-        padding: 4px 6px;
+        padding: 1px 4px;
         white-space: nowrap;
         vertical-align: middle;
+        font-size: 11px;
+        line-height: 1.15;
     }
     .excel-table td.row-num {
         background: #f3f2f1;
         color: #605e5c;
         text-align: center;
         font-weight: 600;
-        font-size: 11px;
+        font-size: 10px;
         user-select: none;
-        width: 36px;
+        width: 28px;
+        padding: 1px 2px;
     }
     .excel-table tr:hover td:not(.row-num) {
         background-color: #f3f9f4 !important;
     }
     .excel-cell-input, .excel-cell-select {
         width: 100%;
-        padding: 4px 6px;
+        padding: 1px 3px;
         border: 1px solid transparent;
         background: transparent;
-        font-size: 12px;
+        font-size: 11px;
         font-family: inherit;
         border-radius: 2px;
         box-sizing: border-box;
+        height: 20px;
+        line-height: 1.1;
     }
     .excel-cell-input:hover, .excel-cell-select:hover {
         border-color: #107c41;
@@ -108,18 +119,19 @@
         border-color: #107c41;
         background: #ffffff;
         outline: 2px solid #107c41;
-        box-shadow: 0 0 4px rgba(16, 124, 65, 0.4);
+        box-shadow: 0 0 3px rgba(16, 124, 65, 0.4);
     }
     .cell-modified {
         background-color: #fff9db !important;
         border-color: #e0a800 !important;
     }
     .save-indicator {
-        font-size: 11px;
+        font-size: 9.5px;
         font-weight: bold;
-        padding: 2px 6px;
-        border-radius: 3px;
+        padding: 0 4px;
+        border-radius: 2px;
         display: inline-block;
+        line-height: 16px;
     }
     .save-indicator.saved {
         background: #d4edda;
@@ -329,17 +341,17 @@
                         </td>
 
                         <!-- 6. EDITABLE: Start Date -->
-                        <td style="background: #fdfdfd; white-space: nowrap;">
-                            <div style="display: flex; align-items: center; gap: 4px;">
+                        <td style="background: #fdfdfd; white-space: nowrap; padding: 1px 3px;">
+                            <div style="display: flex; align-items: center; gap: 3px;">
                                 <input type="date" name="start_date_{{ s.id }}" id="start_date_{{ s.id }}"
                                        value="{{ s.date_of_start|date:'Y-m-d' }}"
                                        {% if s.date_of_sim %}min="{{ s.date_of_sim|date:'Y-m-d' }}" data-sim-date="{{ s.date_of_sim|date:'Y-m-d' }}"{% endif %}
                                        data-orig-date="{{ s.date_of_start|date:'Y-m-d' }}"
                                        class="excel-cell-input {% if s.is_holiday %}cell-holiday-warn{% endif %}"
                                        onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');"
-                                       style="width: 125px; {% if s.is_holiday %}border-color: #d97706; background-color: #fffbeb;{% endif %}">
+                                       style="width: 118px; height: 20px; font-size: 11px; padding: 0 3px; {% if s.is_holiday %}border-color: #d97706; background-color: #fffbeb;{% endif %}">
                                 <span id="holiday_warn_{{ s.id }}" class="holiday-warn-badge"
-                                      style="{% if not s.is_holiday %}display: none;{% endif %} background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: bold; cursor: help; white-space: nowrap;"
+                                      style="{% if not s.is_holiday %}display: none;{% endif %} background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 2px; padding: 0 3px; font-size: 9px; line-height: 16px; font-weight: bold; cursor: help; white-space: nowrap;"
                                       title="Hospital Holiday: {{ s.holiday_comment }}">
                                     ⚠️ Holiday
                                 </span>
@@ -347,8 +359,9 @@
                         </td>
 
                         <!-- 7. EDITABLE: Shift -->
-                        <td style="background: #fdfdfd;">
+                        <td style="background: #fdfdfd; padding: 1px 3px;">
                             <select name="shift_{{ s.id }}" id="shift_{{ s.id }}" class="excel-cell-select"
+                                    style="height: 20px; font-size: 11px; padding: 0 2px;"
                                     onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
                                 <option value="" {% if not s.shift_id %}selected{% endif %}>-- None --</option>
                                 {% for sh in all_shifts %}
@@ -360,8 +373,9 @@
                         </td>
 
                         <!-- 8. EDITABLE: Machine -->
-                        <td style="background: #fdfdfd;">
+                        <td style="background: #fdfdfd; padding: 1px 3px;">
                             <select name="machine_{{ s.id }}" id="machine_{{ s.id }}" class="excel-cell-select"
+                                    style="height: 20px; font-size: 11px; padding: 0 2px;"
                                     onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
                                 {% for m in all_machines %}
                                 <option value="{{ m.id }}" {% if s.machine_id == m.id %}selected{% endif %}>
@@ -372,17 +386,18 @@
                         </td>
 
                         <!-- 9. Consultant Name -->
-                        <td style="white-space: nowrap;">{{ s.patient.consultant_display }}</td>
+                        <td style="white-space: nowrap; padding: 1px 4px;">{{ s.patient.consultant_display }}</td>
 
                         <!-- 10. Jr Resident -->
-                        <td style="white-space: nowrap;">{{ s.jr_resident|default:'-' }}</td>
+                        <td style="white-space: nowrap; padding: 1px 4px;">{{ s.jr_resident|default:'-' }}</td>
 
                         <!-- Action / Live Save Status -->
-                        <td style="text-align: center; white-space: nowrap;">
-                            <span id="indicator-{{ s.id }}" class="save-indicator {% if s.date_of_start %}saved{% else %}dirty{% endif %}">
+                        <td style="text-align: center; white-space: nowrap; padding: 1px 3px;">
+                            <span id="indicator-{{ s.id }}" class="save-indicator {% if s.date_of_start %}saved{% else %}dirty{% endif %}"
+                                  style="font-size: 9px; padding: 0 4px; line-height: 16px;">
                                 {% if s.date_of_start %}Saved ✓{% else %}Pending{% endif %}
                             </span>
-                            <button type="button" onclick="liveAutoSave('{{ s.id }}');" class="action-ribbon-btn" style="padding: 1px 6px; font-size: 10px; margin-left: 2px;" title="Push row changes immediately">
+                            <button type="button" onclick="liveAutoSave('{{ s.id }}');" class="action-ribbon-btn" style="padding: 0 4px; font-size: 9px; line-height: 16px; margin-left: 2px;" title="Push row changes immediately">
                                 💾
                             </button>
                         </td>
