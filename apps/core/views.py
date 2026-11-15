@@ -83,10 +83,17 @@ def dashboard_view(request):
     Admin (not SubAdmin) has permissions to delete patients or remove them from schedule.
     """
     query = request.GET.get('q', '').strip()
+    show_hidden = request.GET.get('show_hidden') == '1'
+    user_is_admin = is_admin_only(request.user)
+
+    if show_hidden and user_is_admin:
+        base_filter = Q(is_hidden_from_dashboard=True)
+    else:
+        base_filter = Q(is_hidden_from_dashboard=False)
 
     # Non-scheduled patients: either have no treatment schedule, or have schedule with no start date
     non_scheduled_qs = Patient.objects.filter(
-        Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True)
+        base_filter & (Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True))
     ).distinct().select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
 
     if query:
@@ -102,6 +109,12 @@ def dashboard_view(request):
                 Q(primary_consultant__name__icontains=query)
             )
 
+    hidden_count = Patient.objects.filter(
+        is_hidden_from_dashboard=True
+    ).filter(
+        Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True)
+    ).distinct().count() if user_is_admin else 0
+
     paginator = Paginator(non_scheduled_qs, 15)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -109,6 +122,8 @@ def dashboard_view(request):
     context = {
         'page_obj': page_obj,
         'query': query,
+        'show_hidden': show_hidden,
+        'hidden_count': hidden_count,
         'total_non_scheduled': paginator.count,
     }
     return render(request, 'core/dashboard.html', context)

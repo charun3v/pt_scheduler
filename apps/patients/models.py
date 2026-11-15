@@ -42,6 +42,12 @@ class Patient(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="registered_patients")
 
+    # Dashboard Visibility Control (Admin only)
+    is_hidden_from_dashboard = models.BooleanField(default=False, db_index=True, verbose_name="Hide from Main Dashboard")
+    hidden_reason = models.TextField(blank=True, null=True, verbose_name="Reason / Comment for Hiding")
+    hidden_at = models.DateTimeField(blank=True, null=True, verbose_name="Hidden At")
+    hidden_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="hidden_dashboard_patients", verbose_name="Hidden By")
+
     class Meta:
         ordering = ['-created_at']
         indexes = [

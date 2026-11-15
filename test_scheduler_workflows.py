@@ -430,7 +430,7 @@ def run_tests():
     resp = c.get(f'/dashboard/?q={sched_mr}')
     assert resp.status_code == 200
     assert bytes(str(sched_mr), 'utf-8') in resp.content
-    assert b'Not Scheduled' in resp.content
+    assert b'Pending' in resp.content
 
     # Clean up test patient
     sched_pt.delete()
@@ -971,6 +971,97 @@ def run_tests():
     # Cleanup
     test_pt18.delete()
     print("✓ Test 18 Passed: Intent, JR dropdown, draft vs approve, Sunday-skipping end dates, course clubbing & admin-only audit trail verified.")
+
+    # --- Test 19: Dashboard Single Line Layout, Schedule Status Header, Admin Hide with Comment, & Renamed Add Course and Schedule Button ---
+    print("\n--- Test 19: Dashboard Single Line Layout, Schedule Status Header, Admin Hide with Comment, & Renamed Add Course and Schedule Button ---")
+    c.force_login(admin_user)
+
+    # 1. Create a test patient for dashboard visibility testing
+    Patient.objects.filter(mr_no=9999019).delete()
+    test_pt19 = Patient.objects.create(
+        mr_no=9999019,
+        pt_name="Test SingleLine Dashboard Pt Nineteen",
+        age=52,
+        sex='Female',
+        phone_no='9900990099',
+        diagnosis='Carcinoma Tongue T1N0M0 Early Lesion',
+        primary_consultant=active_consultant
+    )
+
+    # 2. Check active dashboard rendering
+    resp_dash = c.get('/dashboard/')
+    assert resp_dash.status_code == 200
+    dash_html = resp_dash.content.decode('utf-8')
+
+    # Verify column heading is "Schedule Status"
+    assert "Schedule Status" in dash_html, "Dashboard header must be 'Schedule Status' instead of 'Status'"
+    # Verify status badge is strictly "Pending"
+    assert "Pending</span>" in dash_html, "Dashboard status entry must be 'Pending'"
+    # Verify MR number does NOT have the '↗' symbol in the dashboard table
+    assert f">{test_pt19.mr_no} ↗" not in dash_html, "Dashboard MR Number must not have the '↗' symbol"
+    assert str(test_pt19.mr_no) in dash_html, "Dashboard MR Number must be present"
+
+    # 3. Security Boundary: SubAdmin blocked from hiding patients
+    c.force_login(subadmin_user)
+    resp_subadmin_hide = c.post(f'/patients/{test_pt19.id}/hide-dashboard/', {'comment': 'Subadmin trying to hide'})
+    assert resp_subadmin_hide.status_code == 302
+    test_pt19.refresh_from_db()
+    assert test_pt19.is_hidden_from_dashboard is False, "SubAdmin must NOT be permitted to hide patients"
+
+    # 4. Admin hiding without comment -> rejected
+    c.force_login(admin_user)
+    resp_hide_nocomment = c.post(f'/patients/{test_pt19.id}/hide-dashboard/', {'comment': ''})
+    assert resp_hide_nocomment.status_code == 302
+    test_pt19.refresh_from_db()
+    assert test_pt19.is_hidden_from_dashboard is False, "Hiding without comment must be rejected"
+
+    # 5. Admin hiding with comment -> succeeds
+    hide_comment_text = "Patient transferred to regional oncology center as per family preference"
+    resp_hide = c.post(f'/patients/{test_pt19.id}/hide-dashboard/', {'comment': hide_comment_text})
+    assert resp_hide.status_code == 302
+    test_pt19.refresh_from_db()
+    assert test_pt19.is_hidden_from_dashboard is True, "Patient must be flagged as hidden from dashboard"
+    assert test_pt19.hidden_reason == hide_comment_text
+    assert test_pt19.hidden_by == admin_user
+    assert test_pt19.hidden_at is not None
+
+    # Verify AuditLog recorded
+    hide_audit = AuditLog.objects.filter(mr_no=str(test_pt19.mr_no), action='PATIENT_DASHBOARD_HIDDEN').first()
+    assert hide_audit is not None, "PATIENT_DASHBOARD_HIDDEN audit log must be recorded"
+    assert hide_comment_text in hide_audit.details
+
+    # 6. Verify hidden patient is EXCLUDED from active dashboard
+    resp_dash2 = c.get('/dashboard/')
+    assert resp_dash2.status_code == 200
+    assert test_pt19 not in resp_dash2.context['page_obj'], "Hidden patient must not appear in active dashboard queue"
+
+    # 7. Verify hidden patient IS INCLUDED when Admin views ?show_hidden=1
+    resp_dash_hidden = c.get('/dashboard/?show_hidden=1')
+    assert resp_dash_hidden.status_code == 200
+    assert test_pt19 in resp_dash_hidden.context['page_obj'], "Hidden patient must appear in hidden dashboard view"
+    assert "Hidden Patients Queue" in resp_dash_hidden.content.decode('utf-8')
+
+    # 8. Unhide patient -> restored to active dashboard
+    resp_unhide = c.post(f'/patients/{test_pt19.id}/unhide-dashboard/')
+    assert resp_unhide.status_code == 302
+    test_pt19.refresh_from_db()
+    assert test_pt19.is_hidden_from_dashboard is False, "Patient must be restored to active dashboard"
+
+    unhide_audit = AuditLog.objects.filter(mr_no=str(test_pt19.mr_no), action='PATIENT_DASHBOARD_UNHIDDEN').first()
+    assert unhide_audit is not None, "PATIENT_DASHBOARD_UNHIDDEN audit log must be recorded"
+
+    resp_dash3 = c.get('/dashboard/')
+    assert test_pt19 in resp_dash3.context['page_obj'], "Unhidden patient must reappear in active dashboard queue"
+
+    # 9. Verify Patient Details Button Renamed to "+ Add Treatment Course and Schedule"
+    resp_detail_renamed = c.get(f'/patients/{test_pt19.id}/')
+    assert resp_detail_renamed.status_code == 200
+    detail_renamed_html = resp_detail_renamed.content.decode('utf-8')
+    assert "Add Treatment Course and Schedule" in detail_renamed_html, "Button in patient details must be named '+ Add Treatment Course and Schedule'"
+
+    # Cleanup
+    test_pt19.delete()
+    print("✓ Test 19 Passed: Dashboard single line layout, 'Schedule Status' header, Admin hide with comment confirmation, and renamed 'Add Treatment Course and Schedule' button fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

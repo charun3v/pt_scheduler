@@ -140,7 +140,7 @@
             <!-- Action buttons for patient -->
             <div style="display: flex; gap: 6px; align-items: center;">
                 <a href="{% url 'schedule_patient' patient.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 5px 14px; font-size: 12px; font-weight: bold;">
-                    ➕ Add Treatment Course
+                    ➕ Add Treatment Course and Schedule
                 </a>
                 <a href="{% url 'patient_edit' patient.id %}" class="action-ribbon-btn" style="padding: 5px 12px; font-size: 12px;">
                     ✏️ Edit Demographics
@@ -188,7 +188,7 @@
             </div>
             <div>
                 <a href="{% url 'schedule_patient' patient.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 4px 12px; font-size: 11px; font-weight: bold;">
-                    ➕ Add Treatment Course
+                    ➕ Add Treatment Course and Schedule
                 </a>
             </div>
         </div>
@@ -368,7 +368,7 @@
                 This patient has been registered in the system but has no active or draft treatment schedules yet.
             </p>
             <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 6px 20px; font-size: 13px; font-weight: bold;">
-                ➕ Add Treatment Course
+                ➕ Add Treatment Course and Schedule
             </a>
         </div>
         {% endif %}

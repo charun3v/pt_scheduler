@@ -4,9 +4,10 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Q
 
+from django.utils import timezone
 from .models import Patient, SEX_CHOICES, DEFAULT_SITES
 from apps.core.models import Consultant, AuditLog
-from apps.core.permissions import can_edit_locked_identity, can_delete_patient, can_register_patient
+from apps.core.permissions import can_edit_locked_identity, can_delete_patient, can_register_patient, is_admin_only
 from apps.core.validators import validate_field_value
 
 
@@ -276,4 +277,75 @@ def patient_delete_view(request, patient_id):
         return redirect('dashboard')
 
     return render(request, 'patients/patient_confirm_delete.html', {'patient': patient})
+
+
+@login_required
+def patient_hide_dashboard_view(request, patient_id):
+    """
+    Hide a patient from the Main Dashboard queue.
+    Strictly restricted to Admin (not SubAdmin).
+    Requires a comment / reason.
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted. Only Administrators have permission to hide patients from the dashboard.")
+        return redirect('dashboard')
+
+    patient = get_object_or_404(Patient, id=patient_id)
+
+    if request.method == 'POST':
+        comment = request.POST.get('comment', '').strip()
+        if not comment:
+            messages.error(request, "A comment / reason is required to hide a patient from the Main Dashboard.")
+            return redirect('dashboard')
+
+        patient.is_hidden_from_dashboard = True
+        patient.hidden_reason = comment
+        patient.hidden_at = timezone.now()
+        patient.hidden_by = request.user
+        patient.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="PATIENT_DASHBOARD_HIDDEN",
+            mr_no=str(patient.mr_no),
+            details=f"Patient {patient.pt_name} (MR: {patient.mr_no}) hidden from main dashboard by {request.user.username}. Reason: {comment}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"Patient {patient.pt_name} (MR: {patient.mr_no}) has been hidden from the main dashboard.")
+
+    return redirect('dashboard')
+
+
+@login_required
+def patient_unhide_dashboard_view(request, patient_id):
+    """
+    Restore a hidden patient back to the Main Dashboard queue.
+    Strictly restricted to Admin (not SubAdmin).
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted. Only Administrators have permission to unhide patients.")
+        return redirect('dashboard')
+
+    patient = get_object_or_404(Patient, id=patient_id)
+
+    if request.method == 'POST':
+        patient.is_hidden_from_dashboard = False
+        patient.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="PATIENT_DASHBOARD_UNHIDDEN",
+            mr_no=str(patient.mr_no),
+            details=f"Patient {patient.pt_name} (MR: {patient.mr_no}) unhidden and restored to main dashboard by {request.user.username}.",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"Patient {patient.pt_name} (MR: {patient.mr_no}) has been restored to the main dashboard.")
+
+    next_url = request.GET.get('next') or request.POST.get('next')
+    if next_url:
+        return redirect(next_url)
+    return redirect('dashboard')
+
 
