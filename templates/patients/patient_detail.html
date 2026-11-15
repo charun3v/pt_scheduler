@@ -1,145 +1,435 @@
 {% extends "base.html" %}
 
-{% block title %}{{ patient.pt_name }} (MR: {{ patient.mr_no }}) - Details{% endblock %}
+{% block title %}{{ patient.pt_name }} (MR: {{ patient.mr_no }}) - Patient Details{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Compact Patient Demographics Top Card */
+    .patient-header-compact {
+        background: #ffffff;
+        border: 2px solid #003366;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .demographics-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px 16px;
+        font-size: 12px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid #e1e4e8;
+    }
+    .demo-item-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        color: #57606a;
+        font-weight: 700;
+        margin-bottom: 1px;
+    }
+    .demo-item-value {
+        font-weight: 600;
+        color: #24292f;
+    }
+
+    /* Treatment Courses Section */
+    .courses-card {
+        background: #ffffff;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        overflow: hidden;
+        margin-bottom: 16px;
+    }
+    .courses-header {
+        background: #f6f8fa;
+        border-bottom: 1px solid #d0d7de;
+        padding: 8px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .courses-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        text-align: left;
+    }
+    .courses-table th {
+        background: #f6f8fa;
+        color: #24292f;
+        font-weight: 600;
+        padding: 8px 10px;
+        border-bottom: 2px solid #d0d7de;
+        border-right: 1px solid #eaeef2;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+    .courses-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid #eaeef2;
+        border-right: 1px solid #eaeef2;
+        vertical-align: middle;
+    }
+    .courses-table tr:hover {
+        background: #f9fbfd;
+    }
+    .courses-table tr.clubbed-row {
+        background: #f0f7ff;
+    }
+
+    /* Badges */
+    .badge-status {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        text-align: center;
+        white-space: nowrap;
+    }
+    .badge-scheduled { background: #dafbe1; color: #1a7f37; border: 1px solid #4ac26b; }
+    .badge-draft { background: #fff8c5; color: #9a6700; border: 1px solid #d4a72c; }
+    .badge-pending { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+    .badge-completed { background: #ddf4ff; color: #0969da; border: 1px solid #54aeff; }
+    .badge-clubbed { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
+
+    /* Audit Table (Admin only) */
+    .audit-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+    }
+    .audit-table th {
+        background: #f6f8fa;
+        padding: 6px 8px;
+        border-bottom: 2px solid #d0d7de;
+        text-align: left;
+        color: #24292f;
+    }
+    .audit-table td {
+        padding: 6px 8px;
+        border-bottom: 1px solid #eaeef2;
+        color: #57606a;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div style="max-width: 1000px; margin: 0 auto;">
-    
-    <!-- Top Patient Header Card -->
-    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 6px; padding: 18px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 12px;">
+<div style="max-width: 1140px; margin: 0 auto;">
+
+    <!-- TOP PATIENT HEADER (COMPACT DEMOGRAPHICS SUMMARY) -->
+    <div class="patient-header-compact">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
-                <h2 style="margin: 0; font-size: 20px; color: #003366;">{{ patient.pt_name }}</h2>
-                <div style="font-size: 13px; color: #555; margin-top: 4px;">
-                    Hospital / MR Number: <strong style="color: #003366;">{{ patient.mr_no }}</strong> | RT No: <strong>{{ patient.rt_no|default:'N/A' }}</strong>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h2 style="margin: 0; font-size: 18px; color: #003366;">{{ patient.pt_name }}</h2>
+                    <span style="background: #e8f5e9; color: #1b5e20; border: 1px solid #2e7d32; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold;">
+                        MR: {{ patient.mr_no }}
+                    </span>
+                    {% if patient.rt_no %}
+                    <span style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;">
+                        RT: {{ patient.rt_no }}
+                    </span>
+                    {% endif %}
                 </div>
             </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 8px 16px;">
-                    ⚡ {% if patient.has_schedule %}Edit / Add Schedule{% else %}Schedule Treatment Now{% endif %}
+
+            <!-- Action buttons for patient -->
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <a href="{% url 'schedule_patient' patient.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 5px 14px; font-size: 12px; font-weight: bold;">
+                    ➕ Add Treatment Course
                 </a>
-                <a href="{% url 'patient_edit' patient.id %}" class="action-ribbon-btn" style="padding: 8px 14px;">
+                <a href="{% url 'patient_edit' patient.id %}" class="action-ribbon-btn" style="padding: 5px 12px; font-size: 12px;">
                     ✏️ Edit Demographics
                 </a>
                 {% if CAN_DELETE_PATIENT %}
-                <a href="{% url 'patient_delete' patient.id %}" class="btn-delete" style="padding: 8px 14px;" title="Permanently delete patient record (Admin only)">
-                    🗑️ Delete Patient
+                <a href="{% url 'patient_delete' patient.id %}" class="btn-delete" style="padding: 5px 10px; font-size: 12px;" title="Permanently delete patient record (Admin only)">
+                    🗑️ Delete
                 </a>
                 {% endif %}
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; font-size: 13px;">
+        <!-- Demographics Grid (Compact) -->
+        <div class="demographics-grid">
             <div>
-                <span style="color: #777; display: block; font-size: 11px;">Age / Sex:</span>
-                <strong>{{ patient.age|default:'-' }} Yrs / {{ patient.get_sex_display }}</strong>
+                <div class="demo-item-label">Age / Sex</div>
+                <div class="demo-item-value">{{ patient.age|default:'-' }} Yrs / {{ patient.get_sex_display }}</div>
             </div>
             <div>
-                <span style="color: #777; display: block; font-size: 11px;">Primary Consultant:</span>
-                <strong>{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
+                <div class="demo-item-label">Primary Consultant</div>
+                <div class="demo-item-value" style="color: #003366;">{{ patient.primary_consultant.name|default:'Unassigned' }}</div>
             </div>
             <div>
-                <span style="color: #777; display: block; font-size: 11px;">Site of Treatment:</span>
-                <strong>{{ patient.site_of_treatment }}</strong>
+                <div class="demo-item-label">Site of Treatment</div>
+                <div class="demo-item-value">{{ patient.site_of_treatment|default:'Unspecified' }}</div>
             </div>
             <div>
-                <span style="color: #777; display: block; font-size: 11px;">Phone Number:</span>
-                <strong>{{ patient.phone_no|default:'N/A' }}</strong>
+                <div class="demo-item-label">Phone Number</div>
+                <div class="demo-item-value">{{ patient.phone_no|default:'N/A' }}</div>
             </div>
-            <div style="grid-column: span 4; background: #f8f9fa; padding: 8px 12px; border-radius: 4px; margin-top: 4px;">
-                <span style="color: #777; font-size: 11px; display: block;">Diagnosis:</span>
-                <strong style="color: #2d3748;">{{ patient.diagnosis }}</strong>
+            <div style="grid-column: span 4; background: #f8fafc; padding: 6px 10px; border-radius: 4px; border: 1px solid #e2e8f0; margin-top: 4px;">
+                <span class="demo-item-label" style="display: inline; margin-right: 6px;">Diagnosis:</span>
+                <strong style="color: #0f172a; font-size: 12px;">{{ patient.diagnosis }}</strong>
             </div>
         </div>
     </div>
 
-    <!-- Treatment Schedules Section -->
-    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 18px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 2px solid #f0f4f8; padding-bottom: 8px;">
-            <h3 style="margin: 0; font-size: 15px; color: #003366;">Radiotherapy Treatment Schedules ({{ schedules.count }})</h3>
-            <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn">➕ New Treatment Course</a>
+    <!-- SECTION: TREATMENT COURSES TABLE (SIMPLE, DETAILED, CLUBBED COURSES TOGETHER) -->
+    <div class="courses-card">
+        <div class="courses-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <h3 style="margin: 0; font-size: 14px; color: #003366; font-weight: 700;">
+                    Treatment Courses & Radiotherapy Schedule ({{ schedules.count }})
+                </h3>
+            </div>
+            <div>
+                <a href="{% url 'schedule_patient' patient.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 4px 12px; font-size: 11px; font-weight: bold;">
+                    ➕ Add Treatment Course
+                </a>
+            </div>
         </div>
 
         {% if schedules %}
-        <div style="display: flex; flex-direction: column; gap: 14px;">
-            {% for s in schedules %}
-            <div style="border: 1px solid #cbd5e0; border-radius: 4px; padding: 14px; background: {% if s.date_of_start %}#ffffff{% else %}#fffdf0{% endif %};">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 6px;">
-                    <div>
-                        <span style="font-weight: bold; font-size: 14px; color: #003366;">{{ s.machine.name|default:'Machine Unassigned' }}</span>
-                        {% if s.shift %}<span class="badge-locked" style="margin-left: 6px;">{{ s.shift.name }}</span>{% endif %}
-                    </div>
-                    <div>
-                        {% if s.date_of_start %}
-                            <span class="badge-success">Start: {{ s.date_of_start|date:"d-M-Y" }}</span>
-                        {% else %}
-                            <span class="badge-warning">Start Date Pending</span>
-                        {% endif %}
-                    </div>
-                </div>
+        <div style="overflow-x: auto;">
+            <table class="courses-table">
+                <thead>
+                    <tr>
+                        <th style="width: 110px;">Course / Tag</th>
+                        <th style="width: 95px;">Sim Date</th>
+                        <th style="width: 100px;">Start Date</th>
+                        <th style="width: 100px;">End Date</th>
+                        <th style="width: 110px;">Type</th>
+                        <th style="width: 95px;">Intent</th>
+                        <th style="width: 75px;">Dose</th>
+                        <th style="width: 75px;">Fractions</th>
+                        <th style="min-width: 130px;">Machine / Shift</th>
+                        <th style="width: 90px; text-align: center;">Status</th>
+                        <th style="min-width: 170px; text-align: center;">Actions & Course Clubbing</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in schedules %}
+                    <tr class="{% if s.tagged_to_id %}clubbed-row{% endif %}">
+                        <!-- Course / Tag -->
+                        <td>
+                            <strong style="color: #003366;">Course #{{ s.id }}</strong>
+                            {% if s.tagged_to %}
+                                <div style="margin-top: 2px;">
+                                    <span class="badge-status badge-clubbed" title="Clubbed with Course #{{ s.tagged_to.id }} ({{ s.tagged_to.machine_display }})">
+                                        🔗 Clubbed with #{{ s.tagged_to.id }}
+                                    </span>
+                                </div>
+                            {% elif s.tagged_courses.all %}
+                                <div style="margin-top: 2px;">
+                                    <span class="badge-status badge-clubbed" style="background: #e0e7ff; color: #3730a3; border-color: #a5b4fc;" title="Parent course with tagged treatments">
+                                        ⭐ Primary ({{ s.tagged_courses.count }} tagged)
+                                    </span>
+                                </div>
+                            {% endif %}
+                            {% if s.course_tag %}
+                                <span style="font-size: 10px; color: #57606a; display: block;">[{{ s.course_tag }}]</span>
+                            {% endif %}
+                        </td>
 
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 12px;">
-                    <div>
-                        <span style="color: #777; display: block; font-size: 11px;">Simulation Date:</span>
-                        <strong>{{ s.date_of_sim|date:"d-M-Y"|default:'-' }}</strong>
-                    </div>
-                    <div>
-                        <span style="color: #777; display: block; font-size: 11px;">Dose Planned:</span>
-                        <strong>{{ s.dose_planned|default:'-' }} Gy</strong>
-                    </div>
-                    <div>
-                        <span style="color: #777; display: block; font-size: 11px;">Fractions:</span>
-                        <strong>{{ s.no_of_fractions|default:'-' }}</strong>
-                    </div>
-                    <div>
-                        <span style="color: #777; display: block; font-size: 11px;">Technique:</span>
-                        <strong>{{ s.technique.name|default:'-' }}</strong>
-                    </div>
-                    <div>
-                        <span style="color: #777; display: block; font-size: 11px;">Special Technique:</span>
-                        <strong>{{ s.special_technique.name|default:'None' }}</strong>
-                    </div>
-                    <div>
-                        <span style="color: #777; display: block; font-size: 11px;">Simulated For:</span>
-                        <strong>{{ s.simulated_for.name|default:'-' }}</strong>
-                    </div>
-                    <div>
-                        <span style="color: #777; display: block; font-size: 11px;">Jr. Resident:</span>
-                        <strong>{{ s.jr_resident|default:'-' }}</strong>
-                    </div>
-                    <div>
-                        <span style="color: #777; display: block; font-size: 11px;">Status:</span>
-                        <strong>{{ s.status }}</strong>
-                    </div>
-                </div>
+                        <!-- Simulation Date -->
+                        <td>
+                            {{ s.date_of_sim|date:"d-M-Y"|default:"-" }}
+                        </td>
 
-                {% if s.notes %}
-                <div style="margin-top: 8px; font-size: 12px; color: #555; background: #f8f9fa; padding: 6px 10px; border-radius: 3px;">
-                    <strong>Notes:</strong> {{ s.notes }}
-                </div>
-                {% endif %}
+                        <!-- Treatment Start Date -->
+                        <td>
+                            {% if s.date_of_start %}
+                                <strong style="color: #1a7f37;">{{ s.date_of_start|date:"d-M-Y" }}</strong>
+                            {% else %}
+                                <span style="color: #cf222e; font-style: italic;">Unscheduled</span>
+                            {% endif %}
+                        </td>
 
-                <div style="margin-top: 10px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
-                    <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn" style="font-size: 11px; padding: 4px 10px;">
-                        ✏️ Modify this Schedule
-                    </a>
-                    {% if CAN_REMOVE_FROM_SCHEDULE %}
-                    <a href="{% url 'schedule_delete' s.id %}" class="btn-delete" style="font-size: 11px; padding: 4px 10px;" title="Remove this patient from the schedule list (Admin only)">
-                        🗑️ Remove from Schedule List
-                    </a>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
+                        <!-- Treatment End Date (Calculated skipping Sundays) -->
+                        <td>
+                            {% if s.treatment_end_date %}
+                                <strong>{{ s.treatment_end_date|date:"d-M-Y" }}</strong>
+                            {% else %}
+                                <span style="color: #57606a;">-</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Treatment Type (Teletherapy / Brachytherapy) -->
+                        <td>
+                            {% if s.treatment_type == 'Brachytherapy' %}
+                                <span style="color: #b45309; font-weight: 600;">☢️ Brachy</span>
+                            {% else %}
+                                <span style="color: #0369a1; font-weight: 600;">📡 Teletherapy</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Intent -->
+                        <td>
+                            {% if s.intent %}
+                                <span style="font-weight: 600;">{{ s.intent.name }}</span>
+                            {% else %}
+                                <span style="color: #57606a;">-</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Dose -->
+                        <td>
+                            {% if s.dose_planned %}
+                                <strong>{{ s.dose_planned }}</strong> <span style="font-size: 10px; color: #57606a;">Gy</span>
+                            {% else %}
+                                <span style="color: #57606a;">-</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Fractionation -->
+                        <td>
+                            {% if s.no_of_fractions %}
+                                <strong>{{ s.no_of_fractions }}</strong> <span style="font-size: 10px; color: #57606a;">Fr</span>
+                            {% else %}
+                                <span style="color: #57606a;">-</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Machine / Shift -->
+                        <td>
+                            {% if s.machine %}
+                                <strong>{{ s.machine.name }}</strong>
+                                {% if s.shift %}
+                                    <span style="font-size: 11px; color: #57606a; margin-left: 2px;">[{{ s.shift.name }}]</span>
+                                {% endif %}
+                            {% else %}
+                                <span style="color: #cf222e;">Not Assigned</span>
+                            {% endif %}
+                            {% if s.technique %}
+                                <div style="font-size: 10px; color: #57606a;">{{ s.technique.name }}</div>
+                            {% endif %}
+                        </td>
+
+                        <!-- Status Badge -->
+                        <td style="text-align: center;">
+                            {% if s.status == 'Scheduled' %}
+                                <span class="badge-status badge-scheduled">Scheduled</span>
+                            {% elif s.status == 'Draft' %}
+                                <span class="badge-status badge-draft">Draft</span>
+                            {% elif s.status == 'Completed' %}
+                                <span class="badge-status badge-completed">Completed</span>
+                            {% else %}
+                                <span class="badge-status badge-pending">{{ s.status }}</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Actions & Course Tagging / Clubbing -->
+                        <td style="text-align: center;">
+                            <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
+                                <div style="display: flex; gap: 4px; align-items: center;">
+                                    <a href="{% url 'schedule_patient' patient.id %}?schedule_id={{ s.id }}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px;" title="Edit or Approve this course">
+                                        ✏️ Edit
+                                    </a>
+                                    {% if CAN_REMOVE_FROM_SCHEDULE %}
+                                    <a href="{% url 'schedule_delete' s.id %}" class="btn-delete" style="padding: 2px 6px; font-size: 11px;" title="Delete or remove this course">
+                                        🗑️
+                                    </a>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Inline Club / Tag with Previous Course Form -->
+                                {% if schedules.count > 1 %}
+                                <form method="POST" action="{% url 'tag_treatment_course' s.id %}" style="display: inline-flex; align-items: center; gap: 3px; margin: 0;">
+                                    {% csrf_token %}
+                                    <select name="tagged_to_id" onchange="this.form.submit();" style="font-size: 10px; padding: 1px 3px; border: 1px solid #d0d7de; border-radius: 3px; max-width: 140px; background: #fff;" title="Tag / club this course with another previous course">
+                                        <option value="">🔗 Independent</option>
+                                        {% for other in schedules %}
+                                            {% if other.id != s.id %}
+                                                <option value="{{ other.id }}" {% if s.tagged_to_id == other.id %}selected{% endif %}>
+                                                    Club with #{{ other.id }} ({{ other.machine_display }})
+                                                </option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
         {% else %}
-        <div style="text-align: center; padding: 30px; background: #f8f9fa; border-radius: 4px;">
-            <p style="color: #666; margin: 0 0 12px 0;">This patient has been registered but not scheduled for radiotherapy treatment yet.</p>
-            <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 8px 20px;">
-                ⚡ Book Treatment Schedule Now
+        <!-- No Treatment Courses Scheduled Yet -->
+        <div style="text-align: center; padding: 36px 16px; background: #fdfdfd;">
+            <div style="font-size: 32px; margin-bottom: 8px;">📋</div>
+            <h4 style="margin: 0 0 6px 0; color: #24292f; font-size: 14px;">No Treatment Courses Scheduled</h4>
+            <p style="color: #57606a; font-size: 12px; margin: 0 0 14px 0; max-width: 500px; margin-left: auto; margin-right: auto;">
+                This patient has been registered in the system but has no active or draft treatment schedules yet.
+            </p>
+            <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 6px 20px; font-size: 13px; font-weight: bold;">
+                ➕ Add Treatment Course
             </a>
         </div>
         {% endif %}
     </div>
+
+    <!-- SECTION: SECURITY & CLINICAL AUDIT LOGS (ADMIN ONLY) -->
+    {% if IS_ADMIN_ONLY %}
+    <div class="courses-card">
+        <div class="courses-header" style="background: #fbf0f0; border-bottom-color: #f5c6cb;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 14px;">🛡️</span>
+                <h3 style="margin: 0; font-size: 13px; color: #842029; font-weight: 700;">
+                    Patient Security & Clinical Audit Trail (Admin Only)
+                </h3>
+            </div>
+            <a href="{% url 'audit_log_report' %}?q={{ patient.mr_no }}" class="action-ribbon-btn" style="font-size: 11px; padding: 2px 8px; color: #842029; border-color: #f5c6cb;">
+                View All System Logs ↗
+            </a>
+        </div>
+
+        {% if audit_logs %}
+        <div style="overflow-x: auto;">
+            <table class="audit-table">
+                <thead>
+                    <tr>
+                        <th style="width: 140px;">Timestamp</th>
+                        <th style="width: 120px;">User</th>
+                        <th style="width: 160px;">Action</th>
+                        <th>Details</th>
+                        <th style="width: 100px;">IP Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in audit_logs %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{ log.log_datetime|date:"d-M-Y H:i:s" }}</td>
+                        <td style="font-weight: 600; color: #24292f;">{{ log.user.username|default:"System" }}</td>
+                        <td>
+                            <span style="display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;
+                                {% if 'APPROVED' in log.action or 'REGISTER' in log.action %}background: #dafbe1; color: #1a7f37;
+                                {% elif 'CHANGE' in log.action or 'UPDATE' in log.action %}background: #fff8c5; color: #9a6700;
+                                {% elif 'TAG' in log.action %}background: #e0f2fe; color: #0369a1;
+                                {% elif 'DELETE' in log.action %}background: #ffebe9; color: #cf222e;
+                                {% else %}background: #f6f8fa; color: #57606a;{% endif %}">
+                                {{ log.action }}
+                            </span>
+                        </td>
+                        <td>{{ log.details }}</td>
+                        <td>{{ log.ip_address|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="padding: 16px; text-align: center; color: #57606a; font-size: 12px;">
+            No audit log entries recorded for MR No. {{ patient.mr_no }} yet.
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
 </div>
 {% endblock %}

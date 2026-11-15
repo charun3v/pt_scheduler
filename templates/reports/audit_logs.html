@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Security & Clinical Audit Logs - Admin Only{% endblock %}
+
+{% block content %}
+<div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 20px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #003366; padding-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+        <div>
+            <h2 style="margin: 0; font-size: 18px; color: #003366;">
+                🔒 Security & Clinical Audit Logs ({{ total_logs }} records)
+            </h2>
+            <div style="font-size: 12px; color: #666; margin-top: 2px;">
+                Comprehensive compliance trail tracking user actions, schedule approvals, demographic updates, phone number changes, and start date adjustments.
+            </div>
+        </div>
+        <span class="badge-admin">Admin Only</span>
+    </div>
+
+    <!-- Filter Form -->
+    <form method="GET" style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; align-items: flex-end; background: #eef4f9; padding: 14px; border-radius: 4px; border: 1px solid #b8daff;">
+        <div>
+            <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #003366;">Search Keyword / MR No:</label>
+            <input type="text" name="q" value="{{ query }}" placeholder="MR No, name, details..."
+                   style="padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px; min-width: 200px;">
+        </div>
+
+        <div>
+            <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #003366;">Action / Category:</label>
+            <select name="action" style="padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px; min-width: 170px;">
+                <option value="">-- All Actions --</option>
+                {% for act in distinct_actions %}
+                    <option value="{{ act }}" {% if action_filter == act %}selected{% endif %}>{{ act }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #003366;">Date From:</label>
+            <input type="date" name="start_date" value="{{ start_date_str }}"
+                   style="padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px;">
+        </div>
+
+        <div>
+            <label style="display: block; font-size: 11px; font-weight: bold; margin-bottom: 3px; color: #003366;">Date To:</label>
+            <input type="date" name="end_date" value="{{ end_date_str }}"
+                   style="padding: 6px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 12px;">
+        </div>
+
+        <div>
+            <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 7px 16px; border-radius: 3px; font-weight: bold; cursor: pointer; font-size: 12px;">
+                🔍 Filter Logs
+            </button>
+            <a href="{% url 'audit_log_report' %}" class="action-ribbon-btn" style="padding: 6px 12px; font-size: 12px;">Reset</a>
+        </div>
+    </form>
+
+    <!-- Table -->
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+            <tr style="background: #003366; color: #ffffff; text-align: left;">
+                <th style="padding: 10px 8px; width: 140px;">Timestamp</th>
+                <th style="padding: 10px 8px; width: 130px;">User</th>
+                <th style="padding: 10px 8px; width: 160px;">Action</th>
+                <th style="padding: 10px 8px; width: 110px;">MR Number</th>
+                <th style="padding: 10px 8px;">Action Details / Changes</th>
+                <th style="padding: 10px 8px; width: 110px;">IP Address</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in page_obj %}
+            <tr style="border-bottom: 1px solid #e2e8f0;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
+                <td style="padding: 8px; white-space: nowrap; color: #444;">
+                    {{ log.log_datetime|date:"d-M-Y H:i:s" }}
+                </td>
+                <td style="padding: 8px; font-weight: 600; color: #003366;">
+                    {{ log.user.get_full_name|default:log.user.username|default:"System" }}
+                </td>
+                <td style="padding: 8px;">
+                    {% if 'PHONE' in log.action %}
+                        <span style="background: #fff3cd; color: #856404; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 11px; border: 1px solid #ffeeba;">{{ log.action }}</span>
+                    {% elif 'DATE' in log.action %}
+                        <span style="background: #cce5ff; color: #004085; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 11px; border: 1px solid #b8daff;">{{ log.action }}</span>
+                    {% elif 'DELETE' in log.action or 'REMOVE' in log.action %}
+                        <span style="background: #f8d7da; color: #721c24; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 11px; border: 1px solid #f5c6cb;">{{ log.action }}</span>
+                    {% elif 'SCHEDULE' in log.action %}
+                        <span style="background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 11px; border: 1px solid #c3e6cb;">{{ log.action }}</span>
+                    {% else %}
+                        <span style="background: #e2e8f0; color: #333; padding: 2px 6px; border-radius: 3px; font-size: 11px;">{{ log.action }}</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 8px; font-weight: bold;">
+                    {% if log.mr_no and log.mr_no != 'LOOKUP' %}
+                        <a href="{% url 'patient_search' %}?q={{ log.mr_no }}" target="_blank" style="color: #003366; text-decoration: underline;" title="Search patient in new tab">
+                            {{ log.mr_no }} ↗
+                        </a>
+                    {% else %}
+                        <span style="color: #999;">-</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 8px; color: #24292f; line-height: 1.4;">
+                    {{ log.details }}
+                </td>
+                <td style="padding: 8px; color: #666; font-size: 11px; font-family: monospace;">
+                    {{ log.ip_address|default:"-" }}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" style="padding: 24px; text-align: center; color: #666;">
+                    No audit log records match the selected filters.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; border-top: 1px solid #eee; padding-top: 12px; font-size: 12px;">
+        <span style="color: #555;">
+            Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} logs
+        </span>
+        <div style="display: flex; gap: 6px;">
+            {% if page_obj.has_previous %}
+                <a href="?page=1{% if query %}&q={{ query }}{% endif %}{% if action_filter %}&action={{ action_filter }}{% endif %}{% if start_date_str %}&start_date={{ start_date_str }}{% endif %}{% if end_date_str %}&end_date={{ end_date_str }}{% endif %}" class="action-ribbon-btn">« First</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if action_filter %}&action={{ action_filter }}{% endif %}{% if start_date_str %}&start_date={{ start_date_str }}{% endif %}{% if end_date_str %}&end_date={{ end_date_str }}{% endif %}" class="action-ribbon-btn">‹ Prev</a>
+            {% endif %}
+
+            <span style="padding: 4px 8px; font-weight: bold; color: #003366;">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if action_filter %}&action={{ action_filter }}{% endif %}{% if start_date_str %}&start_date={{ start_date_str }}{% endif %}{% if end_date_str %}&end_date={{ end_date_str }}{% endif %}" class="action-ribbon-btn">Next ›</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if query %}&q={{ query }}{% endif %}{% if action_filter %}&action={{ action_filter }}{% endif %}{% if start_date_str %}&start_date={{ start_date_str }}{% endif %}{% if end_date_str %}&end_date={{ end_date_str }}{% endif %}" class="action-ribbon-btn">Last »</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

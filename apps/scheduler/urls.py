@@ -5,6 +5,7 @@ from apps.reports import views as report_views
 urlpatterns = [
     path('patient/<int:patient_id>/', views.schedule_patient_view, name='schedule_patient'),
     path('schedule/<int:schedule_id>/delete/', views.schedule_delete_view, name='schedule_delete'),
+    path('course/<int:schedule_id>/tag/', views.tag_treatment_course_view, name='tag_treatment_course'),
     path('unscheduled/', views.unscheduled_patients_view, name='unscheduled_patients'),
     path('mappings/', views.machine_mappings_view, name='machine_mappings'),
     path('mappings/<int:mapping_id>/edit/', views.edit_machine_mapping_view, name='edit_machine_mapping'),

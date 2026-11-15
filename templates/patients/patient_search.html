@@ -52,10 +52,10 @@
             {% for p in page_obj %}
             <tr style="border-bottom: 1px solid #eee;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
                 <td style="padding: 8px; font-weight: bold;">
-                    <a href="{% url 'patient_detail' p.id %}" style="color: #003366;">{{ p.mr_no }}</a>
+                    <a href="{% url 'patient_detail' p.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="Open Patient Details in new tab">{{ p.mr_no }} ↗</a>
                 </td>
                 <td style="padding: 8px; font-weight: 600;">
-                    <a href="{% url 'patient_detail' p.id %}" style="color: #003366;">{{ p.pt_name }}</a>
+                    <a href="{% url 'patient_detail' p.id %}" target="_blank" style="color: #003366;" title="Open Patient Details in new tab">{{ p.pt_name }}</a>
                 </td>
                 <td style="padding: 8px;">{{ p.age|default:'-' }} / {{ p.sex }}</td>
                 <td style="padding: 8px;">{{ p.rt_no|default:'-' }}</td>
@@ -75,8 +75,8 @@
                     <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn" style="padding: 4px 8px; font-size: 11px;">
                         ⚡ Schedule
                     </a>
-                    <a href="{% url 'patient_detail' p.id %}" class="action-ribbon-btn" style="padding: 4px 8px; font-size: 11px;">
-                        View
+                    <a href="{% url 'patient_detail' p.id %}" target="_blank" class="action-ribbon-btn" style="padding: 4px 8px; font-size: 11px;" title="Open in new tab">
+                        View ↗
                     </a>
                 </td>
             </tr>

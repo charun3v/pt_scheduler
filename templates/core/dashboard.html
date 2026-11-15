@@ -143,8 +143,8 @@
                             {{ forloop.counter0|add:page_obj.start_index }}
                         </td>
                         <td style="padding: 8px 10px; font-weight: bold;">
-                            <a href="{% url 'patient_detail' p.id %}" style="color: #003366; text-decoration: underline;" title="View Patient Details">
-                                {{ p.mr_no }}
+                            <a href="{% url 'patient_detail' p.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="View Patient Details in New Tab">
+                                {{ p.mr_no }} ↗
                             </a>
                         </td>
                         <td style="padding: 8px 10px; font-weight: 600; color: #222;">

@@ -8,4 +8,5 @@ urlpatterns = [
     path('manual-grid/', views.manual_schedule_grid_view, name='manual_schedule_grid'),
     re_path(r'^manual-grid/&(.*)$', views.manual_grid_ampersand_redirect, name='manual_grid_ampersand_redirect'),
     path('manual-grid/save-row/', views.manual_schedule_save_row_api, name='manual_schedule_save_row'),
+    path('audit-logs/', views.audit_log_report_view, name='audit_log_report'),
 ]

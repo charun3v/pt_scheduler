@@ -11,7 +11,8 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from apps.scheduler.models import Machine, TreatmentSchedule, Shift
 from apps.patients.models import Patient
 from apps.core.models import Consultant, AuditLog
-from apps.core.permissions import is_admin_or_subadmin
+from apps.core.permissions import is_admin_or_subadmin, is_admin_only
+from django.core.paginator import Paginator
 
 
 @login_required
@@ -46,7 +47,7 @@ def machine_daily_list_view(request):
 
     schedules = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'shift', 'technique', 'patient__primary_consultant'
-    ).filter(date_of_start__range=[start_date, end_date])
+    ).filter(date_of_start__range=[start_date, end_date]).exclude(status='Draft')
 
     selected_machine = None
     if selected_machine_id:
@@ -83,7 +84,7 @@ def pending_starts_report_view(request):
 
     query = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'technique', 'patient__primary_consultant'
-    ).filter(date_of_start__isnull=True)
+    ).filter(date_of_start__isnull=True).exclude(status='Draft')
 
     if start_sim_str:
         try:
@@ -373,7 +374,7 @@ def manual_schedule_grid_view(request):
 
     schedules_qs = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'shift', 'technique', 'special_technique', 'patient__primary_consultant'
-    ).filter(base_filter & date_filter).order_by('date_of_start', 'shift__display_order', 'patient__pt_name')
+    ).filter(base_filter & date_filter).exclude(status='Draft').order_by('date_of_start', 'shift__display_order', 'patient__pt_name')
 
     # BATCH POST SAVE: Process all modified rows submitted via form
     if request.method == 'POST':
@@ -593,4 +594,65 @@ def export_manual_schedule_grid_excel(schedules, machine, start_date, end_date):
     response['Content-Disposition'] = f'attachment; filename="Treatment_Schedule_{safe_mach}_{start_date}_{end_date}.xlsx"'
     wb.save(response)
     return response
+
+
+@login_required
+def audit_log_report_view(request):
+    """
+    Security & Clinical Audit Logs Report.
+    Strictly restricted to Admin (not SubAdmin).
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted to Administrators. SubAdmins and clinical staff do not have permission to view security audit logs.")
+        return redirect('dashboard')
+
+    query = request.GET.get('q', '').strip()
+    action_filter = request.GET.get('action', '').strip()
+    start_date_str = request.GET.get('start_date', '').strip()
+    end_date_str = request.GET.get('end_date', '').strip()
+
+    logs = AuditLog.objects.select_related('user').all().order_by('-log_datetime')
+
+    if query:
+        logs = logs.filter(
+            Q(mr_no__icontains=query) |
+            Q(details__icontains=query) |
+            Q(user__username__icontains=query) |
+            Q(user__first_name__icontains=query) |
+            Q(user__last_name__icontains=query)
+        )
+
+    if action_filter:
+        logs = logs.filter(action=action_filter)
+
+    if start_date_str:
+        try:
+            sd = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            logs = logs.filter(log_datetime__date__gte=sd)
+        except ValueError:
+            pass
+
+    if end_date_str:
+        try:
+            ed = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+            logs = logs.filter(log_datetime__date__lte=ed)
+        except ValueError:
+            pass
+
+    distinct_actions = AuditLog.objects.values_list('action', flat=True).distinct().order_by('action')
+
+    paginator = Paginator(logs, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'page_obj': page_obj,
+        'query': query,
+        'action_filter': action_filter,
+        'start_date_str': start_date_str,
+        'end_date_str': end_date_str,
+        'distinct_actions': distinct_actions,
+        'total_logs': logs.count(),
+    }
+    return render(request, 'reports/audit_logs.html', context)
 

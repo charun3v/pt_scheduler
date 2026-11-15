@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
+from django.db.models import Q
 from django.http import JsonResponse
 from django.contrib import messages
 from django.utils import timezone
@@ -8,7 +10,7 @@ from decimal import Decimal
 
 from .models import (
     Machine, Shift, Technique, SpecialTechnique, SimulatedFor,
-    TreatmentSite, MachineMapping, TreatmentSchedule
+    TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule
 )
 from apps.patients.models import Patient, DEFAULT_SITES
 from apps.core.models import AuditLog
@@ -24,8 +26,13 @@ def schedule_patient_view(request, patient_id):
       - Readonly: MR No, Patient Name, RT No, Sex, Primary Consultant
       - Editable inline: Age, Diagnosis, Site of Treatment, Phone Number
     Scheduling Form captures:
-      - Simulation date, Dose, Fractions, Technique, Special Technique,
-        Junior Resident, Simulated for, Machine, Shift, Treatment start date, Notes.
+      - Modality (Teletherapy / Brachytherapy)
+      - Simulation date, Intent, Dose, Fractions, Technique, Special Technique,
+        Junior Resident (dropdown of JR users), Simulated for, Machine, Shift,
+        Treatment start date, Tag with previous course, Notes.
+    Actions:
+      - 'Save as Draft': saves without scheduling on the active start list
+      - 'Approve & Schedule': validates all mandatory parameters and schedules on active list
     """
     patient = get_object_or_404(Patient, id=patient_id)
     machines = Machine.objects.filter(is_active=True).order_by('display_order', 'name')
@@ -34,10 +41,39 @@ def schedule_patient_view(request, patient_id):
     special_techniques = SpecialTechnique.objects.filter(is_active=True).order_by('display_order', 'name')
     simulated_for_list = SimulatedFor.objects.filter(is_active=True).order_by('display_order', 'name')
     treatment_sites = TreatmentSite.objects.filter(is_active=True).order_by('display_order', 'name')
+    treatment_intents = TreatmentIntent.objects.filter(is_active=True).order_by('display_order', 'name')
 
-    existing_schedule = patient.schedules.first()
+    # Junior Resident users
+    jr_users = User.objects.filter(
+        Q(profile__role__role_name__icontains='Resident') | 
+        Q(profile__role__role_description__icontains='Resident'),
+        is_active=True
+    ).order_by('first_name', 'username')
+
+    # Determine default Junior Resident (current logged in user if JR, else blank)
+    current_profile = getattr(request.user, 'profile', None)
+    user_is_jr = bool(current_profile and current_profile.role and 'resident' in current_profile.role.role_name.lower())
+    default_jr_val = (request.user.get_full_name() or request.user.username) if user_is_jr else ''
+
+    # Handle specific course selection or adding a new course
+    req_schedule_id = request.GET.get('schedule_id') or request.POST.get('schedule_id')
+    is_new_course = (request.GET.get('new_course') == '1') or (request.POST.get('new_course') == '1')
+
+    if req_schedule_id:
+        existing_schedule = patient.schedules.filter(id=req_schedule_id).first()
+    elif is_new_course:
+        existing_schedule = None
+    else:
+        existing_schedule = patient.schedules.filter(status__in=['Draft', 'Pending', 'Scheduled']).first() or patient.schedules.first()
+
+    previous_schedules = patient.schedules.all()
+    if existing_schedule:
+        previous_schedules = previous_schedules.exclude(id=existing_schedule.id)
 
     if request.method == 'POST':
+        form_action = request.POST.get('form_action', 'approve_schedule')
+        is_draft_action = (form_action == 'draft')
+
         # 1. Update top-card editable patient registration fields
         age_raw = request.POST.get('age', '').strip()
         patient.age = int(float(age_raw)) if age_raw else None
@@ -45,16 +81,29 @@ def schedule_patient_view(request, patient_id):
         site_val = request.POST.get('site_of_treatment', patient.site_of_treatment or '').strip()
         patient.site_of_treatment = site_val
 
+        old_phone = patient.phone_no or ''
         phone_no = request.POST.get('phone_no', '').strip()
         is_ph_valid, ph_err = validate_field_value('phone_no', phone_no)
         if not is_ph_valid:
             messages.error(request, ph_err)
             return redirect('schedule_patient', patient_id=patient.id)
+        
+        # Log phone number change if modified
+        if old_phone != phone_no:
+            AuditLog.objects.create(
+                user=request.user,
+                action="PATIENT_PHONE_CHANGE",
+                mr_no=str(patient.mr_no),
+                details=f"Phone number updated from '{old_phone or 'None'}' to '{phone_no}' for patient {patient.pt_name} (MR: {patient.mr_no})",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
         patient.phone_no = phone_no
         patient.save()
 
         # 2. Extract scheduling fields
+        treatment_type = request.POST.get('treatment_type', 'Teletherapy').strip()
         sim_date_raw = request.POST.get('date_of_sim', '').strip()
+        intent_id = request.POST.get('intent')
         dose_raw = request.POST.get('dose_planned', '').strip()
         fractions_raw = request.POST.get('no_of_fractions', '').strip()
         tech_id = request.POST.get('technique')
@@ -64,6 +113,7 @@ def schedule_patient_view(request, patient_id):
         machine_id = request.POST.get('machine')
         shift_id = request.POST.get('shift')
         start_date_raw = request.POST.get('date_of_start', '').strip()
+        tagged_to_id = request.POST.get('tagged_to', '').strip()
         custom_reason = request.POST.get('custom_reason', '').strip()
         notes = request.POST.get('notes', '').strip()
 
@@ -84,21 +134,39 @@ def schedule_patient_view(request, patient_id):
         sim_date = parse_d(sim_date_raw)
         start_date = parse_d(start_date_raw)
 
-        if sim_date and start_date and start_date < sim_date:
-            messages.error(
-                request,
-                f"Treatment Start Date ({start_date.strftime('%d-%m-%Y')}) cannot be earlier than CT Simulation Date ({sim_date.strftime('%d-%m-%Y')}). Date of start must be on or after Date of simulation."
-            )
-            return redirect('schedule_patient', patient_id=patient.id)
-
         dose = Decimal(dose_raw) if dose_raw else None
         fractions = int(float(fractions_raw)) if fractions_raw else None
 
+        intent_obj = TreatmentIntent.objects.filter(id=intent_id, is_active=True).first() if intent_id else None
         tech_obj = Technique.objects.filter(id=tech_id, is_active=True).first() if tech_id else None
         spec_tech_obj = SpecialTechnique.objects.filter(id=spec_tech_id, is_active=True).first() if spec_tech_id else None
         sim_for_obj = SimulatedFor.objects.filter(id=sim_for_id, is_active=True).first() if sim_for_id else None
         mach_obj = Machine.objects.filter(id=machine_id, is_active=True).first() if machine_id else None
         shift_obj = Shift.objects.filter(id=shift_id, is_active=True).first() if shift_id else None
+        tagged_to_obj = TreatmentSchedule.objects.filter(id=tagged_to_id, patient=patient).first() if tagged_to_id else None
+
+        # Detect changes in schedule dates for audit logging
+        if existing_schedule:
+            old_start_date = existing_schedule.date_of_start
+            old_sim_date = existing_schedule.date_of_sim
+
+            if old_start_date != start_date:
+                AuditLog.objects.create(
+                    user=request.user,
+                    action="SCHEDULE_DATE_CHANGE",
+                    mr_no=str(patient.mr_no),
+                    details=f"Treatment Start Date updated from '{old_start_date or 'Pending'}' to '{start_date or 'Pending'}' for {patient.pt_name} (MR: {patient.mr_no}) on {mach_obj or 'Unassigned'}",
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
+
+            if old_sim_date != sim_date:
+                AuditLog.objects.create(
+                    user=request.user,
+                    action="SIMULATION_DATE_CHANGE",
+                    mr_no=str(patient.mr_no),
+                    details=f"CT Simulation Date changed from '{old_sim_date or 'None'}' to '{sim_date or 'None'}' for {patient.pt_name} (MR: {patient.mr_no})",
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
 
         schedule_action = "created"
         if existing_schedule:
@@ -107,7 +175,83 @@ def schedule_patient_view(request, patient_id):
         else:
             sched = TreatmentSchedule(patient=patient, created_by=request.user)
 
+        # Handle 'Save as Draft' action
+        if is_draft_action:
+            sched.treatment_type = treatment_type
+            sched.site_of_treatment = site_val
+            sched.intent = intent_obj
+            sched.date_of_sim = sim_date
+            sched.dose_planned = dose
+            sched.no_of_fractions = fractions
+            sched.technique = tech_obj
+            sched.special_technique = spec_tech_obj
+            sched.jr_resident = jr_resident
+            sched.simulated_for = sim_for_obj
+            sched.machine = mach_obj
+            sched.shift = shift_obj
+            sched.date_of_start = start_date
+            sched.tagged_to = tagged_to_obj
+            sched.notes = notes
+            sched.status = 'Draft'
+            sched.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action="SCHEDULE_DRAFT_SAVED",
+                mr_no=str(patient.mr_no),
+                details=f"Saved Draft treatment course for {patient.pt_name} (MR: {patient.mr_no}) on {mach_obj or 'Unassigned'}",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+
+            messages.success(
+                request,
+                f"Treatment course saved as Draft for {patient.pt_name} (MR: {patient.mr_no}). Patient is in Draft status and will NOT appear on the daily machine list until approved."
+            )
+            return redirect('patient_detail', patient_id=patient.id)
+
+        # Handle 'Approve & Schedule' action: Validate ALL mandatory scheduling fields
+        if not site_val:
+            messages.error(request, "Site of Treatment is mandatory for scheduling.")
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        if not sim_date:
+            messages.error(request, "CT Simulation Date is mandatory for scheduling.")
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        if not intent_obj:
+            messages.error(request, "Treatment Intent (Radical, Palliative, Adjuvant, Neo-adjuvant) is mandatory.")
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        if not tech_obj:
+            messages.error(request, "Treatment Technique is mandatory for scheduling.")
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        if not dose:
+            messages.error(request, "Planned Dose (Gy) is mandatory for scheduling.")
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        if not fractions:
+            messages.error(request, "Number of fractions is mandatory for scheduling.")
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        if not mach_obj:
+            messages.error(request, "Machine selection is mandatory for scheduling.")
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        if not start_date:
+            messages.error(request, "Treatment Start Date is mandatory for scheduling.")
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        if sim_date and start_date and start_date < sim_date:
+            messages.error(
+                request,
+                f"Treatment Start Date ({start_date.strftime('%d-%m-%Y')}) cannot be earlier than CT Simulation Date ({sim_date.strftime('%d-%m-%Y')}). Date of start must be on or after Date of simulation."
+            )
+            return redirect('schedule_patient', patient_id=patient.id)
+
+        sched.treatment_type = treatment_type
         sched.site_of_treatment = site_val
+        sched.intent = intent_obj
         sched.date_of_sim = sim_date
         sched.dose_planned = dose
         sched.no_of_fractions = fractions
@@ -118,38 +262,49 @@ def schedule_patient_view(request, patient_id):
         sched.machine = mach_obj
         sched.shift = shift_obj
         sched.date_of_start = start_date
+        sched.tagged_to = tagged_to_obj
         sched.notes = notes
-        sched.status = 'Scheduled' if start_date else 'Pending'
+        sched.status = 'Scheduled'
         sched.save()
 
         AuditLog.objects.create(
             user=request.user,
-            action=f"SCHEDULE_{schedule_action.upper()}",
+            action="SCHEDULE_APPROVED",
             mr_no=str(patient.mr_no),
-            details=f"{schedule_action.title()} treatment schedule for {patient.pt_name} on {mach_obj} ({start_date or 'No Start Date'})",
+            details=f"Approved & Scheduled treatment for {patient.pt_name} (MR: {patient.mr_no}) on {mach_obj.name} (Start: {start_date}, Intent: {intent_obj.name}, JR: {jr_resident or 'None'})",
             ip_address=request.META.get('REMOTE_ADDR')
         )
 
         messages.success(
             request,
-            f"Treatment schedule {schedule_action} successfully for {patient.pt_name} (MR: {patient.mr_no})!"
+            f"Treatment schedule approved and scheduled successfully for {patient.pt_name} (MR: {patient.mr_no}) on {mach_obj.name}!"
         )
         return redirect('patient_detail', patient_id=patient.id)
 
     default_technique = techniques.filter(name__iexact='IMRT').first() or techniques.first()
     default_special_technique = special_techniques.filter(name__iexact='None').first() or special_techniques.first()
+    default_intent = treatment_intents.filter(name__iexact='Radical').first() or treatment_intents.first()
+
+    jr_user_names = [u.get_full_name() or u.username for u in jr_users]
 
     context = {
         'patient': patient,
         'schedule': existing_schedule,
+        'previous_schedules': previous_schedules,
         'machines': machines,
         'shifts': shifts,
         'techniques': techniques,
         'special_techniques': special_techniques,
+        'treatment_intents': treatment_intents,
         'default_technique': default_technique,
         'default_special_technique': default_special_technique,
+        'default_intent': default_intent,
         'simulated_for_list': simulated_for_list,
         'treatment_sites': treatment_sites,
+        'jr_users': jr_users,
+        'jr_user_names': jr_user_names,
+        'default_jr_val': default_jr_val,
+        'is_new_course': is_new_course,
         'today': date.today().isoformat(),
     }
     return render(request, 'scheduler/schedule_patient.html', context)
@@ -520,4 +675,45 @@ def schedule_delete_view(request, schedule_id):
         'patient': patient,
         'next': request.GET.get('next', '')
     })
+
+
+@login_required
+def tag_treatment_course_view(request, schedule_id):
+    """
+    Tag / Club a treatment course to another previous course of the same patient.
+    Can also untag to make it independent.
+    """
+    schedule = get_object_or_404(TreatmentSchedule, id=schedule_id)
+    patient = schedule.patient
+
+    if request.method == 'POST':
+        tagged_to_id = request.POST.get('tagged_to_id', '').strip()
+        if tagged_to_id:
+            target = get_object_or_404(TreatmentSchedule, id=tagged_to_id, patient=patient)
+            if target.id == schedule.id:
+                messages.error(request, "A course cannot be tagged to itself.")
+                return redirect('patient_detail', patient_id=patient.id)
+            schedule.tagged_to = target
+            schedule.save()
+            AuditLog.objects.create(
+                user=request.user,
+                action="COURSE_TAGGED",
+                mr_no=str(patient.mr_no),
+                details=f"Course #{schedule.id} ({schedule.machine_display}) clubbed/tagged to Course #{target.id} ({target.machine_display}) for {patient.pt_name}",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            messages.success(request, f"Course #{schedule.id} successfully clubbed with Course #{target.id} ({target.machine_display})!")
+        else:
+            schedule.tagged_to = None
+            schedule.save()
+            AuditLog.objects.create(
+                user=request.user,
+                action="COURSE_UNTAGGED",
+                mr_no=str(patient.mr_no),
+                details=f"Course #{schedule.id} untagged and set as independent course for {patient.pt_name}",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            messages.success(request, f"Course #{schedule.id} is now an independent course.")
+
+    return redirect('patient_detail', patient_id=patient.id)
 

@@ -193,11 +193,16 @@ def patient_edit_view(request, patient_id):
 @login_required
 def patient_detail_view(request, patient_id):
     patient = get_object_or_404(Patient, id=patient_id)
-    schedules = patient.schedules.select_related('machine', 'shift', 'technique', 'special_technique').order_by('-created_at')
+    schedules = patient.schedules.select_related(
+        'machine', 'shift', 'technique', 'special_technique', 'intent', 'tagged_to'
+    ).order_by('id')
+
+    audit_logs = AuditLog.objects.filter(mr_no=str(patient.mr_no)).select_related('user').order_by('-log_datetime')[:50]
 
     context = {
         'patient': patient,
         'schedules': schedules,
+        'audit_logs': audit_logs,
         'can_edit_identity': can_edit_locked_identity(request.user),
     }
     return render(request, 'patients/patient_detail.html', context)

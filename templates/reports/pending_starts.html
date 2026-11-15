@@ -64,7 +64,7 @@
             {% for s in pending_list %}
             <tr style="border-bottom: 1px solid #eee;" onmouseover="this.style.background='#fff9e6';" onmouseout="this.style.background='';">
                 <td style="padding: 8px; font-weight: bold;">
-                    <a href="{% url 'patient_detail' s.patient.id %}" style="color: #003366;">{{ s.patient.mr_no }}</a>
+                    <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="Open Patient Details in new tab">{{ s.patient.mr_no }} ↗</a>
                 </td>
                 <td style="padding: 8px; font-weight: 600;">{{ s.patient.pt_name }}</td>
                 <td style="padding: 8px;">{{ s.patient.age|default:'-' }} / {{ s.patient.sex }}</td>

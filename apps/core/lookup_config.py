@@ -94,6 +94,18 @@ LOOKUP_CONFIG = {
         'secondary_field': None,
         'secondary_label': None,
     },
+    'intent': {
+        'title': 'Treatment Intents',
+        'icon': '🎯',
+        'table_name': 'tblIntent',
+        'app': 'scheduler',
+        'model_name': 'TreatmentIntent',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Intent Name (e.g. Radical, Palliative, Adjuvant, Neo-adjuvant)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
 }
 
 

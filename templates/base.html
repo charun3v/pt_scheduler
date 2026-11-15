@@ -97,6 +97,10 @@
         <a href="{% url 'validation_config' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;" title="Configure Character Length and Format Validation Rules">🔒 Field Validations</a>
         {% endif %}
 
+        {% if IS_ADMIN_ONLY %}
+        <a href="{% url 'audit_log_report' %}" class="action-ribbon-btn" style="color: #8b0000; font-weight: bold;" title="System Security & Clinical Audit Trail (Admin Only)">📋 Audit Logs</a>
+        {% endif %}
+
         <div style="flex-grow: 1;"></div>
         <span style="font-size: 11px; color: #555555; margin-right: 6px;">{{ "now"|date:"D, d M Y" }}</span>
     </nav>

@@ -95,7 +95,7 @@
                 </td>
                 <td style="padding: 8px;"><span class="badge-locked">{{ s.shift_display }}</span></td>
                 <td style="padding: 8px; font-weight: 600;">
-                    <a href="{% url 'patient_detail' s.patient.id %}" style="color: #003366;">{{ s.patient.mr_no }}</a>
+                    <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="Open Patient Details in new tab">{{ s.patient.mr_no }} ↗</a>
                 </td>
                 <td style="padding: 8px;">{{ s.patient.rt_no|default:'-' }}</td>
                 <td style="padding: 8px; font-weight: 600;">{{ s.patient.pt_name }}</td>

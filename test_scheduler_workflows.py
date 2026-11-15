@@ -13,11 +13,11 @@ from django.test import Client
 from django.contrib.auth.models import User
 from datetime import date, timedelta, datetime
 from decimal import Decimal
-from apps.core.models import Role, UserProfile, Consultant, FieldValidationConfig
+from apps.core.models import Role, UserProfile, Consultant, FieldValidationConfig, AuditLog
 from apps.core.validators import get_or_create_field_config, validate_field_value
 from apps.patients.models import Patient
 from apps.scheduler.models import (
-    Machine, Shift, Technique, SpecialTechnique, TreatmentSite, MachineMapping, TreatmentSchedule
+    Machine, Shift, Technique, SpecialTechnique, TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule
 )
 from apps.core.permissions import (
     can_edit_locked_identity,
@@ -161,6 +161,7 @@ def run_tests():
     shift = Shift.objects.filter(is_active=True).first()
     tech = Technique.objects.filter(is_active=True).first()
     spec_tech = SpecialTechnique.objects.filter(is_active=True).first()
+    intent_obj = TreatmentIntent.objects.filter(is_active=True).first()
 
     today = date.today()
     sim_date = today - timedelta(days=2)
@@ -173,6 +174,9 @@ def run_tests():
         'site_of_treatment': 'Pelvis',
         'phone_no': '9876543210',
         # Scheduling fields:
+        'form_action': 'approve_schedule',
+        'treatment_type': 'Teletherapy',
+        'intent': intent_obj.id if intent_obj else 1,
         'machine': mach.id,
         'shift': shift.id,
         'technique': tech.id,
@@ -607,6 +611,9 @@ def run_tests():
     target_shift = Shift.objects.filter(id=first_m['shifts'][0]['id']).first()
 
     resp_post = c.post(f'/scheduler/patient/{test_pt_sched.id}/', {
+        'form_action': 'approve_schedule',
+        'treatment_type': 'Teletherapy',
+        'intent': intent_obj.id if intent_obj else 1,
         'age': '58',
         'phone_no': '9988776655',
         'site_of_treatment': 'Pelvis',
@@ -677,6 +684,9 @@ def run_tests():
 
     # Attempt to schedule with start_date < sim_date
     resp_invalid_sched = c.post(f'/scheduler/patient/{test_pt_date.id}/', {
+        'form_action': 'approve_schedule',
+        'treatment_type': 'Teletherapy',
+        'intent': intent_obj.id if intent_obj else 1,
         'age': '50',
         'phone_no': '9900112233',
         'site_of_treatment': 'Pelvis',
@@ -698,6 +708,9 @@ def run_tests():
 
     # Now schedule with valid start_date >= sim_date
     resp_valid_sched = c.post(f'/scheduler/patient/{test_pt_date.id}/', {
+        'form_action': 'approve_schedule',
+        'treatment_type': 'Teletherapy',
+        'intent': intent_obj.id if intent_obj else 1,
         'age': '50',
         'phone_no': '9900112233',
         'site_of_treatment': 'Pelvis',
@@ -770,6 +783,194 @@ def run_tests():
     new_lookup_site.delete()
 
     print("✓ Test 17 Passed: Header badges removed, date_of_start >= date_of_sim strictly enforced, and machine mapping multi-select treatment sites verified.")
+
+    # --- Test 18: Clinical Treatment Intent, Junior Resident Dropdown, Draft vs Approve, End Date, Course Tagging & Admin-Only Audit Logs ---
+    print("\n--- Test 18: Intent, JR Dropdown, Draft vs Approve, End Date, Course Tagging & Admin-Only Audit Logs ---")
+
+    # 1. Verification of TreatmentIntent lookup and CRUD
+    assert TreatmentIntent.objects.filter(is_active=True).count() >= 4, "Default treatment intents (Radical, Palliative, Adjuvant, Neo-adjuvant) must exist"
+    radical_intent = TreatmentIntent.objects.get(name='Radical')
+    palliative_intent = TreatmentIntent.objects.get(name='Palliative')
+
+    # 2. Audit Log Viewer Security Boundary: Strictly Admin Only (not SubAdmin, not Clinical)
+    c.force_login(subadmin_user)
+    resp_subadmin_audit = c.get('/reports/audit-logs/')
+    assert resp_subadmin_audit.status_code == 302, "SubAdmin must be redirected / blocked from viewing security audit logs"
+    
+    c.force_login(res_user)
+    resp_resident_audit = c.get('/reports/audit-logs/')
+    assert resp_resident_audit.status_code == 302, "Resident must be redirected / blocked from viewing security audit logs"
+
+    c.force_login(admin_user)
+    resp_admin_audit = c.get('/reports/audit-logs/')
+    assert resp_admin_audit.status_code == 200, "Admin must be granted access to security audit logs"
+    assert "Security &amp; Clinical Audit Logs" in resp_admin_audit.content.decode('utf-8') or "Security & Clinical Audit Logs" in resp_admin_audit.content.decode('utf-8')
+
+    # 3. Create test patient for end-to-end scheduling workflows
+    Patient.objects.filter(mr_no=9999018).delete()
+    test_pt18 = Patient.objects.create(
+        mr_no=9999018,
+        pt_name="Test Workflow Pt Eighteen",
+        age=45,
+        sex='Male',
+        phone_no='9123456780',
+        diagnosis='Ca Glottis T2N0',
+        primary_consultant=active_consultant
+    )
+
+    # 4. Save as Draft (Mandatory fields for scheduling like machine/start date are bypassed)
+    sim_date_val = date.today()
+    resp_draft = c.post(f'/scheduler/patient/{test_pt18.id}/', {
+        'form_action': 'draft',
+        'treatment_type': 'Teletherapy',
+        'intent': radical_intent.id,
+        'site_of_treatment': 'Head and neck',
+        'diagnosis': 'Ca Glottis T2N0',
+        'date_of_sim': sim_date_val.isoformat(),
+        'technique': 1,
+        'special_technique': 1,
+        'dose_planned': '66.00',
+        'no_of_fractions': '33',
+        'jr_resident': res_user.get_full_name() or res_user.username,
+        'notes': 'Saved preliminary simulation plan'
+    })
+    assert resp_draft.status_code == 302
+    test_pt18.refresh_from_db()
+    draft_sched = test_pt18.schedules.first()
+    assert draft_sched is not None
+    assert draft_sched.status == 'Draft'
+    assert draft_sched.is_draft is True
+    assert draft_sched.date_of_start is None, "Draft schedule does not require start date"
+    assert draft_sched.machine is None, "Draft schedule does not book a machine slot"
+
+    # Verify Draft does NOT appear on active daily machine schedule
+    resp_daily = c.get(f'/reports/machines/?start_date={sim_date_val.isoformat()}')
+    assert not resp_daily.context['schedules'].filter(patient=test_pt18).exists(), "Draft schedule must NOT be in machine daily list queryset"
+
+    # 5. Audit Logging check: Draft save logged
+    draft_log = AuditLog.objects.filter(mr_no=str(test_pt18.mr_no), action='SCHEDULE_DRAFT_SAVED').first()
+    assert draft_log is not None, "Saving draft must create an AuditLog entry with SCHEDULE_DRAFT_SAVED"
+    assert draft_log.user == admin_user
+
+    # 6. Approve & Schedule (Enforces mandatory fields and start date >= sim date)
+    mach_test = Machine.objects.filter(is_active=True).first()
+    shift_test = Shift.objects.filter(is_active=True).first()
+    start_date_val = sim_date_val + timedelta(days=2)
+
+    resp_approve = c.post(f'/scheduler/patient/{test_pt18.id}/', {
+        'form_action': 'approve_schedule',
+        'treatment_type': 'Teletherapy',
+        'intent': radical_intent.id,
+        'site_of_treatment': 'Head and neck',
+        'diagnosis': 'Ca Glottis T2N0',
+        'phone_no': '9988112233',  # Changed phone number!
+        'date_of_sim': sim_date_val.isoformat(),
+        'technique': 1,
+        'special_technique': 1,
+        'machine': mach_test.id,
+        'shift': shift_test.id,
+        'date_of_start': start_date_val.isoformat(),
+        'dose_planned': '66.00',
+        'no_of_fractions': '33',
+        'jr_resident': res_user.get_full_name() or res_user.username,
+        'notes': 'Approved 66Gy in 33 fractions'
+    })
+    assert resp_approve.status_code == 302
+    test_pt18.refresh_from_db()
+    approved_sched = test_pt18.schedules.first()
+    assert approved_sched.status == 'Scheduled'
+    assert approved_sched.intent == radical_intent
+    assert approved_sched.machine == mach_test
+    assert approved_sched.shift == shift_test
+    assert approved_sched.date_of_start == start_date_val
+
+    # 7. End Date Calculation verification (skipping Sundays)
+    test_mon_start = date(2026, 11, 16)  # Monday
+    approved_sched.date_of_start = test_mon_start
+    approved_sched.no_of_fractions = 6
+    mon_end = approved_sched.calculate_end_date()
+    assert mon_end == date(2026, 11, 21), f"6 fractions starting Mon 16-Nov should end Sat 21-Nov, got {mon_end}"
+    approved_sched.no_of_fractions = 7
+    sun_skip_end = approved_sched.calculate_end_date()
+    assert sun_skip_end == date(2026, 11, 23), f"7 fractions starting Mon 16-Nov should end Mon 23-Nov, got {sun_skip_end}"
+    approved_sched.date_of_start = start_date_val
+    approved_sched.no_of_fractions = 33
+    approved_sched.date_of_end = None
+    approved_sched.save()
+
+    # 8. Audit Logging check: Phone change and Schedule approval
+    phone_log = AuditLog.objects.filter(mr_no=str(test_pt18.mr_no), action='PATIENT_PHONE_CHANGE').first()
+    assert phone_log is not None, "Phone number change must be logged"
+    assert "9988112233" in phone_log.details
+
+    approved_log = AuditLog.objects.filter(mr_no=str(test_pt18.mr_no), action='SCHEDULE_APPROVED').first()
+    assert approved_log is not None, "Schedule approval must be logged"
+
+    # 9. Second Treatment Course Creation & Course Tagging / Clubbing
+    resp_course2 = c.post(f'/scheduler/patient/{test_pt18.id}/?new_course=1', {
+        'form_action': 'approve_schedule',
+        'treatment_type': 'Teletherapy',
+        'intent': palliative_intent.id,
+        'site_of_treatment': 'Spine',
+        'diagnosis': 'Metastatic spine compression',
+        'phone_no': '9988112233',
+        'date_of_sim': sim_date_val.isoformat(),
+        'technique': 1,
+        'special_technique': 1,
+        'machine': mach_test.id,
+        'shift': shift_test.id,
+        'date_of_start': (start_date_val + timedelta(days=5)).isoformat(),
+        'dose_planned': '20.00',
+        'no_of_fractions': '5',
+        'tagged_to': approved_sched.id,  # Tagged with first course
+        'notes': 'Spine boost course'
+    })
+    assert resp_course2.status_code == 302
+    assert test_pt18.schedules.count() == 2
+    course2 = test_pt18.schedules.exclude(id=approved_sched.id).first()
+    assert course2 is not None
+    assert course2.tagged_to == approved_sched, "Course 2 must be tagged to Course 1"
+
+    # Test Course Tagging View (/scheduler/course/<id>/tag/)
+    # Untag course 2
+    resp_untag = c.post(f'/scheduler/course/{course2.id}/tag/', {'tagged_to_id': ''})
+    assert resp_untag.status_code == 302
+    course2.refresh_from_db()
+    assert course2.tagged_to is None, "Course 2 should now be independent"
+    untag_log = AuditLog.objects.filter(mr_no=str(test_pt18.mr_no), action='COURSE_UNTAGGED').first()
+    assert untag_log is not None
+
+    # Re-tag course 2 to course 1
+    resp_retag = c.post(f'/scheduler/course/{course2.id}/tag/', {'tagged_to_id': str(approved_sched.id)})
+    assert resp_retag.status_code == 302
+    course2.refresh_from_db()
+    assert course2.tagged_to == approved_sched, "Course 2 should be tagged back to Course 1"
+    tag_log = AuditLog.objects.filter(mr_no=str(test_pt18.mr_no), action='COURSE_TAGGED').first()
+    assert tag_log is not None
+
+    # 10. Patient Details Redesigned Page Verification
+    resp_pt_detail = c.get(f'/patients/{test_pt18.id}/')
+    assert resp_pt_detail.status_code == 200
+    detail_html = resp_pt_detail.content.decode('utf-8')
+    assert "Treatment Courses &amp; Radiotherapy Schedule" in detail_html or "Treatment Courses & Radiotherapy Schedule" in detail_html
+    assert "Course #" in detail_html
+    assert "🔗 Clubbed with" in detail_html
+    assert "Sim Date" in detail_html or "Simulation Date" in detail_html
+    assert "Start Date" in detail_html or "Treatment Start Date" in detail_html
+    assert "End Date" in detail_html or "Treatment End Date" in detail_html
+    assert "Radical" in detail_html
+    assert "Palliative" in detail_html
+    assert "Patient Security &amp; Clinical Audit Trail (Admin Only)" in detail_html or "Patient Security & Clinical Audit Trail" in detail_html
+
+    # SubAdmin viewing patient detail should NOT see the audit trail
+    c.force_login(subadmin_user)
+    resp_subadmin_detail = c.get(f'/patients/{test_pt18.id}/')
+    assert resp_subadmin_detail.status_code == 200
+    assert "Patient Security & Clinical Audit Trail (Admin Only)" not in resp_subadmin_detail.content.decode('utf-8')
+
+    # Cleanup
+    test_pt18.delete()
+    print("✓ Test 18 Passed: Intent, JR dropdown, draft vs approve, Sunday-skipping end dates, course clubbing & admin-only audit trail verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

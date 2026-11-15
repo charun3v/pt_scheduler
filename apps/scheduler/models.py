@@ -99,6 +99,19 @@ class TreatmentSite(models.Model):
         return self.name
 
 
+class TreatmentIntent(models.Model):
+    """Clinical Treatment Intent (e.g. Radical, Palliative, Adjuvant, Neo-adjuvant)."""
+    name = models.CharField(max_length=100, unique=True)
+    display_order = models.IntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
 class MachineMapping(models.Model):
     """
     Dynamic Admin Mapping:
@@ -134,8 +147,15 @@ class MachineMapping(models.Model):
 class TreatmentSchedule(models.Model):
     """
     Patient Radiotherapy Scheduling and Slot Allocation Record.
+    Supports Teletherapy (EBRT) and Brachytherapy courses, intent, course tagging, and draft status.
     """
+    TREATMENT_TYPE_CHOICES = [
+        ('Teletherapy', 'Teletherapy (EBRT)'),
+        ('Brachytherapy', 'Brachytherapy'),
+    ]
+
     STATUS_CHOICES = [
+        ('Draft', 'Draft (Not Scheduled)'),
         ('Pending', 'Pending Start'),
         ('Scheduled', 'Scheduled'),
         ('In Progress', 'In Progress'),
@@ -144,6 +164,8 @@ class TreatmentSchedule(models.Model):
     ]
 
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='schedules')
+    treatment_type = models.CharField(max_length=20, choices=TREATMENT_TYPE_CHOICES, default='Teletherapy', verbose_name="Treatment Modality / Type")
+    intent = models.ForeignKey(TreatmentIntent, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Treatment Intent", related_name='schedules')
     site_of_treatment = models.CharField(max_length=100, blank=True, null=True, verbose_name="Site of Treatment")
     date_of_sim = models.DateField(null=True, blank=True, verbose_name="Date of Simulation")
     dose_planned = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, verbose_name="Dose planned (Gy)")
@@ -155,6 +177,9 @@ class TreatmentSchedule(models.Model):
     machine = models.ForeignKey(Machine, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Machine")
     shift = models.ForeignKey(Shift, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Shift")
     date_of_start = models.DateField(null=True, blank=True, verbose_name="Date of Treatment Start")
+    date_of_end = models.DateField(null=True, blank=True, verbose_name="Date of Treatment End")
+    tagged_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='tagged_courses', verbose_name="Tagged to Course")
+    course_tag = models.CharField(max_length=100, blank=True, null=True, verbose_name="Course Tag / Group")
     notes = models.TextField(blank=True, null=True, verbose_name="Clinical / Scheduling Notes")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Scheduled')
 
@@ -179,6 +204,35 @@ class TreatmentSchedule(models.Model):
         if self.date_of_sim and self.date_of_start and self.date_of_start < self.date_of_sim:
             from django.core.exceptions import ValidationError
             raise ValidationError({'date_of_start': "Treatment Start Date cannot be earlier than CT Simulation Date. Start date must be on or after simulation date."})
+
+    def calculate_end_date(self):
+        """
+        Calculates estimated completion date based on date_of_start and no_of_fractions,
+        skipping Sundays (Monday to Saturday delivery, 1 fraction/day).
+        """
+        if not self.date_of_start or not self.no_of_fractions or self.no_of_fractions <= 0:
+            return None
+        from datetime import timedelta
+        curr = self.date_of_start
+        fractions_done = 1
+        while fractions_done < self.no_of_fractions:
+            curr += timedelta(days=1)
+            if curr.weekday() != 6:  # Skip Sunday
+                fractions_done += 1
+        return curr
+
+    @property
+    def treatment_end_date(self):
+        return self.date_of_end or self.calculate_end_date()
+
+    @property
+    def is_draft(self):
+        return self.status == 'Draft'
+
+    def save(self, *args, **kwargs):
+        if self.date_of_start and self.no_of_fractions and not self.date_of_end:
+            self.date_of_end = self.calculate_end_date()
+        super().save(*args, **kwargs)
 
     @property
     def machine_display(self):

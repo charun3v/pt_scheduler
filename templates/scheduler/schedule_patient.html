@@ -113,7 +113,7 @@
 {% endblock %}
 
 {% block content %}
-<div style="max-width: 1120px; margin: 0 auto;">
+<div style="max-width: 1140px; margin: 0 auto;">
 
     <!-- Form encapsulates registration editable fields and scheduling fields -->
     <form method="POST" id="scheduleForm" onsubmit="return validateScheduleSubmission();">
@@ -125,7 +125,9 @@
             <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px;">
                 <div>
                     <span class="summary-label">MR No:</span>
-                    <strong>{{ patient.mr_no }}</strong>
+                    <a href="{% url 'patient_detail' patient.id %}" target="_blank" style="color: #1b5e20; text-decoration: underline; font-weight: bold;" title="Open Patient Details in new tab">
+                        {{ patient.mr_no }} ↗
+                    </a>
                 </div>
                 <div>
                     <span class="summary-label">Patient:</span>
@@ -159,8 +161,8 @@
             <!-- Row 2: Site of Treatment & Diagnosis (Clean, Simple) -->
             <div style="display: flex; align-items: center; gap: 12px;">
                 <div style="display: flex; align-items: center; min-width: 260px;">
-                    <label class="summary-label" for="top_site_dropdown" style="white-space: nowrap;">Site of Treatment:</label>
-                    <select name="site_of_treatment" id="top_site_dropdown" class="summary-input" style="flex: 1;">
+                    <label class="summary-label" for="top_site_dropdown" style="white-space: nowrap;">Site of Treatment: *</label>
+                    <select name="site_of_treatment" id="top_site_dropdown" required class="summary-input" style="flex: 1;">
                         <option value="">-- Select Treatment Site --</option>
                         {% for s in treatment_sites %}
                             <option value="{{ s.name }}" {% if patient.site_of_treatment == s.name or schedule.site_of_treatment == s.name %}selected{% endif %}>{{ s.name }}</option>
@@ -168,22 +170,65 @@
                     </select>
                 </div>
                 <div style="display: flex; align-items: center; flex: 1;">
-                    <label class="summary-label" for="ptDiagnosis" style="white-space: nowrap;">Diagnosis:</label>
+                    <label class="summary-label" for="ptDiagnosis" style="white-space: nowrap;">Diagnosis: *</label>
                     <input type="text" id="ptDiagnosis" name="diagnosis" value="{{ patient.diagnosis }}" required
                            class="summary-input" style="width: 100%;">
                 </div>
             </div>
         </div>
 
+        <!-- MODALITY SELECTOR: Teletherapy vs Brachytherapy -->
+        <div style="background: #ffffff; border: 1px solid #d0d7de; border-radius: 4px; padding: 8px 14px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <span style="font-size: 12px; font-weight: 700; color: #003366; text-transform: uppercase;">Scheduling Modality:</span>
+                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: #1f2328; margin: 0;">
+                    <input type="radio" name="treatment_type" value="Teletherapy" id="modalityTele"
+                           {% if not schedule or schedule.treatment_type == 'Teletherapy' %}checked{% endif %}
+                           onchange="handleModalityChange();">
+                    <span>📡 Teletherapy (EBRT)</span>
+                </label>
+                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: #57606a; margin: 0;">
+                    <input type="radio" name="treatment_type" value="Brachytherapy" id="modalityBrachy"
+                           {% if schedule and schedule.treatment_type == 'Brachytherapy' %}checked{% endif %}
+                           onchange="handleModalityChange();">
+                    <span>☢️ Brachytherapy</span>
+                </label>
+            </div>
+            <div style="font-size: 11px;">
+                {% if schedule and schedule.is_draft %}
+                    <span style="background: #fff8c5; color: #9a6700; padding: 2px 8px; border-radius: 10px; border: 1px solid #d4a72c; font-weight: 600;">Status: Draft Course</span>
+                {% elif schedule and schedule.status == 'Scheduled' %}
+                    <span style="background: #dafbe1; color: #1a7f37; padding: 2px 8px; border-radius: 10px; border: 1px solid #4ac26b; font-weight: 600;">Status: Scheduled ({{ schedule.date_of_start|date:'d-M-Y' }})</span>
+                {% elif schedule %}
+                    <span style="background: #f6f8fa; color: #57606a; padding: 2px 8px; border-radius: 10px; border: 1px solid #d0d7de; font-weight: 600;">Status: {{ schedule.status }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- BRACHYTHERAPY NOTICE (Visible when Brachytherapy is selected) -->
+        <div id="brachytherapyPlaceholder" style="display: none; background: #fff8c5; border: 1px solid #d4a72c; border-radius: 4px; padding: 24px; text-align: center; margin-bottom: 12px;">
+            <div style="font-size: 28px; margin-bottom: 8px;">☢️</div>
+            <h3 style="margin: 0 0 6px 0; color: #7d4e00; font-size: 16px;">Brachytherapy Scheduling Module</h3>
+            <p style="margin: 0 0 14px 0; color: #57606a; font-size: 13px; max-width: 620px; margin-left: auto; margin-right: auto; line-height: 1.4;">
+                Brachytherapy procedural workflows, applicator selection, source loading schedules, and theater allocation are being designed for the next phase. You can save clinical parameters as a <strong>Draft</strong> course now or switch to Teletherapy for external beam treatments.
+            </p>
+            <div style="display: flex; justify-content: center; gap: 10px;">
+                <button type="button" onclick="document.getElementById('modalityTele').checked = true; handleModalityChange();" class="action-ribbon-btn btn-highlight" style="font-size: 12px; cursor: pointer;">
+                    ← Switch to Teletherapy (EBRT) Scheduling
+                </button>
+            </div>
+        </div>
+
         <!-- SECTION 1: TREATMENT PARAMETERS & PRESCRIPTION (Compact Vertically) -->
-        <div class="scheduler-panel-compact">
+        <div class="scheduler-panel-compact" id="ebrtParamsPanel">
             <div class="scheduler-header-compact">
                 <span>Treatment Parameters & Prescription Entry</span>
+                <span style="font-size: 11px; font-weight: normal; color: #57606a;">* Mandatory for scheduling</span>
             </div>
 
             <div class="scheduler-body-compact">
-                <!-- PARAMETERS ROW 1: Simulation Date + Techniques (Defaults: IMRT, None, None) -->
-                <div style="display: grid; grid-template-columns: 180px 180px 180px 180px; gap: 10px; margin-bottom: 8px;">
+                <!-- PARAMETERS ROW 1: Simulation Date, Intent, Techniques (IMRT default, None default) -->
+                <div style="display: grid; grid-template-columns: 160px 160px 160px 160px 1fr; gap: 10px; margin-bottom: 8px;">
                     <div>
                         <label for="dateOfSim" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
                             CT Simulation Date: *
@@ -192,6 +237,22 @@
                                value="{{ schedule.date_of_sim|date:'Y-m-d'|default:today }}"
                                onchange="loadMappedMachinesSlots();"
                                class="form-control-compact" style="font-weight: 600;">
+                    </div>
+
+                    <div>
+                        <label for="intentSelect" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
+                            Intent: *
+                        </label>
+                        <select name="intent" id="intentSelect" required class="form-control-compact" style="font-weight: 600;">
+                            <option value="">-- Select Intent --</option>
+                            {% for it in treatment_intents %}
+                                <option value="{{ it.id }}"
+                                    {% if schedule and schedule.intent_id == it.id %}selected
+                                    {% elif not schedule and default_intent and it.id == default_intent.id %}selected{% endif %}>
+                                    {{ it.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
                     </div>
 
                     <div>
@@ -243,28 +304,67 @@
                     </div>
                 </div>
 
-                <!-- PARAMETERS ROW 2: Dose, Fractions, Junior Resident, Clinical Notes -->
-                <div style="display: grid; grid-template-columns: 120px 100px 180px 1fr; gap: 10px;">
+                <!-- PARAMETERS ROW 2: Dose, Fractions, Junior Resident (Dropdown), Tagged Course, Clinical Notes -->
+                <div style="display: grid; grid-template-columns: 110px 100px 190px {% if previous_schedules %}200px {% endif %}1fr; gap: 10px;">
                     <div>
-                        <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px;">Dose (Gy):</label>
-                        <input type="number" step="0.01" name="dose_planned" value="{{ schedule.dose_planned|default:'' }}" placeholder="e.g. 50"
+                        <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
+                            Dose (Gy): *
+                        </label>
+                        <input type="number" step="0.01" name="dose_planned" id="dosePlannedInput" required
+                               value="{{ schedule.dose_planned|default:'' }}" placeholder="e.g. 50"
                                class="form-control-compact">
                     </div>
 
                     <div>
-                        <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px;">Fractions:</label>
-                        <input type="number" name="no_of_fractions" value="{{ schedule.no_of_fractions|default:'' }}" min="1" max="60" placeholder="e.g. 25"
+                        <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
+                            Fractions: *
+                        </label>
+                        <input type="number" name="no_of_fractions" id="fractionsInput" required
+                               value="{{ schedule.no_of_fractions|default:'' }}" min="1" max="60" placeholder="e.g. 25"
                                class="form-control-compact">
                     </div>
 
                     <div>
-                        <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px;">Junior Resident:</label>
-                        <input type="text" name="jr_resident" value="{{ schedule.jr_resident|default:'' }}" placeholder="Resident name"
-                               class="form-control-compact">
+                        <label for="jrResidentSelect" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
+                            Junior Resident:
+                        </label>
+                        <select name="jr_resident" id="jrResidentSelect" class="form-control-compact">
+                            <option value="">-- None / Unassigned --</option>
+                            {% for jr in jr_users %}
+                                {% with jr_name=jr.get_full_name|default:jr.username %}
+                                <option value="{{ jr_name }}"
+                                    {% if schedule and schedule.jr_resident == jr_name %}selected
+                                    {% elif not schedule and default_jr_val == jr_name %}selected{% endif %}>
+                                    {{ jr_name }} ({{ jr.username }})
+                                </option>
+                                {% endwith %}
+                            {% endfor %}
+                            {% if schedule and schedule.jr_resident and schedule.jr_resident not in jr_user_names %}
+                                <option value="{{ schedule.jr_resident }}" selected>{{ schedule.jr_resident }} (Legacy)</option>
+                            {% endif %}
+                        </select>
                     </div>
 
+                    {% if previous_schedules %}
                     <div>
-                        <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px;">Clinical / Setup Notes:</label>
+                        <label for="taggedToSelect" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
+                            Tag / Club with Course:
+                        </label>
+                        <select name="tagged_to" id="taggedToSelect" class="form-control-compact">
+                            <option value="">-- Independent Course --</option>
+                            {% for ps in previous_schedules %}
+                                <option value="{{ ps.id }}" {% if schedule and schedule.tagged_to_id == ps.id %}selected{% endif %}>
+                                    Course #{{ ps.id }} ({{ ps.site_of_treatment|default:'Site' }} - {{ ps.machine_display }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+
+                    <div>
+                        <label for="generalNotesInput" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
+                            Clinical / Setup Notes:
+                        </label>
                         <input type="text" name="notes" id="generalNotesInput" value="{{ schedule.notes|default:'' }}" placeholder="General immobilization or setup notes..."
                                class="form-control-compact">
                     </div>
@@ -273,7 +373,7 @@
         </div>
 
         <!-- SECTION 2: SEPARATE SECTION FOR MACHINE EARLIEST SLOTS & CUSTOM DATE SELECTION -->
-        <div class="scheduler-panel-compact">
+        <div class="scheduler-panel-compact" id="ebrtSlotsPanel">
             <div class="scheduler-header-compact">
                 <span>Machine Earliest Slots & Custom Date Selection</span>
                 <span id="slotsStatusPill" style="font-size: 11px; font-weight: normal; color: #57606a;">
@@ -304,7 +404,7 @@
             <input type="hidden" name="date_mode" id="selectedDateMode" value="system">
             <input type="hidden" name="custom_reason" id="selectedCustomReason" value="">
 
-            <!-- Compact Action Footer -->
+            <!-- Compact Action Footer with Save as Draft & Approve & Schedule Buttons -->
             <div style="background: #f6f8fa; padding: 8px 14px; border-top: 1px solid #d0d7de; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div id="selectionSummary" style="font-size: 12px; color: #24292f;">
                     {% if schedule and schedule.date_of_start %}
@@ -318,8 +418,15 @@
                     <a href="{% url 'patient_detail' patient.id %}" class="action-ribbon-btn" style="padding: 5px 14px; font-size: 12px;">
                         Cancel
                     </a>
-                    <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 5px 18px; font-size: 12px; font-weight: 600; cursor: pointer;">
-                        Save Treatment Schedule
+                    <button type="submit" name="form_action" value="draft" onclick="gFormAction='draft';"
+                            class="action-ribbon-btn" style="padding: 5px 16px; font-size: 12px; font-weight: 600; cursor: pointer; background: #eef2f5; color: #24292f; border: 1px solid #d0d7de;"
+                            title="Save clinical parameters as Draft without booking machine slots">
+                        💾 Save as Draft
+                    </button>
+                    <button type="submit" name="form_action" value="approve_schedule" onclick="gFormAction='approve_schedule';"
+                            class="action-ribbon-btn btn-highlight" style="padding: 5px 18px; font-size: 12px; font-weight: 600; cursor: pointer;"
+                            title="Validate parameters and allocate slot on daily machine start list">
+                        ⚡ Approve & Schedule
                     </button>
                 </div>
             </div>
@@ -331,11 +438,30 @@
 
 {% block extra_js %}
 <script>
-    // State of loaded machines
+    // State of loaded machines and action mode
     let gMappedMachines = [];
     let gSelectedMachineId = "{{ schedule.machine_id|default:'' }}";
     let gCurrentScheduledDate = "{{ schedule.date_of_start|date:'Y-m-d'|default:'' }}";
     let gCurrentShiftId = "{{ schedule.shift_id|default:'' }}";
+    let gFormAction = 'approve_schedule';
+
+    // Toggle between Teletherapy and Brachytherapy UI
+    function handleModalityChange() {
+        const isBrachy = document.getElementById('modalityBrachy')?.checked;
+        const ebrtParams = document.getElementById('ebrtParamsPanel');
+        const ebrtSlots = document.getElementById('ebrtSlotsPanel');
+        const brachyPlaceholder = document.getElementById('brachytherapyPlaceholder');
+
+        if (isBrachy) {
+            if (ebrtParams) ebrtParams.style.display = 'none';
+            if (ebrtSlots) ebrtSlots.style.display = 'none';
+            if (brachyPlaceholder) brachyPlaceholder.style.display = 'block';
+        } else {
+            if (ebrtParams) ebrtParams.style.display = 'block';
+            if (ebrtSlots) ebrtSlots.style.display = 'block';
+            if (brachyPlaceholder) brachyPlaceholder.style.display = 'none';
+        }
+    }
 
     // Helper: Compute the date immediately following a given YYYY-MM-DD string
     function getDayAfter(dateStr) {
@@ -352,19 +478,19 @@
 
     // Load Mapped Machines and render as Excel-like table rows
     function loadMappedMachinesSlots() {
-        const techId = document.getElementById('techniqueSelect').value;
-        const specTechId = document.getElementById('specialTechSelect').value;
-        const simDate = document.getElementById('dateOfSim').value;
+        const techId = document.getElementById('techniqueSelect')?.value;
+        const specTechId = document.getElementById('specialTechSelect')?.value || '';
+        const simDate = document.getElementById('dateOfSim')?.value || '';
         const container = document.getElementById('mappedMachinesContainer');
         const pill = document.getElementById('slotsStatusPill');
 
         if (!techId) {
-            container.innerHTML = '<div style="padding: 12px; text-align: center; color: #57606a;">Please select a Treatment Technique first.</div>';
+            if (container) container.innerHTML = '<div style="padding: 12px; text-align: center; color: #57606a;">Please select a Treatment Technique first.</div>';
             return;
         }
 
-        pill.innerText = 'Calculating slots...';
-        container.innerHTML = '<div style="padding: 16px; text-align: center; color: #003366; background: #f6f8fa; border: 1px solid #d0d7de;">Calculating available slots...</div>';
+        if (pill) pill.innerText = 'Calculating slots...';
+        if (container) container.innerHTML = '<div style="padding: 16px; text-align: center; color: #003366; background: #f6f8fa; border: 1px solid #d0d7de;">Calculating available slots...</div>';
 
         const url = `/scheduler/api/mapped-machine-slots/?technique_id=${techId}&special_technique_id=${specTechId}&sim_date=${simDate}`;
 
@@ -372,20 +498,22 @@
             .then(res => res.json())
             .then(data => {
                 if (!data.success || !data.machines || data.machines.length === 0) {
-                    pill.innerText = '0 Machines Mapped';
-                    container.innerHTML = `
-                        <div style="padding: 16px; text-align: center; color: #cf222e; background: #ffebe9; border: 1px solid #ff8182; border-radius: 4px;">
-                            No active machines are currently mapped to <strong>${data.technique_name}</strong> and <strong>${data.special_technique_name}</strong>.
-                            <div style="font-size: 11px; margin-top: 4px; color: #57606a;">
-                                Please check <a href="{% url 'machine_mappings' %}" target="_blank">Machine Mappings</a> to configure techniques.
+                    if (pill) pill.innerText = '0 Machines Mapped';
+                    if (container) {
+                        container.innerHTML = `
+                            <div style="padding: 16px; text-align: center; color: #cf222e; background: #ffebe9; border: 1px solid #ff8182; border-radius: 4px;">
+                                No active machines are currently mapped to <strong>${data.technique_name}</strong> and <strong>${data.special_technique_name}</strong>.
+                                <div style="font-size: 11px; margin-top: 4px; color: #57606a;">
+                                    Please check <a href="{% url 'machine_mappings' %}" target="_blank">Machine Mappings</a> to configure techniques.
+                                </div>
                             </div>
-                        </div>
-                    `;
+                        `;
+                    }
                     return;
                 }
 
                 gMappedMachines = data.machines;
-                pill.innerText = `${data.machines.length} Machine${data.machines.length > 1 ? 's' : ''} Mapped`;
+                if (pill) pill.innerText = `${data.machines.length} Machine${data.machines.length > 1 ? 's' : ''} Mapped`;
 
                 // Build Excel-style table where each machine is strictly ONE row
                 let html = `
@@ -500,7 +628,7 @@
                     </table>
                 `;
 
-                container.innerHTML = html;
+                if (container) container.innerHTML = html;
 
                 // Auto-select initial machine
                 if (autoSelectId) {
@@ -510,8 +638,8 @@
                 }
             })
             .catch(err => {
-                pill.innerText = 'Error';
-                container.innerHTML = '<div style="padding: 14px; text-align: center; color: #cf222e;">Error calculating slots. Please retry.</div>';
+                if (pill) pill.innerText = 'Error';
+                if (container) container.innerHTML = '<div style="padding: 14px; text-align: center; color: #cf222e;">Error calculating slots. Please retry.</div>';
                 console.error(err);
             });
     }
@@ -633,10 +761,64 @@
 
     // Validation on Submit
     function validateScheduleSubmission() {
-        const machId = document.getElementById('selectedMachineId').value;
-        const startDate = document.getElementById('selectedDateOfStart').value;
-        const dateMode = document.getElementById('selectedDateMode').value;
-        const customReason = document.getElementById('selectedCustomReason').value.trim();
+        if (gFormAction === 'draft') {
+            // Saving as draft bypasses mandatory slot and machine requirements
+            return true;
+        }
+
+        const isBrachy = document.getElementById('modalityBrachy')?.checked;
+        if (isBrachy) {
+            alert("Brachytherapy scheduling forms will be available in the upcoming phase. To record this patient's intention for brachytherapy now, please use 'Save as Draft'.");
+            return false;
+        }
+
+        // Validate mandatory clinical parameters for Approve & Schedule:
+        const siteVal = document.getElementById('top_site_dropdown')?.value.trim();
+        if (!siteVal) {
+            alert("Site of Treatment is mandatory for scheduling.");
+            document.getElementById('top_site_dropdown')?.focus();
+            return false;
+        }
+
+        const diagnosisVal = document.getElementById('ptDiagnosis')?.value.trim();
+        if (!diagnosisVal) {
+            alert("Diagnosis is mandatory.");
+            document.getElementById('ptDiagnosis')?.focus();
+            return false;
+        }
+
+        const simDate = document.getElementById('dateOfSim')?.value;
+        if (!simDate) {
+            alert("CT Simulation Date is mandatory.");
+            document.getElementById('dateOfSim')?.focus();
+            return false;
+        }
+
+        const intentVal = document.getElementById('intentSelect')?.value;
+        if (!intentVal) {
+            alert("Treatment Intent is mandatory (Radical, Palliative, Adjuvant, Neo-adjuvant).");
+            document.getElementById('intentSelect')?.focus();
+            return false;
+        }
+
+        const doseVal = document.getElementById('dosePlannedInput')?.value.trim();
+        if (!doseVal || parseFloat(doseVal) <= 0) {
+            alert("Planned Dose (Gy) is mandatory for scheduling.");
+            document.getElementById('dosePlannedInput')?.focus();
+            return false;
+        }
+
+        const fractionsVal = document.getElementById('fractionsInput')?.value.trim();
+        if (!fractionsVal || parseInt(fractionsVal, 10) <= 0) {
+            alert("Number of Fractions is mandatory for scheduling.");
+            document.getElementById('fractionsInput')?.focus();
+            return false;
+        }
+
+        const machId = document.getElementById('selectedMachineId')?.value;
+        const startDate = document.getElementById('selectedDateOfStart')?.value;
+        const dateMode = document.getElementById('selectedDateMode')?.value;
+        const customReason = document.getElementById('selectedCustomReason')?.value.trim();
 
         if (!machId) {
             alert("Please select a Machine from the table.");
@@ -648,8 +830,6 @@
             return false;
         }
 
-        const simDateInput = document.getElementById('dateOfSim');
-        const simDate = simDateInput ? simDateInput.value : '';
         if (startDate && simDate && startDate < simDate) {
             alert(`Treatment Start Date (${startDate}) cannot be earlier than CT Simulation Date (${simDate}).\nDate of start must be on or after Date of simulation (>= Simulation Date).`);
             return false;
@@ -683,6 +863,7 @@
 
     // Initial Trigger on Page Load
     document.addEventListener("DOMContentLoaded", function() {
+        handleModalityChange();
         loadMappedMachinesSlots();
     });
 </script>
