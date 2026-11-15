@@ -10,7 +10,7 @@ from apps.core.models import Role, UserProfile, Consultant
 from apps.patients.models import Patient
 from apps.scheduler.models import (
     Machine, Shift, Technique, SpecialTechnique, SimulatedFor,
-    MachineMapping, TreatmentSchedule
+    MachineMapping, TreatmentSchedule, TreatmentIntent
 )
 
 
@@ -61,6 +61,11 @@ class Command(BaseCommand):
         self.import_patients_and_schedules(
             cursor, consultant_map, machine_map, shift_map,
             tech_map, special_tech_map, sim_for_map
+        )
+
+        self.stdout.write("--- Step 6: Importing Emergency Slots ---")
+        self.import_emergency_slots(
+            cursor, consultant_map, machine_map, tech_map, special_tech_map
         )
 
         conn.close()
@@ -313,6 +318,18 @@ class Command(BaseCommand):
             except Exception:
                 return None
 
+        def normalize_unit(val):
+            if not val:
+                return 'I'
+            u = str(val).strip().upper()
+            if u in ('1', 'I'):
+                return 'I'
+            elif u in ('2', 'II'):
+                return 'II'
+            elif u in ('3', 'III'):
+                return 'III'
+            return 'I'
+
         # Build patients dictionary by MR_No
         patient_dict = {}
         schedule_records = []
@@ -341,6 +358,7 @@ class Command(BaseCommand):
             site = clean_str(r[7]) or "Others"
             phone = clean_phone(r[9])
             rt_no = clean_str(r[22])
+            unit_val = normalize_unit(r[11])
 
             doc_name = clean_str(r[12]).lower()
             consultant_obj = consultant_map.get(doc_name)
@@ -355,8 +373,12 @@ class Command(BaseCommand):
                     diagnosis=diag,
                     site_of_treatment=site,
                     primary_consultant=consultant_obj,
-                    phone_no=phone
+                    phone_no=phone,
+                    unit=unit_val
                 )
+            else:
+                if unit_val:
+                    patient_dict[mr_no].unit = unit_val
 
             # Match scheduler fields
             sim_date = parse_date(r[5])
@@ -440,3 +462,188 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Successfully imported {Patient.objects.count()} Patients and {TreatmentSchedule.objects.count()} Treatment Schedules!"
         ))
+
+    def import_emergency_slots(self, cursor, consultant_map, machine_map, tech_map, special_tech_map):
+        def clean_str(val):
+            if val is None:
+                return ""
+            s = str(val).strip()
+            return s if s != "None" else ""
+
+        def clean_phone(val):
+            if val is None:
+                return ""
+            s = str(val).strip()
+            if s.endswith(".0"):
+                s = s[:-2]
+            return s
+
+        def clean_int(val):
+            if val is None:
+                return None
+            try:
+                return int(float(val))
+            except Exception:
+                return None
+
+        def clean_decimal(val):
+            if val is None:
+                return None
+            try:
+                return Decimal(str(val))
+            except Exception:
+                return None
+
+        def parse_date(val):
+            if isinstance(val, (datetime, date)):
+                return val.date() if isinstance(val, datetime) else val
+            return None
+
+        def normalize_unit(val):
+            if not val:
+                return 'I'
+            u = str(val).strip().upper()
+            if u in ('1', 'I'):
+                return 'I'
+            elif u in ('2', 'II'):
+                return 'II'
+            elif u in ('3', 'III'):
+                return 'III'
+            return 'I'
+
+        def resolve_machine(m_val):
+            if not m_val:
+                return None
+            m_str = str(m_val).strip().lower()
+            if m_str in machine_map:
+                return machine_map[m_str]
+            clean_m = m_str.replace("elekta - ", "").replace("varian - ", "").replace("tele-", "").replace("la-", "la").strip()
+            if clean_m in machine_map:
+                return machine_map[clean_m]
+            if "la1" in clean_m or "la-1" in clean_m:
+                return machine_map.get("la1") or machine_map.get("elekta - la1")
+            if "la2" in clean_m or "la-2" in clean_m:
+                return machine_map.get("la2") or machine_map.get("elekta - la2")
+            if "la3" in clean_m or "la-3" in clean_m:
+                return machine_map.get("la3") or machine_map.get("elekta - la3")
+            if "la4" in clean_m or "la-4" in clean_m:
+                return machine_map.get("la4") or machine_map.get("elekta - la4")
+            if "dbx" in clean_m:
+                return machine_map.get("dbx") or machine_map.get("varian - dbx")
+            if "dhx" in clean_m:
+                return machine_map.get("dhx") or machine_map.get("varian - dhx")
+            if "unique" in clean_m or "unq" in clean_m:
+                return machine_map.get("unique") or machine_map.get("varian - unique")
+            if "cobalt" in clean_m:
+                return machine_map.get("tele-cobalt") or machine_map.get("cobalt")
+            for k, v in machine_map.items():
+                if k in m_str:
+                    return v
+            return None
+
+        intent_map = {i.name.strip().lower(): i for i in TreatmentIntent.objects.all()}
+        special_tech_none = special_tech_map.get('none')
+
+        cursor.execute("""
+            SELECT ID, MR_No, Pt_name, Age, Sex, Date_Of_sim, Diagnosis,
+                   [Site_of _treatment], Laterality, Phone_no, Intent, Unit,
+                   [Primary Consultant], Machine, Date_as_per_slot, Date_of_intended_start,
+                   Dose_planned, No_of_fractions, Technique, Jr_Resident,
+                   [Emergency Indication], Notes
+            FROM EmergencySlots
+            ORDER BY ID ASC
+        """)
+        em_rows = cursor.fetchall()
+        self.stdout.write(f"Retrieved {len(em_rows)} records from EmergencySlots table.")
+
+        patient_map = {p.mr_no: p for p in Patient.objects.all()}
+        new_patients = []
+        for r in em_rows:
+            mr = clean_int(r[1])
+            if mr and mr not in patient_map:
+                pt_name = clean_str(r[2]) or f"Patient {mr}"
+                age = clean_int(r[3])
+                sex_raw = clean_str(r[4]).upper()
+                sex = 'M' if sex_raw.startswith('M') else ('F' if sex_raw.startswith('F') else 'O')
+                diag = clean_str(r[6]) or "Carcinoma"
+                site = clean_str(r[7]) or "Others"
+                phone = clean_phone(r[9])
+                u_val = normalize_unit(r[11])
+
+                doc_name = clean_str(r[12]).lower()
+                consultant_obj = consultant_map.get(doc_name)
+                if not consultant_obj:
+                    doc_simple = doc_name.replace("dr.", "").replace("dr", "").strip()
+                    consultant_obj = consultant_map.get(doc_simple)
+
+                p_new = Patient(
+                    mr_no=mr,
+                    pt_name=pt_name,
+                    age=age,
+                    sex=sex,
+                    diagnosis=diag,
+                    site_of_treatment=site,
+                    primary_consultant=consultant_obj,
+                    phone_no=phone,
+                    unit=u_val
+                )
+                patient_map[mr] = p_new
+                new_patients.append(p_new)
+
+        if new_patients:
+            self.stdout.write(f"Creating {len(new_patients)} missing patients from EmergencySlots...")
+            with transaction.atomic():
+                Patient.objects.bulk_create(new_patients, batch_size=1000, ignore_conflicts=True)
+            patient_map = {p.mr_no: p for p in Patient.objects.all()}
+
+        sched_to_create = []
+        for r in em_rows:
+            mr = clean_int(r[1])
+            if not mr or mr not in patient_map:
+                continue
+
+            p = patient_map[mr]
+            intended_start = parse_date(r[15])
+            original_slot_date = parse_date(r[14])
+            sim_date = parse_date(r[5])
+            dose = clean_decimal(r[16])
+            fractions = clean_int(r[17])
+            mach_obj = resolve_machine(r[13])
+
+            t_name = clean_str(r[18]).lower()
+            tech_obj = tech_map.get(t_name)
+
+            i_name = clean_str(r[10]).lower()
+            intent_obj = intent_map.get(i_name)
+
+            jr_res = clean_str(r[19])
+            reason = clean_str(r[20]) or 'Others'
+            notes = clean_str(r[21])
+            site = clean_str(r[7]) or p.site_of_treatment
+
+            sched_to_create.append(TreatmentSchedule(
+                patient=p,
+                treatment_type='Teletherapy',
+                intent=intent_obj,
+                site_of_treatment=site,
+                date_of_sim=sim_date,
+                dose_planned=dose,
+                no_of_fractions=fractions,
+                technique=tech_obj,
+                special_technique=special_tech_none,
+                jr_resident=jr_res,
+                machine=mach_obj,
+                intended_start_date=intended_start,
+                original_scheduled_date=original_slot_date,
+                date_of_start=None,
+                is_emergency_slot=True,
+                slot_category='Emergency',
+                emergency_reason=reason,
+                notes=notes,
+                status='Emergency'
+            ))
+
+        if sched_to_create:
+            with transaction.atomic():
+                TreatmentSchedule.objects.bulk_create(sched_to_create, batch_size=2000)
+            self.stdout.write(self.style.SUCCESS(f"Successfully imported {len(sched_to_create)} emergency slots!"))

@@ -11,6 +11,7 @@ setup_test_environment()
 
 from django.test import Client
 from django.contrib.auth.models import User
+from django.db.models import Count, Q
 from datetime import date, timedelta, datetime
 from decimal import Decimal
 from apps.core.models import Role, UserProfile, Consultant, FieldValidationConfig, AuditLog
@@ -2176,6 +2177,50 @@ def run_tests():
     pt_em2.delete()
 
     print("✓ Test 25 Passed: Emergency / Vacant Slot filtering, dedicated editor, All machines consolidated default option, and 7-column PDF/HTML reports fully verified.")
+
+    # -------------------------------------------------------------
+    # Test 26: Synchronized Access BE Emergency Slots & Clinical Unit Distribution
+    # -------------------------------------------------------------
+    print("\n--- Running Test 26: Access BE Database Synchronization (Units & Emergency Slots) ---")
+
+    # 1. Patient Unit distribution matches Access Details table
+    unit_counts = dict(Patient.objects.values('unit').annotate(c=Count('id')).values_list('unit', 'c'))
+    assert unit_counts.get('I', 0) >= 8000, f"Expected Unit I >= 8000, got {unit_counts.get('I')}"
+    assert unit_counts.get('II', 0) >= 6800, f"Expected Unit II >= 6800, got {unit_counts.get('II')}"
+    assert unit_counts.get('III', 0) >= 6500, f"Expected Unit III >= 6500, got {unit_counts.get('III')}"
+
+    # 2. Emergency slots imported from Access EmergencySlots table
+    total_em = TreatmentSchedule.objects.filter(is_emergency_slot=True).count()
+    assert total_em >= 2707, f"Expected at least 2707 emergency slots, got {total_em}"
+
+    em_2026 = TreatmentSchedule.objects.filter(is_emergency_slot=True, intended_start_date__year=2026).count()
+    assert em_2026 >= 650, f"Expected at least 650 emergency slots in 2026, got {em_2026}"
+
+    em_range = TreatmentSchedule.objects.filter(
+        is_emergency_slot=True,
+        intended_start_date__gte=date(2026, 1, 1),
+        intended_start_date__lte=date(2026, 8, 1)
+    ).count()
+    assert em_range >= 500, f"Expected at least 500 emergency slots between 2026-01-01 and 2026-08-01, got {em_range}"
+
+    # 3. HTTP View test: Emergency Slots Queue
+    c.force_login(admin_user)
+    resp_em_queue = c.get('/reports/emergency-slots/?start_date=2026-01-01&end_date=2026-08-01')
+    assert resp_em_queue.status_code == 200
+    assert resp_em_queue.context['total_count'] >= 500
+    em_queue_content = resp_em_queue.content.decode('utf-8')
+    assert "20250016040" in em_queue_content or "kavyasri" in em_queue_content.lower()
+
+    # 4. HTTP View test: Clinical Unit Stats Matrix for Year 2026
+    resp_unit_stats = c.get('/reports/unit-stats/?year=2026')
+    assert resp_unit_stats.status_code == 200
+    unit_rows = {row['raw_unit']: row['total'] for row in resp_unit_stats.context['data_rows']}
+    assert unit_rows.get('I', 0) > 1000, f"Expected Unit I > 1000, got {unit_rows.get('I')}"
+    assert unit_rows.get('II', 0) > 1000, f"Expected Unit II > 1000, got {unit_rows.get('II')}"
+    assert unit_rows.get('III', 0) > 1000, f"Expected Unit III > 1000, got {unit_rows.get('III')}"
+    assert resp_unit_stats.context['grand_total'] == 3914, f"Expected grand total 3914, got {resp_unit_stats.context['grand_total']}"
+
+    print("✓ Test 26 Passed: Access BE database synchronization verified (2,707 emergency slots, 500 in 2026 range, and 3,914 2026 starts split across Units I, II, III).")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
