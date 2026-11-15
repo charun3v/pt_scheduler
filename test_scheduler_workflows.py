@@ -34,8 +34,9 @@ def run_tests():
     print("==================================================")
 
     # Clean up test patients & test holidays
-    Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 7654321, 12345]).delete()
+    Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 9999021, 9999022, 7654321, 12345]).delete()
     Holiday.objects.filter(date__in=[date(2026, 11, 20), date(2026, 11, 25)]).delete()
+    User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix']).delete()
 
     # 1. Test Admin vs SubAdmin vs Resident Granular Permissions
     print("\n--- Test 1: Role Permissions (Admin vs SubAdmin vs Resident) ---")
@@ -1210,6 +1211,290 @@ def run_tests():
     Holiday.objects.filter(date=date(2026, 11, 20)).delete()
     test_pt20.delete()
     print("✓ Test 20 Passed: Schedule Worksheet default upcoming Monday & 6 months dates, Holiday management (Admin/SubAdmin), auto-scheduling exclusion, and manual scheduling warning symbols fully verified.")
+
+    # 21. Test User Management (Compact, Filters, Admin-only Inactive, Prefix), Patient Unit, Reports Exports, Emergency Slot
+    print("\n--- Test 21: User Management (Compact, Filters, Admin-only Inactive, Prefix), Patient Unit, Reports Exports, Emergency Slot ---")
+    User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix']).delete()
+    Patient.objects.filter(mr_no=9999021).delete()
+
+    # 1. User Management Page: Compact table, Role Filter, Search, Admin-only Inactive toggle
+    c.force_login(admin_user)
+    resp_users = c.get('/users/')
+    assert resp_users.status_code == 200
+    users_html = resp_users.content.decode('utf-8')
+    assert "user-table" in users_html or "table" in users_html
+    assert "padding: 4px 8px" in users_html, "User table must have compact cell padding (4px 8px)"
+    assert "All Roles" in users_html
+    assert "Active Only" in users_html
+
+    # Filter by role
+    resp_users_role = c.get(f'/users/?role_id={res_role.role_id}')
+    assert resp_users_role.status_code == 200
+    assert res_user in resp_users_role.context['users']
+
+    # Search by username
+    resp_users_search = c.get('/users/?q=admin')
+    assert resp_users_search.status_code == 200
+    assert admin_user in resp_users_search.context['users']
+
+    # Test Inactive Toggle: Admin Only Security Boundary
+    test_toggle_user = User.objects.create_user(username='test_toggle_user', password='TogglePass123!', first_name='Toggle')
+    UserProfile.objects.create(user=test_toggle_user, role=res_role, user_level='RESIDENT')
+
+    # SubAdmin attempt to toggle -> forbidden/blocked
+    c.force_login(subadmin_user)
+    resp_subadmin_toggle = c.get(f'/users/{test_toggle_user.id}/toggle-active/')
+    test_toggle_user.refresh_from_db()
+    assert test_toggle_user.is_active is True, "SubAdmin must NOT be permitted to deactivate user accounts"
+
+    # Clinical Resident attempt to toggle -> forbidden/blocked
+    c.force_login(res_user)
+    resp_res_toggle = c.get(f'/users/{test_toggle_user.id}/toggle-active/')
+    test_toggle_user.refresh_from_db()
+    assert test_toggle_user.is_active is True, "Resident must NOT be permitted to deactivate user accounts"
+
+    # Admin deactivates user -> succeeds
+    c.force_login(admin_user)
+    resp_admin_toggle = c.get(f'/users/{test_toggle_user.id}/toggle-active/')
+    test_toggle_user.refresh_from_db()
+    assert test_toggle_user.is_active is False, "Admin must be able to deactivate user accounts"
+
+    # Verify AuditLog recorded
+    deact_audit = AuditLog.objects.filter(action='USER_DEACTIVATED', details__icontains='test_toggle_user').first()
+    assert deact_audit is not None, "USER_DEACTIVATED audit log must be recorded"
+
+    # Inactive user login is blocked
+    client_inactive = Client()
+    login_success = client_inactive.login(username='test_toggle_user', password='TogglePass123!')
+    assert login_success is False, "Deactivated user must be blocked from logging into the system"
+
+    # Inactive user is hidden from clinical Junior Resident dropdown
+    test_pt_temp = Patient.objects.create(
+        mr_no=9999022, pt_name="Temp Pt", age=40, sex="Male", diagnosis="Test", primary_consultant=cons_test
+    )
+    resp_sched_form = c.get(f'/scheduler/patient/{test_pt_temp.id}/')
+    assert resp_sched_form.status_code == 200
+    assert test_toggle_user not in resp_sched_form.context['jr_users'], "Deactivated user must be hidden from JR Resident dropdown"
+    test_pt_temp.delete()
+
+    # Admin reactivates user -> succeeds
+    resp_admin_reactivate = c.get(f'/users/{test_toggle_user.id}/toggle-active/')
+    test_toggle_user.refresh_from_db()
+    assert test_toggle_user.is_active is True, "Admin must be able to reactivate user accounts"
+
+    react_audit = AuditLog.objects.filter(action='USER_ACTIVATED', details__icontains='test_toggle_user').first()
+    assert react_audit is not None, "USER_ACTIVATED audit log must be recorded"
+
+    # 2. Add / Edit User Form: Prefix Dropdown (Dr., Mr, Mrs, Miss)
+    resp_user_form = c.get('/users/new/')
+    assert resp_user_form.status_code == 200
+    user_form_html = resp_user_form.content.decode('utf-8')
+    assert "Dr." in user_form_html
+    assert "Mr" in user_form_html
+    assert "Mrs" in user_form_html
+    assert "Miss" in user_form_html
+
+    # Create user with Prefix Dr.
+    resp_create_doc = c.post('/users/new/', {
+        'username': 'test_doc_prefix',
+        'prefix': 'Dr.',
+        'first_name': 'Ananya',
+        'password': 'DocPassword123!',
+        'role_id': str(res_role.role_id)
+    })
+    assert resp_create_doc.status_code == 302
+    doc_user = User.objects.get(username='test_doc_prefix')
+    assert doc_user.profile.prefix == 'Dr.'
+    assert doc_user.profile.display_name == 'Dr. Ananya'
+
+    # Edit user with Prefix Mrs
+    resp_edit_doc = c.post(f'/users/{doc_user.id}/edit/', {
+        'prefix': 'Mrs',
+        'first_name': 'Ananya Sharma',
+        'role_id': str(res_role.role_id),
+        'is_active': 'on'
+    })
+    assert resp_edit_doc.status_code == 302
+    doc_user.refresh_from_db()
+    assert doc_user.profile.prefix == 'Mrs'
+    assert doc_user.profile.display_name == 'Mrs Ananya Sharma'
+
+    # 3. Patient Registration: Clinical Unit (I, II, III)
+    resp_reg_form = c.get('/patients/register/')
+    assert resp_reg_form.status_code == 200
+    reg_html = resp_reg_form.content.decode('utf-8')
+    assert 'unitList' in reg_html, "Unit datalist must be present in patient registration form"
+
+    resp_reg_post = c.post('/patients/register/', {
+        'mr_no': '9999021',
+        'pt_name': 'Test Unit Patient',
+        'age': '54',
+        'sex': 'Female',
+        'unit': 'II',
+        'primary_consultant_id': str(cons_test.id),
+        'diagnosis': 'Ca Cervix Stage IIB',
+        'site_of_treatment': 'Pelvis',
+        'phone_no': '9876543210'
+    })
+    assert resp_reg_post.status_code == 302
+    test_pt21 = Patient.objects.get(mr_no=9999021)
+    assert test_pt21.unit == 'II', f"Expected unit 'II', got '{test_pt21.unit}'"
+
+    # Patient Edit: update unit to 'III'
+    resp_edit_post = c.post(f'/patients/{test_pt21.id}/edit/', {
+        'pt_name': 'Test Unit Patient',
+        'age': '54',
+        'sex': 'Female',
+        'unit': 'III',
+        'primary_consultant_id': str(cons_test.id),
+        'diagnosis': 'Ca Cervix Stage IIB',
+        'site_of_treatment': 'Pelvis',
+        'phone_no': '9876543210'
+    })
+    assert resp_edit_post.status_code == 302
+    test_pt21.refresh_from_db()
+    assert test_pt21.unit == 'III', f"Expected unit 'III', got '{test_pt21.unit}'"
+
+    # Patient Details: verify Unit displayed
+    resp_detail21 = c.get(f'/patients/{test_pt21.id}/')
+    assert resp_detail21.status_code == 200
+    assert "Unit: III" in resp_detail21.content.decode('utf-8'), "Patient details page must display clinical unit"
+
+    # 4. Reports Exports: Consultant Stats, Unit Stats, Simulation Report (CSV and Excel)
+    # Consultant Stats
+    resp_cons_csv = c.get('/reports/consultant-stats/?export=csv')
+    assert resp_cons_csv.status_code == 200
+    assert 'text/csv' in resp_cons_csv['Content-Type']
+    assert 'consultant_starts_' in resp_cons_csv['Content-Disposition'].lower()
+
+    resp_cons_xlsx = c.get('/reports/consultant-stats/?export=excel')
+    assert resp_cons_xlsx.status_code == 200
+    assert 'spreadsheetml' in resp_cons_xlsx['Content-Type']
+
+    # Unit Stats
+    resp_unit_page = c.get('/reports/unit-stats/')
+    assert resp_unit_page.status_code == 200
+    assert "Clinical Unit" in resp_unit_page.content.decode('utf-8')
+
+    resp_unit_csv = c.get('/reports/unit-stats/?export=csv')
+    assert resp_unit_csv.status_code == 200
+    assert 'text/csv' in resp_unit_csv['Content-Type']
+    assert 'unit_starts_' in resp_unit_csv['Content-Disposition'].lower()
+
+    resp_unit_xlsx = c.get('/reports/unit-stats/?export=excel')
+    assert resp_unit_xlsx.status_code == 200
+    assert 'spreadsheetml' in resp_unit_xlsx['Content-Type']
+
+    # Simulation Report
+    resp_sim_page = c.get('/reports/simulations/?start_date=2026-01-01&end_date=2026-12-31')
+    assert resp_sim_page.status_code == 200
+    assert "Simulated Between Dates" in resp_sim_page.content.decode('utf-8')
+
+    resp_sim_csv = c.get('/reports/simulations/?start_date=2026-01-01&end_date=2026-12-31&export=csv')
+    assert resp_sim_csv.status_code == 200
+    assert 'text/csv' in resp_sim_csv['Content-Type']
+    assert 'simulations_' in resp_sim_csv['Content-Disposition'].lower()
+
+    resp_sim_xlsx = c.get('/reports/simulations/?start_date=2026-01-01&end_date=2026-12-31&export=excel')
+    assert resp_sim_xlsx.status_code == 200
+    assert 'spreadsheetml' in resp_sim_xlsx['Content-Type']
+
+    # 5. Emergency / Vacant Slot Filling Workflow
+    sched21 = TreatmentSchedule.objects.create(
+        patient=test_pt21,
+        machine=mach_test,
+        shift=shift_test,
+        technique=tech_imrt,
+        special_technique=spec_none,
+        date_of_sim=date(2026, 11, 10),
+        date_of_start=date(2026, 11, 28),
+        dose_planned=Decimal('20.00'),
+        no_of_fractions=5,
+        status='Scheduled'
+    )
+
+    # In Patient Details: Verify "🚨 Add to Emergency slot" button appears
+    resp_pt_detail_em = c.get(f'/patients/{test_pt21.id}/')
+    assert resp_pt_detail_em.status_code == 200
+    assert f"/scheduler/course/{sched21.id}/emergency-slot/" in resp_pt_detail_em.content.decode('utf-8')
+
+    # View Emergency / Vacant Slot Form
+    resp_em_form = c.get(f'/scheduler/course/{sched21.id}/emergency-slot/')
+    assert resp_em_form.status_code == 200
+    em_form_html = resp_em_form.content.decode('utf-8')
+    assert "Spinal cord compression" in em_form_html
+    assert "Bleeding" in em_form_html
+    assert "Pain" in em_form_html
+    assert "SVCO" in em_form_html
+    assert "Others" in em_form_html
+    assert ("28-Nov-2026" in em_form_html or "2026-11-28" in em_form_html), "Current scheduled date must be prepopulated"
+
+    # Submit Emergency Slot
+    resp_approve_em = c.post(f'/scheduler/course/{sched21.id}/emergency-slot/', {
+        'slot_category': 'Emergency',
+        'emergency_reason': 'Spinal cord compression',
+        'intended_start_date': '2026-11-24',
+        'notes': 'Severe metastatic epidural compression, urgent decompression RT'
+    }, follow=True)
+    assert resp_approve_em.status_code == 200
+    em_flash = "Patient has been shifted to Emergency / Vacant slot list - will be removed from the normal schedule list"
+    assert em_flash in [m.message for m in resp_approve_em.context['messages']]
+
+    # Verify Schedule state
+    sched21.refresh_from_db()
+    assert sched21.is_emergency_slot is True, "Course must be flagged as emergency slot"
+    assert sched21.slot_category == 'Emergency'
+    assert sched21.emergency_reason == 'Spinal cord compression'
+    assert sched21.date_of_start is None, "date_of_start must be cleared to remove patient from normal schedule list"
+    assert sched21.original_scheduled_date == date(2026, 11, 28)
+    assert sched21.status == 'Emergency'
+
+    # Verify AuditLog
+    em_audit = AuditLog.objects.filter(mr_no=str(test_pt21.mr_no), action='EMERGENCY_SLOT_ASSIGNED').first()
+    assert em_audit is not None, "EMERGENCY_SLOT_ASSIGNED audit log must be recorded"
+    assert "Spinal cord compression" in em_audit.details
+
+    # Verify patient is EXCLUDED from normal machine daily starts report
+    resp_mach_daily = c.get('/reports/machines/?start_date=2026-11-01&end_date=2026-11-30')
+    assert test_pt21.mr_no not in [s.patient.mr_no for s in resp_mach_daily.context['schedules']], "Emergency patient must not appear in normal machine daily starts list"
+
+    # Verify patient is EXCLUDED from normal manual schedule worksheet
+    resp_manual_grid = c.get('/reports/manual-grid/?start_date=2026-11-01&end_date=2026-11-30')
+    assert test_pt21.mr_no not in [s.patient.mr_no for s in resp_manual_grid.context['schedules']], "Emergency patient must not appear in normal manual schedule worksheet"
+
+    # Verify patient is INCLUDED in Emergency Slots Report
+    resp_em_report = c.get('/reports/emergency-slots/')
+    assert resp_em_report.status_code == 200
+    assert sched21 in resp_em_report.context['schedules'], "Course must appear in Emergency Slots Report"
+
+    resp_em_csv = c.get('/reports/emergency-slots/?export=csv')
+    assert resp_em_csv.status_code == 200
+    assert 'Spinal cord compression' in resp_em_csv.content.decode('utf-8')
+
+    resp_em_xlsx = c.get('/reports/emergency-slots/?export=excel')
+    assert resp_em_xlsx.status_code == 200
+
+    # Revert patient from Emergency Slot back to normal schedule
+    resp_revert_em = c.post(f'/scheduler/course/{sched21.id}/revert-emergency/', follow=True)
+    assert resp_revert_em.status_code == 200
+    sched21.refresh_from_db()
+    assert sched21.is_emergency_slot is False, "is_emergency_slot must be cleared"
+    assert sched21.date_of_start == date(2026, 11, 28), "Original scheduled date must be restored"
+    assert sched21.status == 'Scheduled'
+
+    revert_em_audit = AuditLog.objects.filter(mr_no=str(test_pt21.mr_no), action='EMERGENCY_SLOT_REVERTED').first()
+    assert revert_em_audit is not None, "EMERGENCY_SLOT_REVERTED audit log must be recorded"
+
+    # Patient reappears in normal schedule list
+    resp_mach_daily_restored = c.get('/reports/machines/?start_date=2026-11-01&end_date=2026-11-30')
+    assert test_pt21.mr_no in [s.patient.mr_no for s in resp_mach_daily_restored.context['schedules']], "Restored course must reappear in normal schedule list"
+
+    # Cleanup
+    sched21.delete()
+    test_pt21.delete()
+    test_toggle_user.delete()
+    doc_user.delete()
+    print("✓ Test 21 Passed: User management compact/filters/Admin-only inactive, User prefix, Patient Unit, CSV/Excel exports (Consultant, Unit, Simulations), and Emergency Slot workflow fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

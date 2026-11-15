@@ -158,6 +158,8 @@ class TreatmentSchedule(models.Model):
         ('Draft', 'Draft (Not Scheduled)'),
         ('Pending', 'Pending Start'),
         ('Scheduled', 'Scheduled'),
+        ('Emergency', 'Emergency Slot'),
+        ('Vacant', 'Vacant Slot'),
         ('In Progress', 'In Progress'),
         ('Completed', 'Completed'),
         ('Cancelled', 'Cancelled'),
@@ -182,6 +184,13 @@ class TreatmentSchedule(models.Model):
     course_tag = models.CharField(max_length=100, blank=True, null=True, verbose_name="Course Tag / Group")
     notes = models.TextField(blank=True, null=True, verbose_name="Clinical / Scheduling Notes")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Scheduled')
+
+    # Emergency / Vacant Slot Filling fields
+    is_emergency_slot = models.BooleanField(default=False, db_index=True, verbose_name="Is Emergency / Vacant Slot")
+    slot_category = models.CharField(max_length=50, blank=True, null=True, choices=[('Emergency', 'Emergency Slot'), ('Vacant', 'Vacant Slot Filling')], verbose_name="Slot Category")
+    emergency_reason = models.CharField(max_length=150, blank=True, null=True, verbose_name="Reason for Emergency")
+    intended_start_date = models.DateField(blank=True, null=True, verbose_name="Intended Start Date")
+    original_scheduled_date = models.DateField(blank=True, null=True, verbose_name="Original Scheduled Date")
 
     # Audit
     created_at = models.DateTimeField(default=timezone.now)

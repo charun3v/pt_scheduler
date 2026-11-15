@@ -7,6 +7,7 @@ from django.utils import timezone
 from datetime import date, datetime, timedelta
 import calendar
 import json
+import csv
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -49,7 +50,7 @@ def machine_daily_list_view(request):
 
     schedules = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'shift', 'technique', 'patient__primary_consultant'
-    ).filter(date_of_start__range=[start_date, end_date]).exclude(status='Draft')
+    ).filter(date_of_start__range=[start_date, end_date]).exclude(status__in=['Draft', 'Emergency', 'Vacant']).exclude(is_emergency_slot=True)
 
     selected_machine = None
     if selected_machine_id:
@@ -81,12 +82,12 @@ def pending_starts_report_view(request):
     Replicates Access query & report 'PendingStartDate':
     Patients who have completed simulation but have NO treatment start date set yet.
     """
-    start_sim_str = request.GET.get('start_sim')
-    end_sim_str = request.GET.get('end_sim')
+    start_sim_str = request.GET.get('start_sim') or request.GET.get('start_date')
+    end_sim_str = request.GET.get('end_sim') or request.GET.get('end_date')
 
     query = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'technique', 'patient__primary_consultant'
-    ).filter(date_of_start__isnull=True).exclude(status='Draft')
+    ).filter(date_of_start__isnull=True).exclude(status__in=['Draft', 'Emergency', 'Vacant']).exclude(is_emergency_slot=True)
 
     if start_sim_str:
         try:
@@ -164,16 +165,180 @@ def consultant_monthly_stats_view(request):
 
     # Sort consultants by total descending
     data_rows.sort(key=lambda x: x['total'], reverse=True)
+    month_totals_list = [month_totals[m] for m in range(1, 13)]
+
+    # Exports
+    export_fmt = request.GET.get('export')
+    if export_fmt == 'excel':
+        return export_consultant_stats_excel(data_rows, months, month_totals_list, grand_total, year)
+    elif export_fmt == 'csv':
+        return export_consultant_stats_csv(data_rows, months, month_totals_list, grand_total, year)
 
     context = {
         'year': year,
         'available_years': available_years,
         'months': months,
         'data_rows': data_rows,
-        'month_totals': [month_totals[m] for m in range(1, 13)],
+        'month_totals': month_totals_list,
         'grand_total': grand_total,
     }
     return render(request, 'reports/consultant_stats.html', context)
+
+
+@login_required
+def unit_monthly_stats_view(request):
+    """
+    Clinical Unit Starts Statistics.
+    Groups treatment starts by Unit (Unit I, Unit II, Unit III, etc.) month-by-month for the year.
+    Supports CSV and Excel export.
+    """
+    year = int(request.GET.get('year', date.today().year))
+    available_years = list(range(2020, date.today().year + 2))
+
+    schedules = TreatmentSchedule.objects.filter(
+        date_of_start__year=year
+    ).exclude(status__in=['Draft', 'Emergency', 'Vacant']).exclude(is_emergency_slot=True).values(
+        'patient__unit',
+        'date_of_start__month'
+    ).annotate(total=Count('id'))
+
+    known_units = list(Patient.objects.exclude(unit__isnull=True).exclude(unit='').values_list('unit', flat=True).distinct())
+    if not known_units:
+        known_units = ['I', 'II', 'III']
+    else:
+        for u in ['I', 'II', 'III']:
+            if u not in known_units:
+                known_units.append(u)
+    known_units.sort()
+
+    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    matrix = {u: {m: 0 for m in range(1, 13)} for u in known_units}
+
+    for row in schedules:
+        u_val = row['patient__unit'] or 'I'
+        m_idx = row['date_of_start__month']
+        if u_val in matrix:
+            matrix[u_val][m_idx] += row['total']
+        else:
+            matrix[u_val] = {m: 0 for m in range(1, 13)}
+            matrix[u_val][m_idx] = row['total']
+            if u_val not in known_units:
+                known_units.append(u_val)
+
+    data_rows = []
+    month_totals = {m: 0 for m in range(1, 13)}
+    grand_total = 0
+
+    for u in known_units:
+        row_counts = [matrix[u][m] for m in range(1, 13)]
+        row_sum = sum(row_counts)
+        grand_total += row_sum
+        for m in range(1, 13):
+            month_totals[m] += matrix[u][m]
+        data_rows.append({
+            'unit': f"Unit {u}" if not str(u).lower().startswith('unit') else u,
+            'raw_unit': u,
+            'counts': row_counts,
+            'total': row_sum
+        })
+
+    data_rows.sort(key=lambda x: str(x['raw_unit']))
+    month_totals_list = [month_totals[m] for m in range(1, 13)]
+
+    # Exports
+    export_fmt = request.GET.get('export')
+    if export_fmt == 'excel':
+        return export_unit_stats_excel(data_rows, months, month_totals_list, grand_total, year)
+    elif export_fmt == 'csv':
+        return export_unit_stats_csv(data_rows, months, month_totals_list, grand_total, year)
+
+    context = {
+        'year': year,
+        'available_years': available_years,
+        'months': months,
+        'data_rows': data_rows,
+        'month_totals': month_totals_list,
+        'grand_total': grand_total,
+    }
+    return render(request, 'reports/unit_stats.html', context)
+
+
+@login_required
+def simulation_report_view(request):
+    """
+    Patients Simulated Between Dates Report.
+    Filters treatment schedules by CT Simulation Date range.
+    Supports CSV and Excel export.
+    """
+    today = date.today()
+    start_sim_str = request.GET.get('start_sim') or request.GET.get('start_date')
+    end_sim_str = request.GET.get('end_sim') or request.GET.get('end_date')
+
+    if not start_sim_str:
+        start_sim = today.replace(day=1)
+        start_sim_str = start_sim.isoformat()
+    else:
+        try:
+            start_sim = datetime.strptime(start_sim_str, "%Y-%m-%d").date()
+        except ValueError:
+            start_sim = today.replace(day=1)
+            start_sim_str = start_sim.isoformat()
+
+    if not end_sim_str:
+        end_sim = today
+        end_sim_str = end_sim.isoformat()
+    else:
+        try:
+            end_sim = datetime.strptime(end_sim_str, "%Y-%m-%d").date()
+        except ValueError:
+            end_sim = today
+            end_sim_str = end_sim.isoformat()
+
+    schedules_qs = TreatmentSchedule.objects.select_related(
+        'patient', 'patient__primary_consultant', 'machine', 'technique', 'shift'
+    ).filter(
+        date_of_sim__range=[start_sim, end_sim]
+    ).order_by('-date_of_sim', 'patient__pt_name')
+
+    export_fmt = request.GET.get('export')
+    if export_fmt == 'excel':
+        return export_simulation_report_excel(schedules_qs, start_sim, end_sim)
+    elif export_fmt == 'csv':
+        return export_simulation_report_csv(schedules_qs, start_sim, end_sim)
+
+    context = {
+        'schedules': schedules_qs,
+        'total_count': schedules_qs.count(),
+        'start_sim_str': start_sim_str,
+        'end_sim_str': end_sim_str,
+    }
+    return render(request, 'reports/simulation_report.html', context)
+
+
+@login_required
+def emergency_slots_report_view(request):
+    """
+    Emergency & Vacant Slots Queue.
+    Lists all patients assigned to Emergency or Vacant slot filling.
+    Allows viewing indication, intended start date, and management.
+    """
+    schedules = TreatmentSchedule.objects.select_related(
+        'patient', 'patient__primary_consultant', 'machine', 'shift', 'technique'
+    ).filter(
+        Q(is_emergency_slot=True) | Q(status__in=['Emergency', 'Vacant'])
+    ).order_by('-intended_start_date', '-created_at')
+
+    export_fmt = request.GET.get('export')
+    if export_fmt == 'excel':
+        return export_emergency_slots_excel(schedules)
+    elif export_fmt == 'csv':
+        return export_emergency_slots_csv(schedules)
+
+    context = {
+        'schedules': schedules,
+        'total_count': schedules.count(),
+    }
+    return render(request, 'reports/emergency_slots.html', context)
 
 
 def export_machine_schedule_excel(schedules, machine, start_date, end_date):
@@ -403,7 +568,7 @@ def manual_schedule_grid_view(request):
 
     schedules_qs = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'shift', 'technique', 'special_technique', 'patient__primary_consultant'
-    ).filter(base_filter & date_filter).exclude(status='Draft').order_by('date_of_start', 'shift__display_order', 'patient__pt_name')
+    ).filter(base_filter & date_filter).exclude(status__in=['Draft', 'Emergency', 'Vacant']).exclude(is_emergency_slot=True).order_by('date_of_start', 'shift__display_order', 'patient__pt_name')
 
     # Load holidays
     holidays_qs = Holiday.objects.all().order_by('date')
@@ -711,4 +876,289 @@ def audit_log_report_view(request):
         'total_logs': logs.count(),
     }
     return render(request, 'reports/audit_logs.html', context)
+
+
+# ==============================================================================
+# EXPORT HELPERS: CONSULTANT STATS, UNIT STATS, SIMULATIONS, EMERGENCY SLOTS
+# ==============================================================================
+
+def export_consultant_stats_excel(data_rows, months, month_totals, grand_total, year):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"Consultants {year}"
+
+    ws.merge_cells('A1:N1')
+    ws['A1'] = f"KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - CONSULTANT STARTS ({year})"
+    ws['A1'].font = Font(name="Calibri", size=13, bold=True, color="003366")
+    ws['A1'].alignment = Alignment(horizontal="center")
+
+    headers = ["Primary Consultant"] + months + ["Total"]
+    ws.append([])
+    ws.append(headers)
+
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="003366", end_color="003366", fill_type="solid")
+
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=3, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center" if col_num > 1 else "left")
+
+    for r in data_rows:
+        ws.append([r['consultant']] + r['counts'] + [r['total']])
+
+    ws.append(["Monthly Totals"] + month_totals + [grand_total])
+    total_row_idx = len(data_rows) + 4
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=total_row_idx, column=col_num)
+        cell.font = Font(name="Calibri", size=10, bold=True, color="003366")
+        cell.fill = PatternFill(start_color="E2EDFA", end_color="E2EDFA", fill_type="solid")
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = openpyxl.utils.get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 8)
+
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response['Content-Disposition'] = f'attachment; filename="Consultant_Starts_{year}.xlsx"'
+    wb.save(response)
+    return response
+
+
+def export_consultant_stats_csv(data_rows, months, month_totals, grand_total, year):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="Consultant_Starts_{year}.csv"'
+    writer = csv.writer(response)
+    writer.writerow([f"KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - CONSULTANT STARTS ({year})"])
+    writer.writerow([])
+    writer.writerow(["Primary Consultant"] + months + ["Total"])
+    for r in data_rows:
+        writer.writerow([r['consultant']] + r['counts'] + [r['total']])
+    writer.writerow(["Monthly Totals"] + month_totals + [grand_total])
+    return response
+
+
+def export_unit_stats_excel(data_rows, months, month_totals, grand_total, year):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"Unit Starts {year}"
+
+    ws.merge_cells('A1:N1')
+    ws['A1'] = f"KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - CLINICAL UNIT STARTS ({year})"
+    ws['A1'].font = Font(name="Calibri", size=13, bold=True, color="003366")
+    ws['A1'].alignment = Alignment(horizontal="center")
+
+    headers = ["Clinical Unit"] + months + ["Total"]
+    ws.append([])
+    ws.append(headers)
+
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="003366", end_color="003366", fill_type="solid")
+
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=3, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center" if col_num > 1 else "left")
+
+    for r in data_rows:
+        ws.append([r['unit']] + r['counts'] + [r['total']])
+
+    ws.append(["Monthly Totals"] + month_totals + [grand_total])
+    total_row_idx = len(data_rows) + 4
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=total_row_idx, column=col_num)
+        cell.font = Font(name="Calibri", size=10, bold=True, color="003366")
+        cell.fill = PatternFill(start_color="E2EDFA", end_color="E2EDFA", fill_type="solid")
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = openpyxl.utils.get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response['Content-Disposition'] = f'attachment; filename="Unit_Starts_{year}.xlsx"'
+    wb.save(response)
+    return response
+
+
+def export_unit_stats_csv(data_rows, months, month_totals, grand_total, year):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="Unit_Starts_{year}.csv"'
+    writer = csv.writer(response)
+    writer.writerow([f"KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - CLINICAL UNIT STARTS ({year})"])
+    writer.writerow([])
+    writer.writerow(["Clinical Unit"] + months + ["Total"])
+    for r in data_rows:
+        writer.writerow([r['unit']] + r['counts'] + [r['total']])
+    writer.writerow(["Monthly Totals"] + month_totals + [grand_total])
+    return response
+
+
+def export_simulation_report_excel(schedules, start_sim, end_sim):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Simulations"
+
+    ws.merge_cells('A1:L1')
+    ws['A1'] = f"KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - PATIENTS SIMULATED BETWEEN DATES"
+    ws['A1'].font = Font(name="Calibri", size=13, bold=True, color="003366")
+    ws['A1'].alignment = Alignment(horizontal="center")
+
+    ws.merge_cells('A2:L2')
+    ws['A2'] = f"Simulation Period: {start_sim.strftime('%d-%b-%Y')} to {end_sim.strftime('%d-%b-%Y')} | Total: {schedules.count()} Patients"
+    ws['A2'].font = Font(name="Calibri", size=11, bold=True)
+    ws['A2'].alignment = Alignment(horizontal="center")
+
+    headers = [
+        "MR No.", "Patient Name", "Age/Sex", "Unit", "Simulation Date",
+        "RT No.", "Diagnosis", "Site of Treatment", "Consultant", "Machine",
+        "Start Date", "Status"
+    ]
+    ws.append([])
+    ws.append(headers)
+
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="003366", end_color="003366", fill_type="solid")
+
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=4, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center" if col_num in (1, 3, 4, 5, 6, 11, 12) else "left")
+
+    for s in schedules:
+        ws.append([
+            s.patient.mr_no,
+            s.patient.pt_name,
+            f"{s.patient.age or ''}/{s.patient.sex}",
+            s.patient.unit or "I",
+            s.date_of_sim.strftime("%d-%m-%Y") if s.date_of_sim else "-",
+            s.patient.rt_no or "-",
+            s.patient.diagnosis,
+            s.site_of_treatment or s.patient.site_of_treatment or "-",
+            s.patient.primary_consultant.name if s.patient.primary_consultant else "-",
+            s.machine.name if s.machine else "Not Assigned",
+            s.date_of_start.strftime("%d-%m-%Y") if s.date_of_start else "Pending",
+            s.status
+        ])
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = openpyxl.utils.get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response['Content-Disposition'] = f'attachment; filename="Simulations_{start_sim}_to_{end_sim}.xlsx"'
+    wb.save(response)
+    return response
+
+
+def export_simulation_report_csv(schedules, start_sim, end_sim):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="Simulations_{start_sim}_to_{end_sim}.csv"'
+    writer = csv.writer(response)
+    writer.writerow([f"KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - PATIENTS SIMULATED ({start_sim} to {end_sim})"])
+    writer.writerow([])
+    writer.writerow([
+        "MR No.", "Patient Name", "Age/Sex", "Unit", "Simulation Date",
+        "RT No.", "Diagnosis", "Site of Treatment", "Consultant", "Machine",
+        "Start Date", "Status"
+    ])
+    for s in schedules:
+        writer.writerow([
+            s.patient.mr_no,
+            s.patient.pt_name,
+            f"{s.patient.age or ''}/{s.patient.sex}",
+            s.patient.unit or "I",
+            s.date_of_sim.strftime("%d-%m-%Y") if s.date_of_sim else "-",
+            s.patient.rt_no or "-",
+            s.patient.diagnosis,
+            s.site_of_treatment or s.patient.site_of_treatment or "-",
+            s.patient.primary_consultant.name if s.patient.primary_consultant else "-",
+            s.machine.name if s.machine else "Not Assigned",
+            s.date_of_start.strftime("%d-%m-%Y") if s.date_of_start else "Pending",
+            s.status
+        ])
+    return response
+
+
+def export_emergency_slots_excel(schedules):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Emergency Slots"
+
+    ws.merge_cells('A1:J1')
+    ws['A1'] = "KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - EMERGENCY & VACANT SLOTS QUEUE"
+    ws['A1'].font = Font(name="Calibri", size=13, bold=True, color="991B1B")
+    ws['A1'].alignment = Alignment(horizontal="center")
+
+    headers = [
+        "MR No.", "Patient Name", "Classification", "Intended Start",
+        "Emergency Indication / Reason", "Machine", "Shift", "Consultant",
+        "Unit", "Status"
+    ]
+    ws.append([])
+    ws.append(headers)
+
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="B91C1C", end_color="B91C1C", fill_type="solid")
+
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=3, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center" if col_num in (1, 3, 4, 7, 9, 10) else "left")
+
+    for s in schedules:
+        ws.append([
+            s.patient.mr_no,
+            s.patient.pt_name,
+            s.slot_category or s.status,
+            s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else "TBD",
+            s.emergency_reason or "Emergency Indication",
+            s.machine.name if s.machine else "Unassigned",
+            s.shift.name if s.shift else "-",
+            s.patient.primary_consultant.name if s.patient.primary_consultant else "-",
+            s.patient.unit or "I",
+            s.status
+        ])
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = openpyxl.utils.get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response['Content-Disposition'] = f'attachment; filename="Emergency_Slots_{date.today()}.xlsx"'
+    wb.save(response)
+    return response
+
+
+def export_emergency_slots_csv(schedules):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="Emergency_Slots_{date.today()}.csv"'
+    writer = csv.writer(response)
+    writer.writerow(["KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY - EMERGENCY & VACANT SLOTS QUEUE"])
+    writer.writerow([])
+    writer.writerow([
+        "MR No.", "Patient Name", "Classification", "Intended Start",
+        "Emergency Indication / Reason", "Machine", "Shift", "Consultant",
+        "Unit", "Status"
+    ])
+    for s in schedules:
+        writer.writerow([
+            s.patient.mr_no,
+            s.patient.pt_name,
+            s.slot_category or s.status,
+            s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else "TBD",
+            s.emergency_reason or "Emergency Indication",
+            s.machine.name if s.machine else "Unassigned",
+            s.shift.name if s.shift else "-",
+            s.patient.primary_consultant.name if s.patient.primary_consultant else "-",
+            s.patient.unit or "I",
+            s.status
+        ])
+    return response
 

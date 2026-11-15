@@ -135,9 +135,70 @@ def user_list_view(request):
         messages.error(request, "Access restricted to Administrators.")
         return redirect('dashboard')
 
-    users = User.objects.select_related('profile__role').order_by('username')
+    query = request.GET.get('q', '').strip()
+    role_id = request.GET.get('role_id', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+
+    users_qs = User.objects.select_related('profile__role').order_by('username')
+
+    if query:
+        users_qs = users_qs.filter(
+            Q(username__icontains=query) |
+            Q(first_name__icontains=query) |
+            Q(last_name__icontains=query)
+        )
+
+    if role_id:
+        users_qs = users_qs.filter(profile__role__role_id=role_id)
+
+    if status_filter == 'active':
+        users_qs = users_qs.filter(is_active=True)
+    elif status_filter == 'inactive':
+        users_qs = users_qs.filter(is_active=False)
+
     roles = Role.objects.filter(is_active=True).order_by('display_order')
-    return render(request, 'core/user_list.html', {'users': users, 'roles': roles})
+    is_admin = is_admin_only(request.user)
+
+    context = {
+        'users': users_qs,
+        'roles': roles,
+        'query': query,
+        'selected_role_id': int(role_id) if role_id.isdigit() else None,
+        'status_filter': status_filter,
+        'is_admin': is_admin,
+        'total_count': users_qs.count(),
+    }
+    return render(request, 'core/user_list.html', context)
+
+
+@login_required
+def user_toggle_active_view(request, user_id):
+    """
+    Toggle user active/inactive status. Strictly restricted to Admin only.
+    Inactive users are blocked from login and hidden from clinical dropdowns.
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access denied. Only Administrators can activate or inactivate user accounts.")
+        return redirect('user_list')
+
+    target_user = get_object_or_404(User, id=user_id)
+    if target_user.id == request.user.id:
+        messages.error(request, "You cannot deactivate your own administrative account.")
+        return redirect('user_list')
+
+    target_user.is_active = not target_user.is_active
+    target_user.save()
+
+    status_str = "activated" if target_user.is_active else "deactivated"
+    AuditLog.objects.create(
+        user=request.user,
+        action=f"USER_{status_str.upper()}",
+        details=f"Admin {request.user.username} {status_str} account for user {target_user.username}.",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+
+    messages.success(request, f"User '{target_user.username}' has been successfully {status_str}.")
+    return redirect('user_list')
 
 
 @login_required
@@ -147,31 +208,45 @@ def user_create_view(request):
         return redirect('dashboard')
 
     roles = Role.objects.filter(is_active=True).order_by('display_order')
+    prefixes = ['Dr.', 'Mr', 'Mrs', 'Miss']
 
     if request.method == 'POST':
         uname = request.POST.get('username', '').strip().lower()
+        prefix = request.POST.get('prefix', 'Dr.').strip()
         fname = request.POST.get('first_name', '').strip()
         pword = request.POST.get('password', '').strip()
         role_id = request.POST.get('role_id')
 
         if not uname or not pword:
             messages.error(request, "Username and Password are required.")
-            return render(request, 'core/user_form.html', {'roles': roles})
+            return render(request, 'core/user_form.html', {'roles': roles, 'prefixes': prefixes})
 
         if User.objects.filter(username=uname).exists():
             messages.error(request, f"Username '{uname}' already exists.")
-            return render(request, 'core/user_form.html', {'roles': roles})
+            return render(request, 'core/user_form.html', {'roles': roles, 'prefixes': prefixes})
 
         role_obj = Role.objects.filter(role_id=role_id).first() if role_id else None
         is_staff = bool(role_obj and role_obj.role_name.lower() in ('admin', 'subadmin'))
 
         user = User.objects.create_user(username=uname, first_name=fname, password=pword, is_staff=is_staff)
-        UserProfile.objects.create(user=user, role=role_obj, user_level=role_obj.role_name.upper() if role_obj else 'USER')
+        UserProfile.objects.create(
+            user=user,
+            prefix=prefix,
+            role=role_obj,
+            user_level=role_obj.role_name.upper() if role_obj else 'USER'
+        )
 
-        messages.success(request, f"User '{uname}' created successfully with role '{role_obj.role_name if role_obj else 'None'}'.")
+        AuditLog.objects.create(
+            user=request.user,
+            action="USER_CREATE",
+            details=f"Created user {uname} with role {role_obj.role_name if role_obj else 'None'} and prefix {prefix}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"User '{prefix} {fname or uname}' created successfully with role '{role_obj.role_name if role_obj else 'None'}'.")
         return redirect('user_list')
 
-    return render(request, 'core/user_form.html', {'roles': roles})
+    return render(request, 'core/user_form.html', {'roles': roles, 'prefixes': prefixes})
 
 
 @login_required
@@ -182,15 +257,21 @@ def user_edit_view(request, user_id):
 
     target_user = get_object_or_404(User, id=user_id)
     roles = Role.objects.filter(is_active=True).order_by('display_order')
+    prefixes = ['Dr.', 'Mr', 'Mrs', 'Miss']
+    user_is_admin = is_admin_only(request.user)
 
     if request.method == 'POST':
+        prefix = request.POST.get('prefix', 'Dr.').strip()
         fname = request.POST.get('first_name', '').strip()
         new_pwd = request.POST.get('password', '').strip()
         role_id = request.POST.get('role_id')
-        is_active = request.POST.get('is_active') == 'on'
 
         target_user.first_name = fname
-        target_user.is_active = is_active
+        
+        # Only Admin can toggle active status
+        if user_is_admin and target_user.id != request.user.id:
+            target_user.is_active = (request.POST.get('is_active') == 'on')
+
         if new_pwd:
             target_user.set_password(new_pwd)
 
@@ -199,14 +280,27 @@ def user_edit_view(request, user_id):
         target_user.save()
 
         profile, _ = UserProfile.objects.get_or_create(user=target_user)
+        profile.prefix = prefix
         profile.role = role_obj
         profile.user_level = role_obj.role_name.upper() if role_obj else 'USER'
         profile.save()
 
+        AuditLog.objects.create(
+            user=request.user,
+            action="USER_UPDATE",
+            details=f"Updated user account {target_user.username} (Prefix: {prefix}, Active: {target_user.is_active})",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
         messages.success(request, f"User '{target_user.username}' updated successfully.")
         return redirect('user_list')
 
-    return render(request, 'core/user_form.html', {'target_user': target_user, 'roles': roles})
+    return render(request, 'core/user_form.html', {
+        'target_user': target_user,
+        'roles': roles,
+        'prefixes': prefixes,
+        'is_admin': user_is_admin
+    })
 
 
 @login_required

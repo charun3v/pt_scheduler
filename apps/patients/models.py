@@ -30,6 +30,7 @@ class Patient(models.Model):
     mr_no = models.BigIntegerField(unique=True, db_index=True, verbose_name="Hospital / MR Number")
     pt_name = models.CharField(max_length=255, verbose_name="Patient Name")
     rt_no = models.CharField(max_length=100, blank=True, null=True, verbose_name="RT Number")
+    unit = models.CharField(max_length=50, blank=True, null=True, default="I", verbose_name="Clinical Unit")
     age = models.PositiveIntegerField(blank=True, null=True, verbose_name="Age")
     sex = models.CharField(max_length=10, choices=SEX_CHOICES, verbose_name="Sex")
     diagnosis = models.CharField(max_length=255, verbose_name="Diagnosis")

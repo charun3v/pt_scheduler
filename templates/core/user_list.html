@@ -3,33 +3,94 @@
 {% block title %}User Management - EBRT Scheduler{% endblock %}
 
 {% block content %}
-<div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 20px;">
+<div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 12px 16px;">
     
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #003366; padding-bottom: 10px;">
-        <div>
-            <h2 style="margin: 0; font-size: 18px; color: #003366;">👥 User Account Management</h2>
-            <div style="font-size: 12px; color: #666;">Manage system user accounts, credentials, and role assignments.</div>
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 2px solid #003366; padding-bottom: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 20px;">👥</span>
+            <div>
+                <h2 style="margin: 0; font-size: 16px; color: #003366; font-weight: 700;">User Account Management</h2>
+                <div style="font-size: 11px; color: #555;">Manage credentials, prefixes, role permissions, and active login status.</div>
+            </div>
         </div>
-        <a href="{% url 'user_create' %}" class="action-ribbon-btn btn-highlight">➕ Add New User</a>
+        <a href="{% url 'user_create' %}" class="action-ribbon-btn btn-highlight" style="padding: 4px 12px; font-size: 11px; font-weight: bold;">
+            ➕ Add New User
+        </a>
     </div>
 
-    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+    <!-- Filter & Search Toolbar (Single line compact) -->
+    <form method="GET" action="{% url 'user_list' %}" style="display: flex; gap: 8px; align-items: center; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 4px; padding: 6px 10px; margin-bottom: 12px; flex-wrap: wrap;">
+        
+        <div style="display: flex; align-items: center; gap: 4px;">
+            <label style="font-size: 11px; font-weight: 600; color: #333;">Search:</label>
+            <input type="text" name="q" value="{{ query }}" placeholder="Search username, doctor name..."
+                   style="padding: 3px 8px; font-size: 11px; border: 1px solid #707070; border-radius: 3px; width: 200px;">
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 4px;">
+            <label style="font-size: 11px; font-weight: 600; color: #333;">Role:</label>
+            <select name="role_id" style="padding: 3px 8px; font-size: 11px; border: 1px solid #707070; border-radius: 3px; background: #fff;">
+                <option value="">-- All Roles --</option>
+                {% for r in roles %}
+                <option value="{{ r.role_id }}" {% if selected_role_id == r.role_id %}selected{% endif %}>
+                    {{ r.role_name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 4px;">
+            <label style="font-size: 11px; font-weight: 600; color: #333;">Status:</label>
+            <select name="status" style="padding: 3px 8px; font-size: 11px; border: 1px solid #707070; border-radius: 3px; background: #fff;">
+                <option value="">-- All Status --</option>
+                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active Only</option>
+                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive / Deactivated Only</option>
+            </select>
+        </div>
+
+        <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 3px 10px; font-size: 11px;">
+            🔍 Filter
+        </button>
+
+        {% if query or selected_role_id or status_filter %}
+        <a href="{% url 'user_list' %}" class="action-ribbon-btn" style="padding: 3px 8px; font-size: 11px;">
+            Reset
+        </a>
+        {% endif %}
+
+        <span style="font-size: 11px; color: #666; margin-left: auto;">
+            Showing <strong>{{ total_count }}</strong> user account{{ total_count|pluralize }}
+        </span>
+    </form>
+
+    <!-- Compact Users Table -->
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
         <thead>
-            <tr style="background: #003366; color: #ffffff; text-align: left;">
-                <th style="padding: 10px;">Username</th>
-                <th style="padding: 10px;">Full Name</th>
-                <th style="padding: 10px;">Assigned Role</th>
-                <th style="padding: 10px;">User Level</th>
-                <th style="padding: 10px;">Status</th>
-                <th style="padding: 10px; text-align: center;">Actions</th>
+            <tr style="background: #003366; color: #ffffff; text-align: left; height: 28px;">
+                <th style="padding: 5px 8px; width: 40px; text-align: center;">#</th>
+                <th style="padding: 5px 8px;">Username</th>
+                <th style="padding: 5px 8px;">Prefix & Doctor / Staff Name</th>
+                <th style="padding: 5px 8px;">Assigned Role</th>
+                <th style="padding: 5px 8px;">User Level</th>
+                <th style="padding: 5px 8px; text-align: center;">Status</th>
+                <th style="padding: 5px 8px; text-align: center; width: 190px;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for u in users %}
-            <tr style="border-bottom: 1px solid #eee;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
-                <td style="padding: 10px; font-weight: bold; color: #003366;">{{ u.username }}</td>
-                <td style="padding: 10px;">{{ u.first_name|default:'-' }}</td>
-                <td style="padding: 10px;">
+            <tr style="border-bottom: 1px solid #e1dfdd; height: 30px; {% if not u.is_active %}background: #fafafa; opacity: 0.85;{% endif %}" onmouseover="this.style.background='#f3f9f4';" onmouseout="this.style.background='{% if not u.is_active %}#fafafa{% else %}#ffffff{% endif %}';">
+                <td style="padding: 4px 8px; text-align: center; color: #666; font-size: 11px;">{{ forloop.counter }}</td>
+                <td style="padding: 4px 8px; font-weight: bold; color: #003366; font-family: Consolas, monospace;">
+                    {{ u.username }}
+                </td>
+                <td style="padding: 4px 8px; font-weight: 600; color: #222;">
+                    {% if u.profile.prefix %}
+                        <span style="color: #003366; font-weight: bold;">{{ u.profile.prefix }}</span>
+                    {% endif %}
+                    {{ u.first_name|default:'-' }}
+                </td>
+                <td style="padding: 4px 8px;">
                     {% if u.profile.role.role_name == 'Admin' %}
                         <span class="badge-admin">Admin</span>
                     {% elif u.profile.role.role_name == 'SubAdmin' %}
@@ -38,18 +99,44 @@
                         <span class="badge-locked">{{ u.profile.role.role_name|default:'User' }}</span>
                     {% endif %}
                 </td>
-                <td style="padding: 10px; font-family: monospace;">{{ u.profile.user_level|default:'USER' }}</td>
-                <td style="padding: 10px;">
+                <td style="padding: 4px 8px; font-family: monospace; font-size: 11px; color: #555;">
+                    {{ u.profile.user_level|default:'USER' }}
+                </td>
+                <td style="padding: 4px 8px; text-align: center;">
                     {% if u.is_active %}
-                        <span class="badge-success">Active</span>
+                        <span class="badge-success" style="font-size: 10px; padding: 2px 6px;">Active</span>
                     {% else %}
-                        <span class="badge-locked">Deactivated</span>
+                        <span class="badge-locked" style="background: #ffebe9; color: #cf222e; border: 1px solid #ff8182; font-size: 10px; padding: 2px 6px;">
+                            Inactive / Blocked
+                        </span>
                     {% endif %}
                 </td>
-                <td style="padding: 10px; text-align: center;">
-                    <a href="{% url 'user_edit' u.id %}" class="action-ribbon-btn" style="padding: 4px 10px; font-size: 11px;">
-                        ✏️ Edit / Password
-                    </a>
+                <td style="padding: 4px 8px; text-align: center; white-space: nowrap;">
+                    <div style="display: inline-flex; gap: 4px; align-items: center;">
+                        <a href="{% url 'user_edit' u.id %}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px;" title="Edit user details & credentials">
+                            ✏️ Edit
+                        </a>
+
+                        {% if is_admin %}
+                            {% if u.id != request.user.id %}
+                                <a href="{% url 'user_toggle_active' u.id %}"
+                                   onclick="return confirm('Are you sure you want to {% if u.is_active %}DEACTIVATE{% else %}ACTIVATE{% endif %} user {{ u.username }}? {% if u.is_active %}Login will be blocked and their name hidden from clinical dropdowns.{% endif %}');"
+                                   class="action-ribbon-btn"
+                                   style="padding: 2px 8px; font-size: 11px; font-weight: bold; {% if u.is_active %}color: #cf222e; border-color: #ff8182; background: #fff;{% else %}color: #1a7f37; border-color: #4ac26b; background: #f0fff4;{% endif %}"
+                                   title="{% if u.is_active %}Deactivate user (block login & hide from dropdowns){% else %}Re-activate user account{% endif %}">
+                                    {% if u.is_active %}🚫 Inactive{% else %}✓ Activate{% endif %}
+                                </a>
+                            {% else %}
+                                <span style="font-size: 10px; color: #888; font-style: italic; padding: 0 4px;">(Self)</span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 24px; color: #666;">
+                    No user accounts found matching this criteria.
                 </td>
             </tr>
             {% endfor %}

@@ -9,6 +9,7 @@ urlpatterns = [
     path('users/', views.user_list_view, name='user_list'),
     path('users/new/', views.user_create_view, name='user_create'),
     path('users/<int:user_id>/edit/', views.user_edit_view, name='user_edit'),
+    path('users/<int:user_id>/toggle-active/', views.user_toggle_active_view, name='user_toggle_active'),
     path('roles/', views.role_dashboard_view, name='role_dashboard'),
     path('validations/', views.validation_config_view, name='validation_config'),
     path('lookups/', views.lookup_manager_view, name='lookup_manager_default'),

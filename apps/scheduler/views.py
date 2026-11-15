@@ -802,3 +802,129 @@ def holiday_manager_view(request):
     return render(request, 'scheduler/holidays.html', context)
 
 
+@login_required
+def emergency_slot_view(request, schedule_id):
+    """
+    Assign patient course to Emergency / Vacant Slot Filling.
+    Removes patient from the normal daily start schedule list and logs the transition.
+    Prepopulates patient details, current scheduled date, and provides editable dropdown
+    for Emergency Reason: [Spinal cord compression, Bleeding, Pain, SVCO, Others].
+    """
+    sched = get_object_or_404(
+        TreatmentSchedule.objects.select_related('patient', 'machine', 'shift', 'technique', 'patient__primary_consultant'),
+        id=schedule_id
+    )
+    patient = sched.patient
+
+    emergency_reasons = [
+        'Spinal cord compression',
+        'Bleeding',
+        'Pain',
+        'SVCO',
+        'Others'
+    ]
+
+    if request.method == 'POST':
+        slot_category = request.POST.get('slot_category', 'Emergency').strip()
+        if slot_category not in ('Emergency', 'Vacant'):
+            slot_category = 'Emergency'
+
+        intended_date_raw = request.POST.get('intended_start_date', '').strip()
+        emergency_reason = request.POST.get('emergency_reason', '').strip()
+        notes = request.POST.get('notes', '').strip()
+
+        def parse_d(val):
+            if not val:
+                return None
+            try:
+                return datetime.strptime(val, "%Y-%m-%d").date()
+            except ValueError:
+                return None
+
+        intended_date = parse_d(intended_date_raw)
+
+        if slot_category == 'Emergency' and not emergency_reason:
+            emergency_reason = 'Emergency clinical indication'
+
+        # Store original scheduled date if not already stored
+        if not sched.original_scheduled_date:
+            sched.original_scheduled_date = sched.date_of_start
+
+        # Update schedule to Emergency / Vacant slot status
+        sched.is_emergency_slot = True
+        sched.slot_category = slot_category
+        sched.emergency_reason = emergency_reason if slot_category == 'Emergency' else ''
+        sched.intended_start_date = intended_date
+        sched.status = slot_category  # 'Emergency' or 'Vacant'
+        
+        # When shifted to Emergency/Vacant list, normal date_of_start is cleared
+        # so patient is removed from the normal schedule list as requested
+        old_scheduled_date_str = sched.date_of_start.strftime("%d-%b-%Y") if sched.date_of_start else "None"
+        sched.date_of_start = None
+
+        stamp = timezone.now().strftime("%d-%b-%Y %H:%M")
+        log_entry = f"[{stamp}] Shifted to {slot_category} slot (Reason: {emergency_reason or 'None'}, Intended Start: {intended_date or 'TBD'}, Prior Date: {old_scheduled_date_str})."
+        if notes:
+            log_entry += f" Notes: {notes}"
+        sched.notes = f"{sched.notes}\n{log_entry}".strip() if sched.notes else log_entry
+        sched.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="EMERGENCY_SLOT_ASSIGNED",
+            mr_no=str(patient.mr_no),
+            details=f"Patient {patient.pt_name} (MR: {patient.mr_no}) shifted to {slot_category} slot list (Reason: {emergency_reason or 'None'}, Intended Start: {intended_date}). Removed from normal schedule list.",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, "Patient has been shifted to Emergency / Vacant slot list - will be removed from the normal schedule list")
+        return redirect('patient_detail', patient_id=patient.id)
+
+    today = date.today().isoformat()
+    default_intended_date = sched.intended_start_date.isoformat() if sched.intended_start_date else today
+
+    context = {
+        'sched': sched,
+        'patient': patient,
+        'emergency_reasons': emergency_reasons,
+        'today': today,
+        'default_intended_date': default_intended_date,
+    }
+    return render(request, 'scheduler/emergency_slot_form.html', context)
+
+
+@login_required
+def revert_emergency_slot_view(request, schedule_id):
+    """
+    Revert a patient course from Emergency / Vacant slot back to normal schedule status.
+    """
+    sched = get_object_or_404(TreatmentSchedule, id=schedule_id)
+    patient = sched.patient
+
+    if request.method == 'POST':
+        prev_cat = sched.slot_category or 'Emergency'
+        sched.is_emergency_slot = False
+        sched.slot_category = None
+        sched.emergency_reason = None
+        if sched.original_scheduled_date:
+            sched.date_of_start = sched.original_scheduled_date
+            sched.status = 'Scheduled'
+        else:
+            sched.status = 'Pending'
+
+        sched.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="EMERGENCY_SLOT_REVERTED",
+            mr_no=str(patient.mr_no),
+            details=f"Reverted {prev_cat} slot for {patient.pt_name} (MR: {patient.mr_no}) back to normal schedule queue.",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"Course #{sched.id} reverted from {prev_cat} slot to normal schedule queue.")
+        return redirect('patient_detail', patient_id=patient.id)
+
+    return redirect('patient_detail', patient_id=patient.id)
+
+

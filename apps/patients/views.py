@@ -78,12 +78,14 @@ def patient_register_view(request):
             return redirect('schedule_patient', patient_id=existing.id)
 
         age = int(float(age_raw)) if age_raw else None
+        unit = request.POST.get('unit', 'I').strip() or 'I'
         consultant_obj = Consultant.objects.filter(id=consultant_id).first() if consultant_id else None
 
         patient = Patient.objects.create(
             mr_no=mr_no,
             pt_name=pt_name,
             rt_no=rt_no,
+            unit=unit,
             age=age,
             sex=sex or 'M',
             diagnosis=diagnosis or 'Under Evaluation',
@@ -157,6 +159,9 @@ def patient_edit_view(request, patient_id):
             return redirect('patient_edit', patient_id=patient.id)
 
         # Other clinical fields
+        unit = request.POST.get('unit', '').strip()
+        if unit:
+            patient.unit = unit
         age_raw = request.POST.get('age', '').strip()
         patient.age = int(float(age_raw)) if age_raw else None
         patient.rt_no = request.POST.get('rt_no', '').strip()

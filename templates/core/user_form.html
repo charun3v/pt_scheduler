@@ -19,10 +19,23 @@
                        {% if target_user %}readonly style="background: #e9ecef; cursor: not-allowed; width: 100%; padding: 8px 10px; border: 1px solid #ced4da; border-radius: 3px;"{% else %}required style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px;"{% endif %}>
             </div>
 
-            <div style="margin-bottom: 14px;">
-                <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">Full Name / Doctor Name:</label>
-                <input type="text" name="first_name" value="{{ target_user.first_name|default:'' }}"
-                       style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px;">
+            <div style="margin-bottom: 14px; display: flex; gap: 10px;">
+                <div style="width: 110px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">Prefix: *</label>
+                    <select name="prefix" style="width: 100%; padding: 8px 8px; border: 1px solid #707070; border-radius: 3px; background: #fff; font-weight: 600;">
+                        {% for p in prefixes %}
+                            <option value="{{ p }}" {% if target_user and target_user.profile.prefix == p or not target_user and p == 'Dr.' %}selected{% endif %}>
+                                {{ p }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 12px;">Full Name / Doctor Name:</label>
+                    <input type="text" name="first_name" value="{{ target_user.first_name|default:'' }}"
+                           placeholder="e.g. Sunil Kumar, Bindu V"
+                           style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px;">
+                </div>
             </div>
 
             <div style="margin-bottom: 14px;">
@@ -45,12 +58,15 @@
                 </select>
             </div>
 
-            {% if target_user %}
+            {% if target_user and is_admin %}
             <div style="margin-bottom: 20px;">
                 <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
-                    <input type="checkbox" name="is_active" {% if target_user.is_active %}checked{% endif %}>
-                    <span>Account Active (Uncheck to suspend login)</span>
+                    <input type="checkbox" name="is_active" {% if target_user.is_active %}checked{% endif %} {% if target_user.id == request.user.id %}disabled{% endif %}>
+                    <span>Account Active (Uncheck to suspend login and hide from clinical dropdowns)</span>
                 </label>
+                {% if target_user.id == request.user.id %}
+                <small style="display: block; color: #666; margin-left: 24px;">(You cannot deactivate your own account)</small>
+                {% endif %}
             </div>
             {% endif %}
 

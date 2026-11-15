@@ -32,9 +32,18 @@ class Role(models.Model):
         return self.role_name
 
 
+PREFIX_CHOICES = [
+    ('Dr.', 'Dr.'),
+    ('Mr', 'Mr'),
+    ('Mrs', 'Mrs'),
+    ('Miss', 'Miss'),
+]
+
+
 class UserProfile(models.Model):
     """Extends Django auth.User with role and security tracking."""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    prefix = models.CharField(max_length=20, choices=PREFIX_CHOICES, default='Dr.', blank=True, null=True, verbose_name="Prefix")
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     user_level = models.CharField(max_length=50, blank=True, null=True)
     failed_login_count = models.IntegerField(default=0)
@@ -42,7 +51,15 @@ class UserProfile(models.Model):
     last_failed_login = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"{self.user.username} ({self.role.role_name if self.role else 'No Role'})"
+        prefix_str = f"{self.prefix} " if self.prefix else ""
+        return f"{prefix_str}{self.user.username} ({self.role.role_name if self.role else 'No Role'})"
+
+    @property
+    def display_name(self):
+        prefix_str = f"{self.prefix} " if self.prefix else ""
+        if self.user.first_name:
+            return f"{prefix_str}{self.user.first_name}".strip()
+        return f"{prefix_str}{self.user.username}".strip()
 
 
 class Consultant(models.Model):
