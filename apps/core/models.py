@@ -107,6 +107,11 @@ class PrintTemplateConfig(models.Model):
     header_line_1 = models.CharField(max_length=255, default='KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY', verbose_name="Institute Name (Header 1)")
     header_line_2 = models.CharField(max_length=255, default='Department of Radiation Oncology', verbose_name="Department (Header 2)")
     header_line_3 = models.CharField(max_length=255, default='Radiation Therapy Technician information sheet', verbose_name="Document Title (Header 3)")
+    emergency_header_line_3 = models.CharField(
+        max_length=255,
+        default='Radiation Therapy Technician information sheet',
+        verbose_name="Emergency Document Title (Header 3)"
+    )
     
     intro_paragraph = models.TextField(
         default=(

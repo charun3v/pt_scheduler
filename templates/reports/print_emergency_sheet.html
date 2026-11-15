@@ -329,7 +329,7 @@
                     <div class="header-center">
                         <h1>{{ config.header_line_1 }}</h1>
                         <h2>{{ config.header_line_2 }}</h2>
-                        <p>{{ config.header_line_3 }}</p>
+                        <p>{{ config.emergency_header_line_3|default:config.header_line_3 }}</p>
                     </div>
                     <div class="header-right">
                         <div class="header-date">{{ today_str }}</div>

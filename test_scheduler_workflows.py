@@ -2043,6 +2043,8 @@ def run_tests():
     assert "End Date:" in em_queue_html
     assert "Next 30 Days" in em_queue_html
     assert "All 2026" in em_queue_html
+    assert ">Unit</th>" not in em_queue_html, "Unit column must be removed from Emergency Slots table"
+    assert "white-space: nowrap" in em_queue_html, "Table must enforce white-space: nowrap for single-line patient rows"
     assert "🖨️ Print Emergency Schedule" in em_queue_html
     assert "✏️ Edit Slot" in em_queue_html
 
@@ -2138,12 +2140,25 @@ def run_tests():
     assert resp_ind_pdf['Content-Type'] == 'application/pdf'
     assert resp_ind_pdf.content.startswith(b'%PDF')
 
-    # 6. Admin can edit emergency layout/texts via Print Template Settings
+    # 6. Admin can view templates list and edit emergency layout/texts via Print Template Settings
+    resp_tmpl_page = c.get('/reports/print-template-settings/')
+    assert resp_tmpl_page.status_code == 200
+    tmpl_page_html = resp_tmpl_page.content.decode('utf-8')
+    assert "Regular Scheduler" in tmpl_page_html
+    assert "Emergency Slot" in tmpl_page_html
+    assert "Live Institutional Print Sheet Preview" in tmpl_page_html
+
+    # Test emergency tab view
+    resp_tmpl_em = c.get('/reports/print-template-settings/?template=emergency')
+    assert resp_tmpl_em.status_code == 200
+    assert resp_tmpl_em.context['active_template'] == 'emergency'
+
     resp_edit_tmpl = c.post('/reports/print-template-settings/', {
         'ref_code_prefix': 'KMIO/EMERGENCY/2026/',
         'header_line_1': 'KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY',
         'header_line_2': 'Department of Radiation Oncology',
-        'header_line_3': 'Emergency Radiotherapy Technician List',
+        'header_line_3': 'Radiation Therapy Technician information sheet',
+        'emergency_header_line_3': 'Emergency Radiotherapy Technician List',
         'intro_paragraph': 'Standard intro',
         'table_section_title': 'Starts from {start_date} to {end_date}',
         'emergency_intro_paragraph': 'Special emergency setup directives for acute radiation oncology starts.',
@@ -2156,6 +2171,7 @@ def run_tests():
         'department_signature_line': 'Department of Radiation Oncology',
         'page_margin_cm': 2.5,
         'row_vertical_padding_pt': 2.7,
+        'active_template': 'emergency',
         'action': 'save'
     }, follow=True)
     assert resp_edit_tmpl.status_code == 200

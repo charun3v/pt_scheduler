@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
@@ -1734,6 +1735,10 @@ def print_template_settings_view(request):
         return redirect('dashboard')
 
     config = PrintTemplateConfig.get_active()
+    active_template = request.GET.get('template') or request.POST.get('active_template') or 'regular'
+    active_template = active_template.strip().lower()
+    if active_template not in ['regular', 'emergency']:
+        active_template = 'regular'
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -1742,6 +1747,7 @@ def print_template_settings_view(request):
             config.header_line_1 = 'KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY'
             config.header_line_2 = 'Department of Radiation Oncology'
             config.header_line_3 = 'Radiation Therapy Technician information sheet'
+            config.emergency_header_line_3 = 'Radiation Therapy Technician information sheet'
             config.intro_paragraph = (
                 "The scheduled patient lists are handed over to Chief Radiotherapy Technologist RTTs posted in the "
                 "respective machines to start radiotherapy for the new patients as scheduled in the table below. "
@@ -1787,13 +1793,14 @@ def print_template_settings_view(request):
                 ip_address=request.META.get('REMOTE_ADDR')
             )
             messages.success(request, "Printout template and layout reset to institutional defaults successfully!")
-            return redirect('print_template_settings')
+            return redirect(f"{reverse('print_template_settings')}?template={active_template}")
 
         # Normal Save
         config.ref_code_prefix = request.POST.get('ref_code_prefix', config.ref_code_prefix).strip()
         config.header_line_1 = request.POST.get('header_line_1', config.header_line_1).strip()
         config.header_line_2 = request.POST.get('header_line_2', config.header_line_2).strip()
         config.header_line_3 = request.POST.get('header_line_3', config.header_line_3).strip()
+        config.emergency_header_line_3 = request.POST.get('emergency_header_line_3', config.emergency_header_line_3).strip()
         config.intro_paragraph = request.POST.get('intro_paragraph', config.intro_paragraph).strip()
         config.table_section_title = request.POST.get('table_section_title', config.table_section_title).strip()
         config.emergency_intro_paragraph = request.POST.get('emergency_intro_paragraph', config.emergency_intro_paragraph).strip()
@@ -1818,11 +1825,12 @@ def print_template_settings_view(request):
         AuditLog.objects.create(
             user=request.user,
             action="PRINT_TEMPLATE_UPDATE",
-            details=f"Updated printout template headers, layout ({config.page_margin_cm}cm, {config.row_vertical_padding_pt}pt) and texts",
+            details=f"Updated printout template ({active_template}) headers, layout ({config.page_margin_cm}cm, {config.row_vertical_padding_pt}pt) and texts",
             ip_address=request.META.get('REMOTE_ADDR')
         )
-        messages.success(request, "Printout template texts and layout successfully saved!")
-        return redirect('print_template_settings')
+        template_label = "Regular Scheduler" if active_template == 'regular' else "Emergency Slot"
+        messages.success(request, f"Printout template texts and layout for '{template_label}' successfully saved!")
+        return redirect(f"{reverse('print_template_settings')}?template={active_template}")
 
     # Build consultant choices from Consultant role users + Consultant table
     consultant_users = User.objects.filter(
@@ -1861,6 +1869,7 @@ def print_template_settings_view(request):
         'config': config,
         'consultant_options': consultant_options,
         'designations': designations,
+        'active_template': active_template,
     }
     return render(request, 'reports/print_template_settings.html', context)
 
@@ -2084,7 +2093,7 @@ def generate_emergency_sheet_pdf(data):
                         Spacer(1, 1),
                         Paragraph(config.header_line_2, dept_style),
                         Spacer(1, 1),
-                        Paragraph(config.header_line_3, sub_style)
+                        Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
                     ],
                     Paragraph(data['today_str'], date_style)
                 ]
@@ -2098,7 +2107,7 @@ def generate_emergency_sheet_pdf(data):
                         Spacer(1, 1),
                         Paragraph(config.header_line_2, dept_style),
                         Spacer(1, 1),
-                        Paragraph(config.header_line_3, sub_style)
+                        Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
                     ],
                     [
                         Paragraph(data['today_str'], date_style),

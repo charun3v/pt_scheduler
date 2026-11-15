@@ -124,84 +124,81 @@
 
     <!-- Table -->
     <div style="overflow-x: auto;">
-        <table id="emergencyDataTable" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <table id="emergencyDataTable" style="width: 100%; border-collapse: collapse; font-size: 11.5px; white-space: nowrap;">
             <thead>
-                <tr style="background: #b91c1c; color: #ffffff; text-align: left; height: 30px;">
-                    <th style="padding: 6px 8px; text-align: center; width: 36px;">#</th>
-                    <th style="padding: 6px 8px;">MR No.</th>
-                    <th style="padding: 6px 8px;">Patient Name</th>
-                    <th style="padding: 6px 8px; text-align: center;">Classification</th>
-                    <th style="padding: 6px 8px; text-align: center;">Intended Start</th>
-                    <th style="padding: 6px 8px;">Emergency Indication / Reason</th>
-                    <th style="padding: 6px 8px;">Machine & Shift</th>
-                    <th style="padding: 6px 8px;">Consultant</th>
-                    <th style="padding: 6px 8px;">Jr. Resident</th>
-                    <th style="padding: 6px 8px; text-align: center;">Unit</th>
-                    <th style="padding: 6px 8px; text-align: center; width: 170px;">Actions</th>
+                <tr style="background: #b91c1c; color: #ffffff; text-align: left; height: 28px; white-space: nowrap;">
+                    <th style="padding: 5px 6px; text-align: center; width: 32px; white-space: nowrap;">#</th>
+                    <th style="padding: 5px 8px; white-space: nowrap;">MR No.</th>
+                    <th style="padding: 5px 8px; white-space: nowrap;">Patient Name</th>
+                    <th style="padding: 5px 6px; text-align: center; white-space: nowrap;">Classification</th>
+                    <th style="padding: 5px 8px; text-align: center; white-space: nowrap;">Intended Start</th>
+                    <th style="padding: 5px 8px; white-space: nowrap;">Emergency Indication / Reason</th>
+                    <th style="padding: 5px 8px; white-space: nowrap;">Machine & Shift</th>
+                    <th style="padding: 5px 8px; white-space: nowrap;">Consultant</th>
+                    <th style="padding: 5px 8px; white-space: nowrap;">Jr. Resident</th>
+                    <th style="padding: 5px 8px; text-align: center; width: 190px; white-space: nowrap;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for s in schedules %}
-                <tr class="emergency-row" style="border-bottom: 1px solid #fee2e2; height: 32px; background: #fffdfd;" onmouseover="this.style.background='#fef2f2';" onmouseout="this.style.background='#fffdfd';">
-                    <td style="padding: 4px 8px; text-align: center; color: #666; font-size: 11px;" class="row-index">{{ forloop.counter }}</td>
-                    <td style="padding: 4px 8px; font-weight: bold; font-family: Consolas, monospace;" class="col-mr">
+                <tr class="emergency-row" style="border-bottom: 1px solid #fee2e2; height: 28px; background: #fffdfd; white-space: nowrap;" onmouseover="this.style.background='#fef2f2';" onmouseout="this.style.background='#fffdfd';">
+                    <td style="padding: 2px 6px; text-align: center; color: #666; font-size: 11px; white-space: nowrap;" class="row-index">{{ forloop.counter }}</td>
+                    <td style="padding: 2px 8px; font-weight: bold; font-family: Consolas, monospace; white-space: nowrap;" class="col-mr">
                         <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #991b1b; text-decoration: underline;" title="View Patient Details in New Tab">
                             {{ s.patient.mr_no }}
                         </a>
                     </td>
-                    <td style="padding: 4px 8px; font-weight: 700; color: #111;" class="col-name">{{ s.patient.pt_name }}</td>
-                    <td style="padding: 4px 8px; text-align: center;">
+                    <td style="padding: 2px 8px; font-weight: 700; color: #111; white-space: nowrap; max-width: 170px; overflow: hidden; text-overflow: ellipsis;" class="col-name" title="{{ s.patient.pt_name }}">{{ s.patient.pt_name }}</td>
+                    <td style="padding: 2px 6px; text-align: center; white-space: nowrap;">
                         {% if s.slot_category == 'Emergency' or s.status == 'Emergency' %}
-                            <span class="badge-status" style="background: #fee2e2; color: #991b1b; border: 1px solid #f87171; font-weight: bold; font-size: 10px;">
+                            <span class="badge-status" style="background: #fee2e2; color: #991b1b; border: 1px solid #f87171; font-weight: bold; font-size: 10px; padding: 1px 5px; white-space: nowrap;">
                                 🚨 Emergency
                             </span>
                         {% else %}
-                            <span class="badge-status" style="background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; font-weight: bold; font-size: 10px;">
+                            <span class="badge-status" style="background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; font-weight: bold; font-size: 10px; padding: 1px 5px; white-space: nowrap;">
                                 ⚡ Vacant Slot
                             </span>
                         {% endif %}
                     </td>
-                    <td style="padding: 4px 8px; text-align: center; font-weight: 700; color: #b91c1c;" class="col-date">
+                    <td style="padding: 2px 8px; text-align: center; font-weight: 700; color: #b91c1c; white-space: nowrap;" class="col-date">
                         {{ s.intended_start_date|date:"d-M-Y"|default:"TBD" }}
                     </td>
-                    <td style="padding: 4px 8px; font-weight: 600; color: #991b1b;" class="col-reason">
+                    <td style="padding: 2px 8px; font-weight: 600; color: #991b1b; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis;" class="col-reason" title="{{ s.emergency_reason|default:'Clinical Emergency' }}">
                         {{ s.emergency_reason|default:"Clinical Emergency" }}
                     </td>
-                    <td style="padding: 4px 8px;" class="col-machine">
-                        <strong>{{ s.machine.name|default:'Unassigned' }}</strong>
-                        {% if s.shift %}<span style="color: #555; font-size: 11px;">[{{ s.shift.name }}]</span>{% endif %}
+                    <td style="padding: 2px 8px; white-space: nowrap;" class="col-machine">
+                        <strong>{{ s.machine.name|default:'Unassigned' }}</strong>{% if s.shift %} <span style="color: #555; font-size: 11px;">[{{ s.shift.name }}]</span>{% endif %}
                     </td>
-                    <td style="padding: 4px 8px; white-space: nowrap;" class="col-consultant">{{ s.patient.consultant_display }}</td>
-                    <td style="padding: 4px 8px; font-size: 11px; color: #4b5563;" class="col-jr">{{ s.jr_resident|default:"-" }}</td>
-                    <td style="padding: 4px 8px; text-align: center; font-weight: bold; color: #003366;">
-                        Unit {{ s.patient.unit|default:'I' }}
-                    </td>
-                    <td style="padding: 4px 8px; text-align: center; white-space: nowrap;">
-                        <!-- Edit Slot Button (Dedicated Emergency/Vacant Slot Editor) -->
-                        <a href="{% url 'emergency_slot_view' s.id %}?next={{ request.get_full_path|urlencode }}"
-                           class="action-ribbon-btn" style="padding: 2px 7px; font-size: 11px; background: #fff5f5; color: #b91c1c; border-color: #f87171; font-weight: 600;"
-                           title="Edit Emergency / Vacant Slot attributes (Machine, Shift, Intended Date, Reason)">
-                            ✏️ Edit Slot
-                        </a>
+                    <td style="padding: 2px 8px; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis;" class="col-consultant" title="{{ s.patient.consultant_display }}">{{ s.patient.consultant_display }}</td>
+                    <td style="padding: 2px 8px; font-size: 11px; color: #4b5563; white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis;" class="col-jr" title="{{ s.jr_resident|default:'-' }}">{{ s.jr_resident|default:"-" }}</td>
+                    <td style="padding: 2px 6px; text-align: center; white-space: nowrap;">
+                        <div style="display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
+                            <!-- Edit Slot Button (Dedicated Emergency/Vacant Slot Editor) -->
+                            <a href="{% url 'emergency_slot_view' s.id %}?next={{ request.get_full_path|urlencode }}"
+                               class="action-ribbon-btn" style="padding: 2px 6px; font-size: 11px; background: #fff5f5; color: #b91c1c; border-color: #f87171; font-weight: 600; white-space: nowrap;"
+                               title="Edit Emergency / Vacant Slot attributes (Machine, Shift, Intended Date, Reason)">
+                                ✏️ Edit Slot
+                            </a>
 
-                        <!-- Schedule Course Button (Regular Scheduler) -->
-                        <a href="{% url 'schedule_patient' s.patient.id %}?schedule_id={{ s.id }}"
-                           class="action-ribbon-btn btn-highlight" style="padding: 2px 7px; font-size: 11px;" title="Approve and assign regular daily treatment schedule">
-                            ⚡ Schedule
-                        </a>
+                            <!-- Schedule Course Button (Regular Scheduler) -->
+                            <a href="{% url 'schedule_patient' s.patient.id %}?schedule_id={{ s.id }}"
+                               class="action-ribbon-btn btn-highlight" style="padding: 2px 6px; font-size: 11px; white-space: nowrap;" title="Approve and assign regular daily treatment schedule">
+                                ⚡ Schedule
+                            </a>
 
-                        <!-- Revert Button -->
-                        <form method="POST" action="{% url 'revert_emergency_slot' s.id %}" style="display: inline;" onsubmit="return confirm('Revert this patient back to normal non-scheduled queue?');">
-                            {% csrf_token %}
-                            <button type="submit" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 11px; color: #1e40af; border-color: #93c5fd; background: #eff6ff; font-weight: 600;" title="Revert back to normal schedule queue">
-                                ↩️ Revert
-                            </button>
-                        </form>
+                            <!-- Revert Button -->
+                            <form method="POST" action="{% url 'revert_emergency_slot' s.id %}" style="display: inline; margin: 0; padding: 0;" onsubmit="return confirm('Revert this patient back to normal non-scheduled queue?');">
+                                {% csrf_token %}
+                                <button type="submit" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 11px; color: #1e40af; border-color: #93c5fd; background: #eff6ff; font-weight: 600; white-space: nowrap;" title="Revert back to normal schedule queue">
+                                    ↩️ Revert
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 {% empty %}
                 <tr id="noRowsFound">
-                    <td colspan="11" style="text-align: center; padding: 30px; color: #666;">
+                    <td colspan="10" style="text-align: center; padding: 30px; color: #666;">
                         No patients currently assigned to Emergency or Vacant slot filling within the selected filter range.
                     </td>
                 </tr>

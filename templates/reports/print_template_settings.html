@@ -3,8 +3,8 @@
 {% block title %}Printout Template & Layout Configuration - {{ APP_TITLE }}{% endblock %}
 
 {% block content %}
-<div class="access-subform" style="max-width: 1050px; margin: 0 auto;">
-    <!-- Header -->
+<div class="access-subform" style="max-width: 1080px; margin: 0 auto;">
+    <!-- Subform Header -->
     <div class="access-subform-header" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center; gap: 8px;">
             <span>🖨️</span>
@@ -14,26 +14,129 @@
             </span>
         </div>
         <div style="font-weight: normal; font-size: 11px; display: flex; gap: 12px; align-items: center;">
-            <a href="{% url 'print_treatment_schedule' %}" target="_blank" style="color: #e0f2fe; text-decoration: underline;">Test Print Sheet ↗</a>
-            <span style="color: #64748b;">|</span>
             <a href="{% url 'dashboard' %}" style="color: #fff; text-decoration: underline;">Back to Dashboard</a>
         </div>
     </div>
 
-    <!-- Body -->
+    <!-- Subform Body -->
     <div class="access-subform-body" style="padding: 20px;">
         <div style="margin-bottom: 16px; padding: 10px 14px; background: #eff6ff; border-left: 4px solid #0284c7; border-radius: 4px; font-size: 12px; color: #1e3a8a;">
-            <strong>Institutional Print Configuration:</strong> Customize the header titles, reference code, instructional narrative, clinical notes, distribution recipients ("Copy to"), and official signing authorities across all generated PDF and browser printouts (Technician Information Sheets).
+            <strong>Institutional Print Template Manager:</strong> Select a template below to view and configure its layout, instructional notices, document headers, clinical compliance disclaimers, and distribution signatures.
         </div>
 
-        <form method="POST" action="{% url 'print_template_settings' %}">
-            {% csrf_token %}
+        <!-- ============================================================== -->
+        <!-- TEMPLATE SELECTION CARDS (List of available templates) -->
+        <!-- ============================================================== -->
+        <div style="margin-bottom: 20px;">
+            <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                <span>📑</span>
+                <span>Select Print Template to View & Configure:</span>
+            </div>
 
-            <!-- Section 1: Header Titles & Outward Reference -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <!-- Template 1: Regular Scheduler -->
+                <div id="cardRegular" onclick="switchPrintTemplate('regular', event)"
+                     style="padding: 14px 18px; border-radius: 8px; border: 2px solid {% if active_template == 'regular' %}#003366{% else %}#cbd5e1{% endif %}; background: {% if active_template == 'regular' %}#eff6ff{% else %}#ffffff{% endif %}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: all 0.15s ease;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 28px;">📋</span>
+                        <div>
+                            <div style="font-weight: 800; font-size: 14px; color: #003366;">Regular Scheduler</div>
+                            <div style="font-size: 11px; color: #475569; margin-top: 2px;">
+                                Treatment Schedule Worksheet &bull; Technician Information Sheet
+                            </div>
+                            <div style="margin-top: 4px; font-size: 10px; color: #0369a1; font-weight: bold;">
+                                Standard daily new patient starts (Teletherapy &amp; Brachytherapy)
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="badgeRegular" style="display: inline-block; font-size: 11px; padding: 4px 10px; border-radius: 4px; font-weight: bold; {% if active_template == 'regular' %}background: #003366; color: #ffffff;{% else %}background: #e2e8f0; color: #475569;{% endif %}">
+                            {% if active_template == 'regular' %}✓ Active Template{% else %}Click to Configure{% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Template 2: Emergency Slot -->
+                <div id="cardEmergency" onclick="switchPrintTemplate('emergency', event)"
+                     style="padding: 14px 18px; border-radius: 8px; border: 2px solid {% if active_template == 'emergency' %}#b91c1c{% else %}#cbd5e1{% endif %}; background: {% if active_template == 'emergency' %}#fff1f2{% else %}#ffffff{% endif %}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: all 0.15s ease;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 28px;">🚨</span>
+                        <div>
+                            <div style="font-weight: 800; font-size: 14px; color: #b91c1c;">Emergency Slot</div>
+                            <div style="font-size: 11px; color: #475569; margin-top: 2px;">
+                                Emergency / Vacant Slot Allocation List &bull; 7-Column Institutional Template
+                            </div>
+                            <div style="margin-top: 4px; font-size: 10px; color: #991b1b; font-weight: bold;">
+                                Urgent setup starts (Consolidated &amp; per-machine allocations)
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="badgeEmergency" style="display: inline-block; font-size: 11px; padding: 4px 10px; border-radius: 4px; font-weight: bold; {% if active_template == 'emergency' %}background: #b91c1c; color: #ffffff;{% else %}background: #e2e8f0; color: #475569;{% endif %}">
+                            {% if active_template == 'emergency' %}✓ Active Template{% else %}Click to Configure{% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- ACTIVE TEMPLATE ACTION & TEST BANNERS -->
+        <!-- ============================================================== -->
+        <!-- Regular Template Banner -->
+        <div id="bannerRegular" style="display: {% if active_template == 'regular' %}flex{% else %}none{% endif %}; justify-content: space-between; align-items: center; background: #e0f2fe; border: 1px solid #7dd3fc; padding: 10px 16px; border-radius: 6px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">📋</span>
+                <div>
+                    <strong style="color: #0369a1; font-size: 13px;">Currently Editing: Regular Treatment Schedule Template</strong>
+                    <div style="font-size: 11px; color: #075985;">Controls printouts triggered from the Treatment Schedule Worksheet (/reports/print-schedule/)</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <a href="{% url 'print_treatment_schedule' %}?modality=Teletherapy" target="_blank"
+                   class="action-ribbon-btn" style="background: #0284c7; color: #fff; border-color: #0369a1; font-weight: bold; font-size: 11px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px;" title="Open live browser print sheet in new tab">
+                    👁️ Preview Regular Printout
+                </a>
+                <a href="{% url 'print_treatment_schedule_pdf' %}?modality=Teletherapy" target="_blank"
+                   class="action-ribbon-btn" style="background: #003366; color: #fff; border-color: #002244; font-weight: bold; font-size: 11px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px;" title="Download sample vector PDF in new tab">
+                    📄 Download Test PDF
+                </a>
+            </div>
+        </div>
+
+        <!-- Emergency Template Banner -->
+        <div id="bannerEmergency" style="display: {% if active_template == 'emergency' %}flex{% else %}none{% endif %}; justify-content: space-between; align-items: center; background: #fee2e2; border: 1px solid #fca5a5; padding: 10px 16px; border-radius: 6px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">🚨</span>
+                <div>
+                    <strong style="color: #991b1b; font-size: 13px;">Currently Editing: Emergency Slot Allocation Template</strong>
+                    <div style="font-size: 11px; color: #7f1d1d;">Controls printouts triggered from Emergency / Vacant Slot Queue (/reports/print-emergency-schedule/)</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <a href="{% url 'print_emergency_schedule' %}?machines=all&modality=Teletherapy" target="_blank"
+                   class="action-ribbon-btn" style="background: #0284c7; color: #fff; border-color: #0369a1; font-weight: bold; font-size: 11px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px;" title="Open live emergency browser print sheet in new tab">
+                    👁️ Preview Emergency Printout
+                </a>
+                <a href="{% url 'print_emergency_schedule_pdf' %}?machines=all&modality=Teletherapy" target="_blank"
+                   class="action-ribbon-btn" style="background: #b91c1c; color: #fff; border-color: #991b1b; font-weight: bold; font-size: 11px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px;" title="Download sample emergency vector PDF in new tab">
+                    📄 Download Test PDF
+                </a>
+            </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- CONFIGURATION FORM -->
+        <!-- ============================================================== -->
+        <form method="POST" action="{% url 'print_template_settings' %}" id="templateConfigForm">
+            {% csrf_token %}
+            <input type="hidden" name="active_template" id="activeTemplateInput" value="{{ active_template }}">
+
+            <!-- SECTION 1: Institutional Header & Outward Tracking -->
             <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
                     <span>🏛️</span>
-                    <span>Institutional Header & Reference Code</span>
+                    <span>Institutional Header & Reference Code (Common to all printouts)</span>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 14px;">
@@ -41,84 +144,115 @@
                         <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                             Outward Reference Prefix: *
                         </label>
-                        <input type="text" name="ref_code_prefix" value="{{ config.ref_code_prefix }}" required
+                        <input type="text" name="ref_code_prefix" id="input_ref_code_prefix" value="{{ config.ref_code_prefix }}" required
+                               onkeyup="updateLivePreview()"
                                style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-family: monospace;">
-                        <span style="font-size: 11px; color: #64748b;">Top-left institutional tracking number</span>
+                        <span style="font-size: 11px; color: #64748b;">Top-left institutional tracking number format</span>
                     </div>
 
                     <div>
                         <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                             Header Line 1 (Institute Name): *
                         </label>
-                        <input type="text" name="header_line_1" value="{{ config.header_line_1 }}" required
+                        <input type="text" name="header_line_1" id="input_header_line_1" value="{{ config.header_line_1 }}" required
+                               onkeyup="updateLivePreview()"
                                style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr; gap: 16px;">
                     <div>
                         <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                             Header Line 2 (Department): *
                         </label>
-                        <input type="text" name="header_line_2" value="{{ config.header_line_2 }}" required
+                        <input type="text" name="header_line_2" id="input_header_line_2" value="{{ config.header_line_2 }}" required
+                               onkeyup="updateLivePreview()"
                                style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px;">
-                    </div>
-
-                    <div>
-                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
-                            Header Line 3 (Document Title): *
-                        </label>
-                        <input type="text" name="header_line_3" value="{{ config.header_line_3 }}" required
-                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-style: italic;">
                     </div>
                 </div>
             </div>
 
-            <!-- Section 2: Narrative Notice & Section Title -->
-            <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <!-- ========================================================== -->
+            <!-- SECTION 2A: REGULAR SCHEDULER SPECIFIC TEXTS -->
+            <!-- ========================================================== -->
+            <div id="sectionRegularFields" style="display: {% if active_template == 'regular' %}block{% else %}none{% endif %}; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                    <span>📝</span>
-                    <span>Instructional Notice & Subtitle Format</span>
+                    <span>📋</span>
+                    <span>Regular Scheduler Specific Texts (Technician Information Sheet)</span>
+                </div>
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Document Title (Header Line 3): *
+                    </label>
+                    <input type="text" name="header_line_3" id="input_header_line_3" value="{{ config.header_line_3 }}" required
+                           onkeyup="updateLivePreview()"
+                           style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-style: italic;">
+                    <span style="font-size: 11px; color: #64748b;">Printed as the 3rd header line on regular technician sheets</span>
                 </div>
 
                 <div style="margin-bottom: 14px;">
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                         Introductory Notice to RTTs: *
                     </label>
-                    <textarea name="intro_paragraph" rows="3" required
+                    <textarea name="intro_paragraph" id="input_intro_paragraph" rows="3" required
+                              onkeyup="updateLivePreview()"
                               style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4;">{{ config.intro_paragraph }}</textarea>
                     <span style="font-size: 11px; color: #64748b;">Notice paragraph printed immediately below the header box</span>
                 </div>
 
-                <div style="margin-bottom: 14px;">
+                <div>
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                         Patient Starts Section Title Format: *
                     </label>
-                    <input type="text" name="table_section_title" value="{{ config.table_section_title }}" required
+                    <input type="text" name="table_section_title" id="input_table_section_title" value="{{ config.table_section_title }}" required
+                           onkeyup="updateLivePreview()"
                            style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                     <span style="font-size: 11px; color: #64748b;">Use <code>{start_date}</code> and <code>{end_date}</code> as dynamic date placeholders for regular technician sheets</span>
                 </div>
+            </div>
 
-                <div style="margin-bottom: 14px; border-top: 1px dashed #cbd5e1; padding-top: 12px;">
+            <!-- ========================================================== -->
+            <!-- SECTION 2B: EMERGENCY SLOT SPECIFIC TEXTS -->
+            <!-- ========================================================== -->
+            <div id="sectionEmergencyFields" style="display: {% if active_template == 'emergency' %}block{% else %}none{% endif %}; background: #ffffff; border: 1px solid #fecdd3; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; font-size: 13px; color: #b91c1c; margin-bottom: 14px; border-bottom: 2px solid #b91c1c; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>🚨</span>
+                    <span>Emergency Slot Specific Texts (Emergency / Vacant Slot Allocation Sheet)</span>
+                </div>
+
+                <div style="margin-bottom: 14px;">
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #b91c1c; margin-bottom: 4px;">
-                        🚨 Emergency & Vacant Slot Introductory Notice: *
+                        Emergency Document Title (Header Line 3): *
                     </label>
-                    <textarea name="emergency_intro_paragraph" rows="3" required
+                    <input type="text" name="emergency_header_line_3" id="input_emergency_header_line_3" value="{{ config.emergency_header_line_3|default:config.header_line_3 }}" required
+                           onkeyup="updateLivePreview()"
+                           style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-style: italic;">
+                    <span style="font-size: 11px; color: #64748b;">Printed as the 3rd header line on emergency slot reports</span>
+                </div>
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #b91c1c; margin-bottom: 4px;">
+                        Emergency Introductory Notice to RTTs: *
+                    </label>
+                    <textarea name="emergency_intro_paragraph" id="input_emergency_intro_paragraph" rows="3" required
+                              onkeyup="updateLivePreview()"
                               style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4;">{{ config.emergency_intro_paragraph }}</textarea>
-                    <span style="font-size: 11px; color: #64748b;">Instructions printed on official Emergency/Vacant Slot reports</span>
+                    <span style="font-size: 11px; color: #64748b;">Notice paragraph printed immediately below header for urgent &amp; emergency slot starts</span>
                 </div>
 
                 <div>
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #b91c1c; margin-bottom: 4px;">
-                        🚨 Emergency & Vacant Slot Table Section Title: *
+                        Emergency Table Section Title Format: *
                     </label>
-                    <input type="text" name="emergency_table_title" value="{{ config.emergency_table_title }}" required
+                    <input type="text" name="emergency_table_title" id="input_emergency_table_title" value="{{ config.emergency_table_title }}" required
+                           onkeyup="updateLivePreview()"
                            style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
-                    <span style="font-size: 11px; color: #64748b;">Default heading: <code>Emergency/Vacant Slot list</code></span>
+                    <span style="font-size: 11px; color: #64748b;">Default: <code>Emergency/Vacant Slot list</code> or <code>Urgent &amp; Emergency Slot Allocation List</code></span>
                 </div>
             </div>
 
-            <!-- Section 3: Clinical Notes & Disclaimer ("Please note:") -->
+            <!-- SECTION 3: Clinical Notes & Compliance Directives -->
             <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
                     <span>⚠️</span>
@@ -127,46 +261,48 @@
 
                 <div style="margin-bottom: 14px;">
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
-                        Important Clinical Note 1 (Consent & Chart Sign-off): *
+                        Important Clinical Note 1 (Consent &amp; Chart Sign-off): *
                     </label>
-                    <textarea name="note_paragraph_1" rows="2" required
+                    <textarea name="note_paragraph_1" id="input_note_paragraph_1" rows="2" required
+                              onkeyup="updateLivePreview()"
                               style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4;">{{ config.note_paragraph_1 }}</textarea>
                 </div>
 
                 <div>
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
-                        Important Clinical Note 2 (Shift Attendance & Efficiency): *
+                        Important Clinical Note 2 (Shift Attendance &amp; Efficiency): *
                     </label>
-                    <textarea name="note_paragraph_2" rows="2" required
+                    <textarea name="note_paragraph_2" id="input_note_paragraph_2" rows="2" required
+                              onkeyup="updateLivePreview()"
                               style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4;">{{ config.note_paragraph_2 }}</textarea>
                 </div>
             </div>
 
-            <!-- Section 4: Distribution ("Copy to") & Sign-Off Authority -->
+            <!-- SECTION 4: Distribution ("Copy to") & Signing Authority -->
             <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
                     <span>✍️</span>
-                    <span>Distribution ("Copy to") & Institutional Signing Authority</span>
+                    <span>Distribution ("Copy to") &amp; Institutional Signing Authority</span>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px;">
-                    <!-- Copy to lines -->
                     <div>
                         <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                             "Copy to:" Recipient List (one per line): *
                         </label>
-                        <textarea name="copy_to_recipients" rows="6" required
+                        <textarea name="copy_to_recipients" id="input_copy_to_recipients" rows="6" required
+                                  onkeyup="updateLivePreview()"
                                   style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4; font-family: monospace;">{{ config.copy_to_recipients }}</textarea>
                         <span style="font-size: 11px; color: #64748b;">Each line appears as a separate numbered distribution target</span>
                     </div>
 
-                    <!-- Signature block defaults -->
                     <div>
                         <div style="margin-bottom: 12px;">
                             <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                                 Default Signing Authority: *
                             </label>
-                            <input type="text" name="default_signing_authority" value="{{ config.default_signing_authority }}" required list="consultantList"
+                            <input type="text" name="default_signing_authority" id="input_default_signing_authority" value="{{ config.default_signing_authority }}" required list="consultantList"
+                                   onkeyup="updateLivePreview()"
                                    style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                             <datalist id="consultantList">
                                 {% for c_name in consultant_options %}
@@ -180,7 +316,8 @@
                             <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                                 Default Designation: *
                             </label>
-                            <input type="text" name="default_designation" value="{{ config.default_designation }}" required list="designationList"
+                            <input type="text" name="default_designation" id="input_default_designation" value="{{ config.default_designation }}" required list="designationList"
+                                   onkeyup="updateLivePreview()"
                                    style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-style: italic;">
                             <datalist id="designationList">
                                 {% for d in designations %}
@@ -194,7 +331,8 @@
                             <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                                 Department Signature Line: *
                             </label>
-                            <input type="text" name="department_signature_line" value="{{ config.department_signature_line }}" required
+                            <input type="text" name="department_signature_line" id="input_department_signature_line" value="{{ config.department_signature_line }}" required
+                                   onkeyup="updateLivePreview()"
                                    style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                             <span style="font-size: 11px; color: #64748b;">Third line of signature block</span>
                         </div>
@@ -202,11 +340,11 @@
                 </div>
             </div>
 
-            <!-- Section 5: Layout & Margins -->
+            <!-- SECTION 5: Layout & Margins -->
             <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
                     <span>📐</span>
-                    <span>Page Margins & Table Spacing</span>
+                    <span>Page Margins &amp; Table Spacing</span>
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -231,7 +369,7 @@
             </div>
 
             <!-- Submit & Reset Actions -->
-            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #cbd5e1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #cbd5e1; margin-bottom: 30px;">
                 <button type="submit" name="action" value="reset_defaults" onclick="return confirm('Are you sure you want to reset all printout texts, copy-to lists, and layout parameters back to standard Kidwai Memorial Institute defaults?');"
                         class="action-ribbon-btn" style="background: #f8fafc; color: #dc2626; border-color: #fca5a5; padding: 8px 16px; font-size: 12px; cursor: pointer;">
                     🔄 Reset to Institutional Defaults
@@ -248,6 +386,288 @@
                 </div>
             </div>
         </form>
+
+        <!-- ============================================================== -->
+        <!-- LIVE INTERACTIVE VISUAL MOCKUP PREVIEW -->
+        <!-- ============================================================== -->
+        <div style="border-top: 2px dashed #94a3b8; padding-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="font-weight: 800; font-size: 13px; color: #003366; display: flex; align-items: center; gap: 6px;">
+                    <span>👁️</span>
+                    <span>Live Institutional Print Sheet Preview:</span>
+                    <span id="previewTag" style="font-size: 10px; background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-weight: bold;">
+                        {% if active_template == 'regular' %}Regular Scheduler{% else %}Emergency Slot{% endif %}
+                    </span>
+                </div>
+                <div style="font-size: 11px; color: #64748b;">
+                    Simulated A4 Paper Preview (Updates dynamically as you edit)
+                </div>
+            </div>
+
+            <!-- Paper Sheet Mockup -->
+            <div style="background: #ffffff; border: 1px solid #94a3b8; border-radius: 4px; padding: 25px 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; color: #111;">
+                <!-- Header Grid -->
+                <div style="display: grid; grid-template-columns: 120px 1fr 120px; align-items: start; margin-bottom: 12px;">
+                    <div style="font-size: 11px; font-weight: bold; font-family: monospace;" id="prev_ref_code">
+                        {{ config.ref_code_prefix }}
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 14px; font-weight: 800; color: #000; letter-spacing: 0.5px;" id="prev_header_1">
+                            {{ config.header_line_1 }}
+                        </div>
+                        <div style="font-size: 12px; font-weight: bold; font-style: italic; color: #000; margin-top: 2px;" id="prev_header_2">
+                            {{ config.header_line_2 }}
+                        </div>
+                        <div style="font-size: 10px; font-style: italic; color: #333; margin-top: 2px;" id="prev_header_3">
+                            {% if active_template == 'regular' %}{{ config.header_line_3 }}{% else %}{{ config.emergency_header_line_3|default:config.header_line_3 }}{% endif %}
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-weight: bold; font-size: 10px;">{% now "d-m-Y" %}</div>
+                        <div style="margin-top: 4px;">
+                            <span style="border: 1.5px solid #000; padding: 2px 8px; font-weight: bold; font-size: 10px;">ELEKTA - LA1</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Intro Notice -->
+                <div style="font-size: 9.5px; line-height: 1.35; text-align: justify; margin-bottom: 10px; color: #111;" id="prev_intro">
+                    {% if active_template == 'regular' %}{{ config.intro_paragraph }}{% else %}{{ config.emergency_intro_paragraph|default:config.intro_paragraph }}{% endif %}
+                </div>
+
+                <!-- Section Title -->
+                <div style="text-align: center; font-size: 12px; font-weight: 800; color: #000; margin-bottom: 8px; letter-spacing: 0.2px;" id="prev_sec_title">
+                    {% if active_template == 'regular' %}{{ config.table_section_title }}{% else %}{{ config.emergency_table_title|default:'Emergency/Vacant Slot list' }}{% endif %}
+                </div>
+
+                <!-- Table Preview 1: Regular (9 columns) -->
+                <div id="previewRegularSheet" style="display: {% if active_template == 'regular' %}block{% else %}none{% endif %}; margin-bottom: 12px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #64748b;">
+                        <thead>
+                            <tr style="background: #cbd5e1; color: #000; text-align: left; height: 22px;">
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Date</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px; text-align: center;">Shift</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Hospital no.</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">RT No.</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Patient name</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Phone No.</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Diagnosis</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Consultant</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Junior Resident</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="height: 20px;">
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">01-Jan-26</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; text-align: center;">I</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; font-weight: bold;">20250016982</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">4694</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; font-weight: bold;">JAYAMMA</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">7411197914</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">RECURRENT CA GBS</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Dr. Tanvir</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">PARAS</td>
+                            </tr>
+                            <tr style="height: 20px;">
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">01-Jan-26</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; text-align: center;">I</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; font-weight: bold;">20250020525</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">4949</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; font-weight: bold;">THIMMAIAH</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">9611204784</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">CA SUPRAGLOTTIS</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Dr. Naveen</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">SAHANA</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Table Preview 2: Emergency (7 columns) -->
+                <div id="previewEmergencySheet" style="display: {% if active_template == 'emergency' %}block{% else %}none{% endif %}; margin-bottom: 12px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #64748b;">
+                        <thead>
+                            <tr style="background: #cbd5e1; color: #000; text-align: left; height: 22px;">
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Start Date</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Hospital no</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Patient name</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Diagnosis</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Primary Consultant</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Machine</th>
+                                <th style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Jr. Resident</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="height: 20px;">
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">05-01-2026</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; font-weight: bold;">20250016040</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; font-weight: bold;">kavyasri</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">ca cervix</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Dr. Ashalatha</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">ELEKTA - LA4</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">dr shruti</td>
+                            </tr>
+                            <tr style="height: 20px;">
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">05-01-2026</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; font-weight: bold;">20250023526</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px; font-weight: bold;">Naseema</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">ca cervix</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Dr. Rashmi</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">ELEKTA - LA4</td>
+                                <td style="border: 0.5px solid #94a3b8; padding: 3px 4px;">Dr. Shirali</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Notes Block -->
+                <div style="font-size: 8.5px; line-height: 1.35; margin-bottom: 12px; color: #111;">
+                    <div style="font-weight: 800;">Please note:</div>
+                    <div id="prev_note_1" style="margin-bottom: 2px;">{{ config.note_paragraph_1 }}</div>
+                    <div id="prev_note_2">{{ config.note_paragraph_2 }}</div>
+                </div>
+
+                <!-- Bottom Signatures Grid -->
+                <div style="display: grid; grid-template-columns: 1.25fr 1fr; align-items: end; border-top: 0.5px solid #cbd5e1; padding-top: 10px;">
+                    <div style="font-size: 8px; line-height: 1.3; color: #222;">
+                        <div style="font-weight: 800; margin-bottom: 2px;">Copy to:</div>
+                        <div id="prev_copy_to" style="white-space: pre-line;">{{ config.copy_to_recipients }}</div>
+                    </div>
+                    <div style="text-align: right; font-size: 9px; line-height: 1.25;">
+                        <div style="height: 25px;"></div>
+                        <div style="font-weight: 800; font-size: 10px;" id="prev_signing_authority">{{ config.default_signing_authority }}</div>
+                        <div style="font-style: italic;" id="prev_designation">{{ config.default_designation }}</div>
+                        <div style="font-weight: bold;" id="prev_dept_line">{{ config.department_signature_line }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+<script>
+    function switchPrintTemplate(tmpl, evt) {
+        if (evt) evt.preventDefault();
+        const isRegular = (tmpl === 'regular');
+
+        // Update hidden input
+        document.getElementById('activeTemplateInput').value = tmpl;
+
+        // Card & Badge Elements
+        const cardReg = document.getElementById('cardRegular');
+        const cardEm = document.getElementById('cardEmergency');
+        const badgeReg = document.getElementById('badgeRegular');
+        const badgeEm = document.getElementById('badgeEmergency');
+
+        // Banner Elements
+        const bannerReg = document.getElementById('bannerRegular');
+        const bannerEm = document.getElementById('bannerEmergency');
+
+        // Form Section Elements
+        const secReg = document.getElementById('sectionRegularFields');
+        const secEm = document.getElementById('sectionEmergencyFields');
+
+        // Preview Table Elements
+        const prevReg = document.getElementById('previewRegularSheet');
+        const prevEm = document.getElementById('previewEmergencySheet');
+        const prevTag = document.getElementById('previewTag');
+
+        if (isRegular) {
+            // Cards
+            cardReg.style.borderColor = '#003366';
+            cardReg.style.background = '#eff6ff';
+            badgeReg.style.background = '#003366';
+            badgeReg.style.color = '#ffffff';
+            badgeReg.innerText = '✓ Active Template';
+
+            cardEm.style.borderColor = '#cbd5e1';
+            cardEm.style.background = '#ffffff';
+            badgeEm.style.background = '#e2e8f0';
+            badgeEm.style.color = '#475569';
+            badgeEm.innerText = 'Click to Configure';
+
+            // Banners & Sections
+            bannerReg.style.display = 'flex';
+            bannerEm.style.display = 'none';
+
+            secReg.style.display = 'block';
+            secEm.style.display = 'none';
+
+            // Preview
+            prevReg.style.display = 'block';
+            prevEm.style.display = 'none';
+            prevTag.style.background = '#e0f2fe';
+            prevTag.style.color = '#0369a1';
+            prevTag.innerText = 'Regular Scheduler';
+        } else {
+            // Cards
+            cardEm.style.borderColor = '#b91c1c';
+            cardEm.style.background = '#fff1f2';
+            badgeEm.style.background = '#b91c1c';
+            badgeEm.style.color = '#ffffff';
+            badgeEm.innerText = '✓ Active Template';
+
+            cardReg.style.borderColor = '#cbd5e1';
+            cardReg.style.background = '#ffffff';
+            badgeReg.style.background = '#e2e8f0';
+            badgeReg.style.color = '#475569';
+            badgeReg.innerText = 'Click to Configure';
+
+            // Banners & Sections
+            bannerReg.style.display = 'none';
+            bannerEm.style.display = 'flex';
+
+            secReg.style.display = 'none';
+            secEm.style.display = 'block';
+
+            // Preview
+            prevReg.style.display = 'none';
+            prevEm.style.display = 'block';
+            prevTag.style.background = '#fee2e2';
+            prevTag.style.color = '#991b1b';
+            prevTag.innerText = 'Emergency Slot';
+        }
+
+        // Update live preview texts for active template
+        updateLivePreview();
+
+        // Update browser URL query string without reloading
+        const newUrl = window.location.pathname + '?template=' + tmpl;
+        window.history.replaceState({ template: tmpl }, '', newUrl);
+    }
+
+    function updateLivePreview() {
+        const isRegular = (document.getElementById('activeTemplateInput').value === 'regular');
+
+        // Common Headers
+        document.getElementById('prev_ref_code').innerText = document.getElementById('input_ref_code_prefix').value;
+        document.getElementById('prev_header_1').innerText = document.getElementById('input_header_line_1').value;
+        document.getElementById('prev_header_2').innerText = document.getElementById('input_header_line_2').value;
+
+        // Template specific
+        if (isRegular) {
+            document.getElementById('prev_header_3').innerText = document.getElementById('input_header_line_3').value;
+            document.getElementById('prev_intro').innerText = document.getElementById('input_intro_paragraph').value;
+            document.getElementById('prev_sec_title').innerText = document.getElementById('input_table_section_title').value;
+        } else {
+            document.getElementById('prev_header_3').innerText = document.getElementById('input_emergency_header_line_3').value;
+            document.getElementById('prev_intro').innerText = document.getElementById('input_emergency_intro_paragraph').value;
+            document.getElementById('prev_sec_title').innerText = document.getElementById('input_emergency_table_title').value;
+        }
+
+        // Notes & Signatures
+        document.getElementById('prev_note_1').innerText = document.getElementById('input_note_paragraph_1').value;
+        document.getElementById('prev_note_2').innerText = document.getElementById('input_note_paragraph_2').value;
+        document.getElementById('prev_copy_to').innerText = document.getElementById('input_copy_to_recipients').value;
+        document.getElementById('prev_signing_authority').innerText = document.getElementById('input_default_signing_authority').value;
+        document.getElementById('prev_designation').innerText = document.getElementById('input_default_designation').value;
+        document.getElementById('prev_dept_line').innerText = document.getElementById('input_department_signature_line').value;
+    }
+
+    // Initialize state on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        const initialTemplate = "{{ active_template|default:'regular' }}";
+        switchPrintTemplate(initialTemplate);
+    });
+</script>
 {% endblock %}
