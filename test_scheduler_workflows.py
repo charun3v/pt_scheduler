@@ -37,6 +37,10 @@ def run_tests():
     Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 9999021, 9999022, 7654321, 12345]).delete()
     Holiday.objects.filter(date__in=[date(2026, 11, 20), date(2026, 11, 25)]).delete()
     User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix', 'test_new_reg_user', 'test_landing_user']).delete()
+    from apps.core.models import PrintTemplateConfig, Designation
+    PrintTemplateConfig.objects.all().delete()
+    PrintTemplateConfig.get_active()
+    Designation.objects.filter(name='Additional Professor & Unit Chief').delete()
 
     # 1. Test Admin vs SubAdmin vs Resident Granular Permissions
     print("\n--- Test 1: Role Permissions (Admin vs SubAdmin vs Resident) ---")
@@ -1838,6 +1842,7 @@ def run_tests():
     assert p10.pt_name in print_html_content
     assert "9888877777" in print_html_content, "Primary phone must appear in print sheet"
     assert "9111122222" not in print_html_content, "Alternate phone number must NEVER appear in print sheet"
+    assert "Sheet 1 of" not in print_html_content, "Sheet 1 of X must NOT appear in print sheet"
     assert "Please note:" in print_html_content
     assert "Dr. Naveen T" in print_html_content
     assert "Professor and Head of the Department" in print_html_content
@@ -1854,6 +1859,116 @@ def run_tests():
     sched_p10.delete()
     p10.delete()
     print("✓ Test 23 Passed: Login cleanup, stats restriction, dashboard landing, roles hidden from SubAdmin, demographics with mandatory RT/Phone & optional Alt Phone, reference lookups, unit stats fix, and Treatment Schedule HTML & PDF print sheets fully verified.")
+
+    # --------------------------------------------------------------------------
+    # Test 24: Print Template Settings, Designation Lookups, Signing Authority & PDF Refinements
+    # --------------------------------------------------------------------------
+    print("\n--- Test 24: Print Template Settings, Designation Lookups, Signing Authority & PDF Refinements ---")
+    from apps.core.models import Designation, PrintTemplateConfig
+
+    # Ensure clean test state
+    Designation.objects.filter(name='Additional Professor & Unit Chief').delete()
+
+    # 1. Verify Designation is available in Reference Lookups
+    c.force_login(admin_user)
+    resp_lookup_desig = c.get('/lookups/designation/')
+    assert resp_lookup_desig.status_code == 200
+    assert "Designations" in resp_lookup_desig.content.decode('utf-8')
+    assert "Professor and Head of the Department" in resp_lookup_desig.content.decode('utf-8')
+
+    # Add a custom designation through lookup manager
+    resp_add_desig = c.post('/lookups/designation/save/', {
+        'name_value': 'Additional Professor & Unit Chief',
+        'display_order': '20',
+        'is_active': '1'
+    }, follow=True)
+    assert resp_add_desig.status_code == 200
+    assert Designation.objects.filter(name='Additional Professor & Unit Chief').exists()
+
+    # 2. Verify Security Boundaries on Print Template Configuration (/reports/print-template-settings/)
+    # SubAdmin must be strictly blocked
+    c.force_login(subadmin_user)
+    resp_subadmin_tmpl = c.get('/reports/print-template-settings/')
+    assert resp_subadmin_tmpl.status_code == 302, "SubAdmin must be redirected away from print template settings"
+
+    # Resident must be strictly blocked
+    c.force_login(res_user)
+    resp_res_tmpl = c.get('/reports/print-template-settings/')
+    assert resp_res_tmpl.status_code == 302, "Resident must be redirected away from print template settings"
+
+    # Admin is granted access
+    c.force_login(admin_user)
+    resp_admin_tmpl = c.get('/reports/print-template-settings/')
+    assert resp_admin_tmpl.status_code == 200
+    admin_tmpl_html = resp_admin_tmpl.content.decode('utf-8')
+    assert "Institutional Header & Reference Code" in admin_tmpl_html
+    assert "Outward Reference Prefix" in admin_tmpl_html
+
+    # 3. Admin modifies template texts and layout settings
+    resp_save_tmpl = c.post('/reports/print-template-settings/', {
+        'ref_code_prefix': 'KMIO/RAD/2026/SEC-B/',
+        'header_line_1': 'KIDWAI MEMORIAL REGIONAL CANCER CENTRE',
+        'header_line_2': 'Department of Radiation Oncology',
+        'header_line_3': 'RTT Daily Treatment Start Sheet',
+        'intro_paragraph': 'Updated instructions for clinical radiation technicians and chief technologists.',
+        'table_section_title': 'Starts scheduled between {start_date} and {end_date}',
+        'note_paragraph_1': 'All patient consents must be verified by consultant oncologist.',
+        'note_paragraph_2': 'Physics staff must verify plan setup in each operating shift.',
+        'copy_to_recipients': '1. Chief Physicist\n2. HOD Office',
+        'default_signing_authority': 'Dr. Shamsunder Rao',
+        'default_designation': 'Additional Professor & Unit Chief',
+        'department_signature_line': 'Department of Radiation Oncology',
+        'page_margin_cm': 2.5,
+        'row_vertical_padding_pt': 2.7,
+        'action': 'save'
+    }, follow=True)
+    assert resp_save_tmpl.status_code == 200
+
+    cfg = PrintTemplateConfig.get_active()
+    assert cfg.header_line_1 == 'KIDWAI MEMORIAL REGIONAL CANCER CENTRE'
+    assert cfg.default_signing_authority == 'Dr. Shamsunder Rao'
+    assert cfg.default_designation == 'Additional Professor & Unit Chief'
+    assert cfg.row_vertical_padding_pt == 2.7
+
+    # 4. Verify updated template reflects in browser printout and PDF
+    resp_custom_html = c.get(f'/reports/print-schedule/?modality=Teletherapy&machines={m_la1.id}')
+    assert resp_custom_html.status_code == 200
+    custom_html_text = resp_custom_html.content.decode('utf-8')
+    assert "KIDWAI MEMORIAL REGIONAL CANCER CENTRE" in custom_html_text
+    assert "KMIO/RAD/2026/SEC-B/" in custom_html_text
+    assert "Updated instructions for clinical radiation technicians" in custom_html_text
+    assert "Dr. Shamsunder Rao" in custom_html_text
+    assert ("Additional Professor & Unit Chief" in custom_html_text or "Additional Professor &amp; Unit Chief" in custom_html_text)
+    assert "Department of Radiation Oncology" in custom_html_text
+    assert "Sheet 1 of" not in custom_html_text
+
+    # 5. Verify explicit query parameters override template defaults
+    resp_override_html = c.get(f'/reports/print-schedule/?modality=Teletherapy&machines={m_la1.id}&signing_authority=Dr.+Custom+Authority&designation=Professor')
+    assert resp_override_html.status_code == 200
+    override_html_text = resp_override_html.content.decode('utf-8')
+    assert "Dr. Custom Authority" in override_html_text
+    assert "Professor" in override_html_text
+    assert "Department of Radiation Oncology" in override_html_text
+
+    # 6. Verify PDF generation with updated template config & query params
+    resp_custom_pdf = c.get(f'/reports/print-schedule/pdf/?modality=Teletherapy&machines={m_la1.id}&signing_authority=Dr.+Custom+Authority&designation=Professor')
+    assert resp_custom_pdf.status_code == 200
+    assert resp_custom_pdf['Content-Type'] == 'application/pdf'
+    assert resp_custom_pdf.content.startswith(b'%PDF')
+
+    # 7. Verify Reset to Institutional Defaults
+    resp_reset = c.post('/reports/print-template-settings/', {
+        'action': 'reset_defaults'
+    }, follow=True)
+    assert resp_reset.status_code == 200
+    cfg.refresh_from_db()
+    assert cfg.header_line_1 == 'KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY'
+    assert cfg.default_signing_authority == 'Dr. Naveen T'
+    assert cfg.default_designation == 'Professor and Head of the Department'
+
+    # Cleanup added designation
+    Designation.objects.filter(name='Additional Professor & Unit Chief').delete()
+    print("✓ Test 24 Passed: Print Template Settings, Designation Reference Lookup, Signing Authority, +0.5mm PDF vertical space, and removal of sheet/page numbering fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

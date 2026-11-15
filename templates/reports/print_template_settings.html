@@ -1,0 +1,235 @@
+{% extends 'base.html' %}
+
+{% block title %}Printout Template & Layout Configuration - {{ APP_TITLE }}{% endblock %}
+
+{% block content %}
+<div class="access-subform" style="max-width: 1050px; margin: 0 auto;">
+    <!-- Header -->
+    <div class="access-subform-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span>🖨️</span>
+            <span>frmPrintTemplateConfig: Printout Header Texts, Layout & Institutional Signatures</span>
+            <span style="font-size: 10px; background: #e2e8f0; color: #003366; padding: 2px 6px; border-radius: 3px; font-weight: bold;">
+                ADMIN ONLY
+            </span>
+        </div>
+        <div style="font-weight: normal; font-size: 11px; display: flex; gap: 12px; align-items: center;">
+            <a href="{% url 'print_treatment_schedule' %}" target="_blank" style="color: #e0f2fe; text-decoration: underline;">Test Print Sheet ↗</a>
+            <span style="color: #64748b;">|</span>
+            <a href="{% url 'dashboard' %}" style="color: #fff; text-decoration: underline;">Back to Dashboard</a>
+        </div>
+    </div>
+
+    <!-- Body -->
+    <div class="access-subform-body" style="padding: 20px;">
+        <div style="margin-bottom: 16px; padding: 10px 14px; background: #eff6ff; border-left: 4px solid #0284c7; border-radius: 4px; font-size: 12px; color: #1e3a8a;">
+            <strong>Institutional Print Configuration:</strong> Customize the header titles, reference code, instructional narrative, clinical notes, distribution recipients ("Copy to"), and official signing authorities across all generated PDF and browser printouts (Technician Information Sheets).
+        </div>
+
+        <form method="POST" action="{% url 'print_template_settings' %}">
+            {% csrf_token %}
+
+            <!-- Section 1: Header Titles & Outward Reference -->
+            <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>🏛️</span>
+                    <span>Institutional Header & Reference Code</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 14px;">
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            Outward Reference Prefix: *
+                        </label>
+                        <input type="text" name="ref_code_prefix" value="{{ config.ref_code_prefix }}" required
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-family: monospace;">
+                        <span style="font-size: 11px; color: #64748b;">Top-left institutional tracking number</span>
+                    </div>
+
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            Header Line 1 (Institute Name): *
+                        </label>
+                        <input type="text" name="header_line_1" value="{{ config.header_line_1 }}" required
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            Header Line 2 (Department): *
+                        </label>
+                        <input type="text" name="header_line_2" value="{{ config.header_line_2 }}" required
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px;">
+                    </div>
+
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            Header Line 3 (Document Title): *
+                        </label>
+                        <input type="text" name="header_line_3" value="{{ config.header_line_3 }}" required
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-style: italic;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: Narrative Notice & Section Title -->
+            <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>📝</span>
+                    <span>Instructional Notice & Subtitle Format</span>
+                </div>
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Introductory Notice to RTTs: *
+                    </label>
+                    <textarea name="intro_paragraph" rows="3" required
+                              style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4;">{{ config.intro_paragraph }}</textarea>
+                    <span style="font-size: 11px; color: #64748b;">Notice paragraph printed immediately below the header box</span>
+                </div>
+
+                <div>
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Patient Starts Section Title Format: *
+                    </label>
+                    <input type="text" name="table_section_title" value="{{ config.table_section_title }}" required
+                           style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                    <span style="font-size: 11px; color: #64748b;">Use <code>{start_date}</code> and <code>{end_date}</code> as dynamic date placeholders</span>
+                </div>
+            </div>
+
+            <!-- Section 3: Clinical Notes & Disclaimer ("Please note:") -->
+            <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>⚠️</span>
+                    <span>Clinical Notes & Compliance Directives ("Please note:")</span>
+                </div>
+
+                <div style="margin-bottom: 14px;">
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Important Clinical Note 1 (Consent & Chart Sign-off): *
+                    </label>
+                    <textarea name="note_paragraph_1" rows="2" required
+                              style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4;">{{ config.note_paragraph_1 }}</textarea>
+                </div>
+
+                <div>
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Important Clinical Note 2 (Shift Attendance & Efficiency): *
+                    </label>
+                    <textarea name="note_paragraph_2" rows="2" required
+                              style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4;">{{ config.note_paragraph_2 }}</textarea>
+                </div>
+            </div>
+
+            <!-- Section 4: Distribution ("Copy to") & Sign-Off Authority -->
+            <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>✍️</span>
+                    <span>Distribution ("Copy to") & Institutional Signing Authority</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px;">
+                    <!-- Copy to lines -->
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            "Copy to:" Recipient List (one per line): *
+                        </label>
+                        <textarea name="copy_to_recipients" rows="6" required
+                                  style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; line-height: 1.4; font-family: monospace;">{{ config.copy_to_recipients }}</textarea>
+                        <span style="font-size: 11px; color: #64748b;">Each line appears as a separate numbered distribution target</span>
+                    </div>
+
+                    <!-- Signature block defaults -->
+                    <div>
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                                Default Signing Authority: *
+                            </label>
+                            <input type="text" name="default_signing_authority" value="{{ config.default_signing_authority }}" required list="consultantList"
+                                   style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                            <datalist id="consultantList">
+                                {% for c_name in consultant_options %}
+                                <option value="{{ c_name }}">
+                                {% endfor %}
+                            </datalist>
+                            <span style="font-size: 11px; color: #64748b;">Default doctor name in printout signature</span>
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                                Default Designation: *
+                            </label>
+                            <input type="text" name="default_designation" value="{{ config.default_designation }}" required list="designationList"
+                                   style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-style: italic;">
+                            <datalist id="designationList">
+                                {% for d in designations %}
+                                <option value="{{ d.name }}">
+                                {% endfor %}
+                            </datalist>
+                            <span style="font-size: 11px; color: #64748b;">Designation line in signature</span>
+                        </div>
+
+                        <div>
+                            <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                                Department Signature Line: *
+                            </label>
+                            <input type="text" name="department_signature_line" value="{{ config.department_signature_line }}" required
+                                   style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                            <span style="font-size: 11px; color: #64748b;">Third line of signature block</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 5: Layout & Margins -->
+            <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; font-size: 13px; color: #003366; margin-bottom: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>📐</span>
+                    <span>Page Margins & Table Spacing</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            A4 Page Margins (cm): *
+                        </label>
+                        <input type="number" step="0.1" min="1.0" max="4.0" name="page_margin_cm" value="{{ config.page_margin_cm }}" required
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px;">
+                        <span style="font-size: 11px; color: #64748b;">All margins (Top, Bottom, Left, Right). Default: 2.5 cm</span>
+                    </div>
+
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            Table Cell Vertical Padding (pt): *
+                        </label>
+                        <input type="number" step="0.1" min="1.0" max="6.0" name="row_vertical_padding_pt" value="{{ config.row_vertical_padding_pt }}" required
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px;">
+                        <span style="font-size: 11px; color: #64748b;">Vertical row padding (+0.5mm breathing room). Default: 2.7 pt</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit & Reset Actions -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid #cbd5e1;">
+                <button type="submit" name="action" value="reset_defaults" onclick="return confirm('Are you sure you want to reset all printout texts, copy-to lists, and layout parameters back to standard Kidwai Memorial Institute defaults?');"
+                        class="action-ribbon-btn" style="background: #f8fafc; color: #dc2626; border-color: #fca5a5; padding: 8px 16px; font-size: 12px; cursor: pointer;">
+                    🔄 Reset to Institutional Defaults
+                </button>
+
+                <div style="display: flex; gap: 10px;">
+                    <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="padding: 8px 18px; text-decoration: none; cursor: pointer;">
+                        Cancel
+                    </a>
+                    <button type="submit" name="action" value="save"
+                            class="action-ribbon-btn" style="background: #003366; color: #ffffff; border-color: #002244; padding: 8px 24px; font-weight: bold; font-size: 13px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
+                        💾 Save Template Changes
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

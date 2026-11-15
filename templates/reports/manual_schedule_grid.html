@@ -633,27 +633,34 @@
 
 <!-- Modal: Print Treatment Schedule -->
 <div id="printScheduleModal" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.55); align-items: center; justify-content: center;">
-    <div style="background: #ffffff; width: 680px; max-width: 95%; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); border: 2px solid #003366; overflow: hidden;">
+    <div style="background: #ffffff; width: 780px; max-width: 96%; max-height: 94vh; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); border: 2px solid #003366; overflow: hidden; display: flex; flex-direction: column;">
         <!-- Modal Header -->
         <div style="background: #003366; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px; font-weight: bold; font-size: 14px;">
                 <span>🖨️</span>
                 <span>Print Treatment Schedule — Technician Information Sheet</span>
             </div>
-            <button type="button" onclick="closePrintScheduleModal()" style="background: none; border: none; color: #ffffff; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
+            <div style="display: flex; align-items: center; gap: 14px;">
+                {% if IS_ADMIN_ONLY %}
+                <a href="{% url 'print_template_settings' %}" target="_blank" style="color: #e0f2fe; font-size: 11px; text-decoration: underline;" title="Edit institutional header texts, clinical notes, copy-to distribution, and margins">
+                    ⚙️ Edit Layout & Texts (Admin) ↗
+                </a>
+                {% endif %}
+                <button type="button" onclick="closePrintScheduleModal()" style="background: none; border: none; color: #ffffff; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
         </div>
 
         <!-- Form Body -->
-        <form method="GET" action="{% url 'print_treatment_schedule' %}" id="printScheduleForm" target="_blank" style="padding: 20px; margin: 0;">
-            <div style="display: grid; grid-template-columns: 1fr 1.25fr; gap: 20px;">
-                <!-- Left Column: Modality + Start Date + End Date (one below the other) -->
+        <form method="GET" action="{% url 'print_treatment_schedule' %}" id="printScheduleForm" target="_blank" style="padding: 20px; margin: 0; overflow-y: auto;">
+            <div style="display: grid; grid-template-columns: 1fr 1.25fr; gap: 22px;">
+                <!-- Left Column: Modality + Dates + Signing Authority + Designation -->
                 <div>
                     <!-- Modality Selection (Default: Teletherapy) -->
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 6px;">
+                    <div style="margin-bottom: 14px;">
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 5px;">
                             Modality: *
                         </label>
-                        <div style="display: flex; gap: 14px; background: #f8fafc; padding: 8px 12px; border-radius: 4px; border: 1px solid #cbd5e1;">
+                        <div style="display: flex; gap: 14px; background: #f8fafc; padding: 7px 12px; border-radius: 4px; border: 1px solid #cbd5e1;">
                             <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: #1e293b;">
                                 <input type="radio" name="modality" value="Teletherapy" checked onchange="filterPrintMachinesByModality('Teletherapy');">
                                 Teletherapy
@@ -666,27 +673,64 @@
                     </div>
 
                     <!-- Start Date (for printing) -->
-                    <div style="margin-bottom: 16px;">
-                        <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 4px;">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 3px;">
                             Start Date (for printing): *
                         </label>
                         <input type="date" name="start_date" id="print_start_date" required value="{{ start_date_str }}"
-                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 13px; border: 1px solid #707070; border-radius: 4px;">
+                               style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px;">
                         <span style="font-size: 11px; color: #64748b;">Start of scheduled starts range</span>
                     </div>
 
                     <!-- End Date (for printing) -->
-                    <div style="margin-bottom: 6px;">
-                        <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 4px;">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 3px;">
                             End Date (for printing): *
                         </label>
                         <input type="date" name="end_date" id="print_end_date" required value="{{ end_date_str }}"
-                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 13px; border: 1px solid #707070; border-radius: 4px;">
+                               style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px;">
                         <span style="font-size: 11px; color: #64748b;">End of scheduled starts range</span>
+                    </div>
+
+                    <!-- Signing Authority (Dropdown from Users - Consultants) -->
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 3px;">
+                            Signing Authority: *
+                        </label>
+                        <select name="signing_authority" id="print_signing_authority" required
+                                style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; background: #ffffff;">
+                            {% for auth_name in consultant_options %}
+                            <option value="{{ auth_name }}" {% if auth_name == print_template_config.default_signing_authority %}selected{% endif %}>
+                                {{ auth_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <span style="font-size: 11px; color: #64748b;">Selected from Users (Consultants)</span>
+                    </div>
+
+                    <!-- Designation (Dropdown from Reference Lookups) -->
+                    <div style="margin-bottom: 4px;">
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 3px;">
+                            Designation: *
+                        </label>
+                        <select name="designation" id="print_designation" required
+                                style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; background: #ffffff;">
+                            {% for d in designations %}
+                            <option value="{{ d.name }}" {% if d.name == print_template_config.default_designation %}selected{% endif %}>
+                                {{ d.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 3px;">
+                            <span style="font-size: 11px; color: #64748b;">Dept: {{ print_template_config.department_signature_line }}</span>
+                            {% if IS_ADMIN_ONLY %}
+                            <a href="{% url 'lookup_manager' 'designation' %}" target="_blank" style="font-size: 11px; color: #0284c7; text-decoration: underline;" title="Manage Designations in Reference Lookups">Lookup ↗</a>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
 
-                <!-- Right Column: Selectable Machines List -->
+                <!-- Right Column: Selectable Machines List (Height expanded to accommodate 12 machines) -->
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <label style="font-weight: bold; font-size: 12px; color: #003366;">
@@ -699,10 +743,10 @@
                         </div>
                     </div>
 
-                    <div id="printMachinesContainer" style="max-height: 220px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 10px; background: #ffffff;">
+                    <div id="printMachinesContainer" style="height: 345px; max-height: 360px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 10px; background: #ffffff;">
                         {% for m in all_machines %}
                         <label class="print-mach-item" data-type="{% if m.machine_type == 'Brachytherapy' %}Brachytherapy{% else %}Teletherapy{% endif %}"
-                               style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-bottom: 1px solid #f1f5f9; font-size: 12px; cursor: pointer;">
+                                style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-bottom: 1px solid #f1f5f9; font-size: 12px; cursor: pointer;">
                             <input type="checkbox" name="machines" value="{{ m.id }}" class="print-mach-checkbox"
                                    {% if selected_machine and selected_machine.id == m.id %}checked{% elif not selected_machine_id %}checked{% endif %}>
                             <span style="font-weight: 600; color: #1e293b;">{{ m.name }}</span>

@@ -84,6 +84,114 @@ class Consultant(models.Model):
         return self.name
 
 
+class Designation(models.Model):
+    """Staff / Faculty Designations for Official Reports and Sign-offs."""
+    name = models.CharField(max_length=150, unique=True)
+    display_order = models.IntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'tblDesignation'
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+class PrintTemplateConfig(models.Model):
+    """
+    Admin-configurable header text, body paragraphs, and layout parameters
+    for official Radiotherapy Technician Information Sheets and reports.
+    """
+    ref_code_prefix = models.CharField(max_length=100, default='KMIO/DRO/        /20___', verbose_name="Outward Reference Prefix")
+    header_line_1 = models.CharField(max_length=255, default='KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY', verbose_name="Institute Name (Header 1)")
+    header_line_2 = models.CharField(max_length=255, default='Department of Radiation Oncology', verbose_name="Department (Header 2)")
+    header_line_3 = models.CharField(max_length=255, default='Radiation Therapy Technician information sheet', verbose_name="Document Title (Header 3)")
+    
+    intro_paragraph = models.TextField(
+        default=(
+            "The scheduled patient lists are handed over to Chief Radiotherapy Technologist RTTs posted in the "
+            "respective machines to start radiotherapy for the new patients as scheduled in the table below. "
+            "The following are the list of the new patients for whom radiotherapy is to be started on the respective "
+            "dates. RTTs are required to perf the necessary procedures as per instructions on the RT chart, "
+            "including setup and verification"
+        ),
+        verbose_name="Introductory Instructions / Notice"
+    )
+    
+    table_section_title = models.CharField(
+        max_length=255,
+        default="New Patient starts from {start_date} to {end_date}",
+        help_text="Variables {start_date} and {end_date} will be dynamically inserted.",
+        verbose_name="Section Title Format"
+    )
+    
+    note_paragraph_1 = models.TextField(
+        default=(
+            "Both the Consultant Radiation oncologist and the Radiation Physicist should have signed and dated the "
+            "RT Chart and ensure that informed written consent should be signed by the patient and his/her attendant."
+        ),
+        verbose_name="Important Note 1"
+    )
+    
+    note_paragraph_2 = models.TextField(
+        default=(
+            "The Radiation Oncologist and Physicist are requested to attend to new patients setup as per schedule in each shift. "
+            "Time allocation for starting of new patients on RT to be utilised efficiently without disruption to ongoing treatments in the respective machines"
+        ),
+        verbose_name="Important Note 2"
+    )
+    
+    copy_to_recipients = models.TextField(
+        default=(
+            "1. HOD Physics/Faculty concerned for setup verification\n"
+            "2. HOU RT I/II/III/ Faculty concerned for setup inspection and verification\n"
+            "3. Chief Radiotherapy technologist\n"
+            "4. RTT of concerned shift to start the RT for patients mentioned in the above list\n"
+            "5. Machine Notice board"
+        ),
+        help_text="One recipient per line.",
+        verbose_name="Copy To Recipients"
+    )
+    
+    default_signing_authority = models.CharField(
+        max_length=150,
+        default="Dr. Naveen T",
+        verbose_name="Default Signing Authority Name"
+    )
+    
+    default_designation = models.CharField(
+        max_length=150,
+        default="Professor and Head of the Department",
+        verbose_name="Default Designation"
+    )
+    
+    department_signature_line = models.CharField(
+        max_length=150,
+        default="Department of Radiation Oncology",
+        verbose_name="Department Line (Fixed in Signature Block)"
+    )
+
+    page_margin_cm = models.FloatField(default=2.5, help_text="Page margin in centimeters (A4 paper)")
+    row_vertical_padding_pt = models.FloatField(default=2.7, help_text="Cell vertical padding points (0.5mm expanded)")
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Printout Template Configuration"
+        verbose_name_plural = "Printout Template Configurations"
+
+    def __str__(self):
+        return f"Printout Template Configuration ({self.header_line_1})"
+
+    @classmethod
+    def get_active(cls):
+        obj = cls.objects.first()
+        if not obj:
+            obj = cls.objects.create()
+        return obj
+
+
 class AuditLog(models.Model):
     """Clinical compliance and user action audit trail."""
     log_datetime = models.DateTimeField(default=timezone.now)

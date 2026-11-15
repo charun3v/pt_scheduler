@@ -13,5 +13,6 @@ urlpatterns = [
     path('manual-grid/save-row/', views.manual_schedule_save_row_api, name='manual_schedule_save_row'),
     path('print-schedule/', views.print_treatment_schedule_view, name='print_treatment_schedule'),
     path('print-schedule/pdf/', views.print_treatment_schedule_pdf_view, name='print_treatment_schedule_pdf'),
+    path('print-template-settings/', views.print_template_settings_view, name='print_template_settings'),
     path('audit-logs/', views.audit_log_report_view, name='audit_log_report'),
 ]

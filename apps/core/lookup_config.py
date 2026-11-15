@@ -130,6 +130,18 @@ LOOKUP_CONFIG = {
         'secondary_field': None,
         'secondary_label': None,
     },
+    'designation': {
+        'title': 'Faculty & Staff Designations',
+        'icon': '📜',
+        'table_name': 'tblDesignation',
+        'app': 'core',
+        'model_name': 'Designation',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Designation Title (e.g. Professor and Head of the Department)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
 }
 
 

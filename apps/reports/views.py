@@ -13,8 +13,9 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from apps.scheduler.models import Machine, TreatmentSchedule, Shift, Holiday
 from apps.patients.models import Patient
-from apps.core.models import Consultant, AuditLog
+from apps.core.models import Consultant, AuditLog, Designation, PrintTemplateConfig
 from apps.core.permissions import is_admin_or_subadmin, is_admin_only
+from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 
 
@@ -667,6 +668,40 @@ def manual_schedule_grid_view(request):
     if request.GET.get('export') == 'excel':
         return export_manual_schedule_grid_excel(schedules_qs, selected_machine, start_date, end_date)
 
+    # Print template and signing authority options
+    active_print_cfg = PrintTemplateConfig.get_active()
+    consultant_users = User.objects.filter(
+        Q(profile__role__role_name__icontains='Consultant') | 
+        Q(profile__role__role_description__icontains='Consultant'),
+        is_active=True
+    ).select_related('profile').order_by('first_name', 'username')
+
+    consultant_options = []
+    seen = set()
+    if active_print_cfg.default_signing_authority:
+        consultant_options.append(active_print_cfg.default_signing_authority)
+        seen.add(active_print_cfg.default_signing_authority.strip().lower())
+
+    for u in consultant_users:
+        prefix = u.profile.prefix if hasattr(u, 'profile') and u.profile and u.profile.prefix else 'Dr.'
+        full = u.get_full_name().strip()
+        if full:
+            name_str = f"{prefix} {full}".strip()
+        elif u.first_name:
+            name_str = f"{prefix} {u.first_name}".strip()
+        else:
+            name_str = f"{prefix} {u.username.title()}".strip()
+        if name_str.strip().lower() not in seen:
+            consultant_options.append(name_str)
+            seen.add(name_str.strip().lower())
+
+    for c in Consultant.objects.filter(is_active=True).order_by('name'):
+        if c.name.strip().lower() not in seen:
+            consultant_options.append(c.name)
+            seen.add(c.name.strip().lower())
+
+    designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
+
     context = {
         'all_machines': all_machines,
         'all_shifts': all_shifts,
@@ -680,6 +715,9 @@ def manual_schedule_grid_view(request):
         'preset': preset,
         'holiday_map': holiday_map,
         'holiday_map_json': holiday_map_json,
+        'consultant_options': consultant_options,
+        'designations': designations,
+        'print_template_config': active_print_cfg,
     }
     return render(request, 'reports/manual_schedule_grid.html', context)
 
@@ -1184,9 +1222,25 @@ def get_print_schedule_data(request):
     Shared helper to query and prepare schedule records for printing and PDF generation.
     Filters by Modality (Teletherapy / Brachytherapy), Start Date, End Date, and Selected Machines.
     """
+    config = PrintTemplateConfig.get_active()
+
     modality = request.GET.get('modality', 'Teletherapy')
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
+
+    signing_authority = request.GET.get('signing_authority')
+    if not signing_authority or not signing_authority.strip():
+        signing_authority = config.default_signing_authority
+    else:
+        signing_authority = signing_authority.strip()
+
+    designation = request.GET.get('designation')
+    if not designation or not designation.strip():
+        designation = config.default_designation
+    else:
+        designation = designation.strip()
+
+    copy_to_list = [line.strip() for line in config.copy_to_recipients.strip().splitlines() if line.strip()]
 
     today = date.today()
     default_start = get_upcoming_monday(today)
@@ -1260,13 +1314,18 @@ def get_print_schedule_data(request):
         'today_str': today.strftime("%d-%m-%Y"),
         'now_time_str': now_dt.strftime("%H:%M"),
         'now_date_str': now_dt.strftime("%d %B %Y"),
+        'config': config,
+        'signing_authority': signing_authority,
+        'designation': designation,
+        'copy_to_list': copy_to_list,
     }
 
 
 def generate_technician_sheet_pdf(data):
     """
     Generates an official KMIO Radiation Therapy Technician Information Sheet PDF
-    using ReportLab, matching the layout, typography, and sign-offs of the template PDF.
+    using ReportLab, matching the layout, typography, and sign-offs of the institutional template.
+    Layout, texts, notes, and margins are fully configured via PrintTemplateConfig.
     """
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
@@ -1278,9 +1337,12 @@ def generate_technician_sheet_pdf(data):
     from reportlab.pdfgen import canvas
     import io
 
+    config = data.get('config') or PrintTemplateConfig.get_active()
     buffer = io.BytesIO()
-    # A4 size with 2.5 cm margins on all sides (Top, Bottom, Left, Right)
-    margin_25mm = 2.5 * cm
+
+    # A4 size with configurable margins (default: 2.5 cm on all sides)
+    margin_cm = config.page_margin_cm or 2.5
+    margin_25mm = margin_cm * cm
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
@@ -1300,7 +1362,6 @@ def generate_technician_sheet_pdf(data):
             self._startPage()
 
         def save(self):
-            num_pages = len(self._saved_page_states)
             for state in self._saved_page_states:
                 self.__dict__.update(state)
                 self.saveState()
@@ -1308,8 +1369,7 @@ def generate_technician_sheet_pdf(data):
                 self.setFillColor(colors.HexColor('#222222'))
                 # Footer Left (at 2.5 cm left margin, 1.4 cm from bottom)
                 self.drawString(margin_25mm, 1.4 * cm, f"Report Generated on:   {data['now_time_str']}    {data['now_date_str']}")
-                # Footer Right (at 2.5 cm right margin)
-                self.drawRightString(A4[0] - margin_25mm, 1.4 * cm, f"Page {self._pageNumber} of {num_pages}")
+                # Note: "No need of sheet 1 of 6 in the print outs." - Right page/sheet number intentionally omitted
                 self.restoreState()
                 super().showPage()
             super().save()
@@ -1349,13 +1409,13 @@ def generate_technician_sheet_pdf(data):
         # Top Header (Left Ref 100pt, Center 253.5pt, Right 100pt = 453.5pt)
         header_data = [
             [
-                Paragraph('KMIO/DRO/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/20___', left_ref_style),
+                Paragraph(config.ref_code_prefix, left_ref_style),
                 [
-                    Paragraph('KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY', title_style),
+                    Paragraph(config.header_line_1, title_style),
                     Spacer(1, 1),
-                    Paragraph('Department of Radiation Oncology', dept_style),
+                    Paragraph(config.header_line_2, dept_style),
                     Spacer(1, 1),
-                    Paragraph('Radiation Therapy Technician information sheet', sub_style)
+                    Paragraph(config.header_line_3, sub_style)
                 ],
                 [
                     Paragraph(data['today_str'], date_style),
@@ -1384,18 +1444,15 @@ def generate_technician_sheet_pdf(data):
         story.append(Spacer(1, 5))
 
         # Narrative paragraph
-        intro_text = (
-            "The scheduled patient lists are handed over to Chief Radiotherapy Technologist RTTs posted in the "
-            "respective machines to start radiotherapy for the new patients as scheduled in the table below. "
-            "The following are the list of the new patients for whom radiotherapy is to be started on the respective "
-            "dates. RTTs are required to perf the necessary procedures as per instructions on the RT chart, "
-            "including setup and verification"
-        )
+        intro_text = config.intro_paragraph
         story.append(Paragraph(intro_text, intro_style))
         story.append(Spacer(1, 5))
 
         # Section Subtitle
-        sec_title = f"New Patient starts from {data['start_date_formatted']} to {data['end_date_formatted']}"
+        try:
+            sec_title = config.table_section_title.format(start_date=data['start_date_formatted'], end_date=data['end_date_formatted'])
+        except Exception:
+            sec_title = f"New Patient starts from {data['start_date_formatted']} to {data['end_date_formatted']}"
         story.append(Paragraph(sec_title, sec_title_style))
         story.append(Spacer(1, 5))
 
@@ -1435,6 +1492,8 @@ def generate_technician_sheet_pdf(data):
                 '', '', '', '', '', '', '', ''
             ])
 
+        # Vertical padding points: default 2.7 pt (increases vertical space by +0.5 mm)
+        v_pad = config.row_vertical_padding_pt or 2.7
         pt_table = Table(table_rows, colWidths=col_widths, repeatRows=1)
         ts = [
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
@@ -1446,8 +1505,8 @@ def generate_technician_sheet_pdf(data):
             ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
             ('FONTSIZE', (0,1), (-1,-1), 6.5),
             ('LEADING', (0,1), (-1,-1), 8),
-            ('TOPPADDING', (0,0), (-1,-1), 2),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+            ('TOPPADDING', (0,0), (-1,-1), v_pad),
+            ('BOTTOMPADDING', (0,0), (-1,-1), v_pad),
             ('LEFTPADDING', (0,0), (-1,-1), 2),
             ('RIGHTPADDING', (0,0), (-1,-1), 2),
         ]
@@ -1461,29 +1520,20 @@ def generate_technician_sheet_pdf(data):
         story.append(pt_table)
         story.append(Spacer(1, 6))
 
-        # Bottom block (Please note, Copy to & Dr. Naveen T Signature)
-        note_p1 = (
-            "Both the Consultant Radiation oncologist and the Radiation Physicist should have signed and dated the "
-            "RT Chart and ensure that informed written consent should be signed by the patient and his/her attendant."
-        )
-        note_p2 = (
-            "The Radiation Oncologist and Physicist are requested to attend to new patients setup as per schedule in each shift. "
-            "Time allocation for starting of new patients on RT to be utilised efficiently without disruption to ongoing treatments in the respective machines"
-        )
+        # Bottom block (Please note, Copy to & Signature Authority)
+        note_p1 = config.note_paragraph_1
+        note_p2 = config.note_paragraph_2
 
-        copy_to_flowables = [
-            Paragraph('<b>Copy to:</b>', copy_bold),
-            Paragraph('1. HOD Physics/Faculty concerned for setup verification', copy_style),
-            Paragraph('2. HOU RT I/II/III/ Faculty concerned for setup inspection and verification', copy_style),
-            Paragraph('3. Chief Radiotherapy technologist', copy_style),
-            Paragraph('4. RTT of concerned shift to start the RT for patients mentioned in the above list', copy_style),
-            Paragraph('5. Machine Notice board', copy_style),
-        ]
+        copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
+        for c_item in data.get('copy_to_list', []):
+            copy_to_flowables.append(Paragraph(c_item, copy_style))
 
+        sig_name_val = data.get('signing_authority') or config.default_signing_authority
+        sig_desig_val = data.get('designation') or config.default_designation
         sig_flowables = [
-            Paragraph('Dr. Naveen T', sig_name),
-            Paragraph('Professor and Head of the Department', sig_title),
-            Paragraph('Department of Radiation Oncology', sig_dept),
+            Paragraph(sig_name_val, sig_name),
+            Paragraph(sig_desig_val, sig_title),
+            Paragraph(config.department_signature_line, sig_dept),
         ]
 
         bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
@@ -1539,4 +1589,139 @@ def print_treatment_schedule_pdf_view(request):
     end_tag = data['end_date_str']
     response['Content-Disposition'] = f'inline; filename="KMIO_Technician_Information_Sheet_{start_tag}_to_{end_tag}.pdf"'
     return response
+
+
+@login_required
+def print_template_settings_view(request):
+    """
+    Dedicated view for Administrators to configure institutional printout headers,
+    introductory instructions, section titles, clinical notes, copy-to distribution list,
+    default signing authority and designations, and layout margins/spacing.
+    Strictly restricted to Admin role.
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted. Only Administrators can configure printout templates, layout and texts.")
+        return redirect('dashboard')
+
+    config = PrintTemplateConfig.get_active()
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'reset_defaults':
+            config.ref_code_prefix = 'KMIO/DRO/        /20___'
+            config.header_line_1 = 'KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY'
+            config.header_line_2 = 'Department of Radiation Oncology'
+            config.header_line_3 = 'Radiation Therapy Technician information sheet'
+            config.intro_paragraph = (
+                "The scheduled patient lists are handed over to Chief Radiotherapy Technologist RTTs posted in the "
+                "respective machines to start radiotherapy for the new patients as scheduled in the table below. "
+                "The following are the list of the new patients for whom radiotherapy is to be started on the respective "
+                "dates. RTTs are required to perf the necessary procedures as per instructions on the RT chart, "
+                "including setup and verification"
+            )
+            config.table_section_title = "New Patient starts from {start_date} to {end_date}"
+            config.note_paragraph_1 = (
+                "Both the Consultant Radiation oncologist and the Radiation Physicist should have signed and dated the "
+                "RT Chart and ensure that informed written consent should be signed by the patient and his/her attendant."
+            )
+            config.note_paragraph_2 = (
+                "The Radiation Oncologist and Physicist are requested to attend to new patients setup as per schedule in each shift. "
+                "Time allocation for starting of new patients on RT to be utilised efficiently without disruption to ongoing treatments in the respective machines"
+            )
+            config.copy_to_recipients = (
+                "1. HOD Physics/Faculty concerned for setup verification\n"
+                "2. HOU RT I/II/III/ Faculty concerned for setup inspection and verification\n"
+                "3. Chief Radiotherapy technologist\n"
+                "4. RTT of concerned shift to start the RT for patients mentioned in the above list\n"
+                "5. Machine Notice board"
+            )
+            config.default_signing_authority = "Dr. Naveen T"
+            config.default_designation = "Professor and Head of the Department"
+            config.department_signature_line = "Department of Radiation Oncology"
+            config.page_margin_cm = 2.5
+            config.row_vertical_padding_pt = 2.7
+            config.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action="PRINT_TEMPLATE_RESET",
+                details="Reset printout template, headers, and layout to institutional defaults",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            messages.success(request, "Printout template and layout reset to institutional defaults successfully!")
+            return redirect('print_template_settings')
+
+        # Normal Save
+        config.ref_code_prefix = request.POST.get('ref_code_prefix', config.ref_code_prefix).strip()
+        config.header_line_1 = request.POST.get('header_line_1', config.header_line_1).strip()
+        config.header_line_2 = request.POST.get('header_line_2', config.header_line_2).strip()
+        config.header_line_3 = request.POST.get('header_line_3', config.header_line_3).strip()
+        config.intro_paragraph = request.POST.get('intro_paragraph', config.intro_paragraph).strip()
+        config.table_section_title = request.POST.get('table_section_title', config.table_section_title).strip()
+        config.note_paragraph_1 = request.POST.get('note_paragraph_1', config.note_paragraph_1).strip()
+        config.note_paragraph_2 = request.POST.get('note_paragraph_2', config.note_paragraph_2).strip()
+        config.copy_to_recipients = request.POST.get('copy_to_recipients', config.copy_to_recipients).strip()
+        config.default_signing_authority = request.POST.get('default_signing_authority', config.default_signing_authority).strip()
+        config.default_designation = request.POST.get('default_designation', config.default_designation).strip()
+        config.department_signature_line = request.POST.get('department_signature_line', config.department_signature_line).strip()
+        try:
+            config.page_margin_cm = float(request.POST.get('page_margin_cm', 2.5))
+        except (ValueError, TypeError):
+            config.page_margin_cm = 2.5
+        try:
+            config.row_vertical_padding_pt = float(request.POST.get('row_vertical_padding_pt', 2.7))
+        except (ValueError, TypeError):
+            config.row_vertical_padding_pt = 2.7
+
+        config.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="PRINT_TEMPLATE_UPDATE",
+            details=f"Updated printout template headers, layout ({config.page_margin_cm}cm, {config.row_vertical_padding_pt}pt) and texts",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        messages.success(request, "Printout template texts and layout successfully saved!")
+        return redirect('print_template_settings')
+
+    # Build consultant choices from Consultant role users + Consultant table
+    consultant_users = User.objects.filter(
+        Q(profile__role__role_name__icontains='Consultant') | 
+        Q(profile__role__role_description__icontains='Consultant'),
+        is_active=True
+    ).select_related('profile').order_by('first_name', 'username')
+
+    consultant_options = []
+    seen = set()
+    if config.default_signing_authority:
+        consultant_options.append(config.default_signing_authority)
+        seen.add(config.default_signing_authority.strip().lower())
+
+    for u in consultant_users:
+        prefix = u.profile.prefix if hasattr(u, 'profile') and u.profile and u.profile.prefix else 'Dr.'
+        full = u.get_full_name().strip()
+        if full:
+            name_str = f"{prefix} {full}".strip()
+        elif u.first_name:
+            name_str = f"{prefix} {u.first_name}".strip()
+        else:
+            name_str = f"{prefix} {u.username.title()}".strip()
+        if name_str.strip().lower() not in seen:
+            consultant_options.append(name_str)
+            seen.add(name_str.strip().lower())
+
+    for c in Consultant.objects.filter(is_active=True).order_by('name'):
+        if c.name.strip().lower() not in seen:
+            consultant_options.append(c.name)
+            seen.add(c.name.strip().lower())
+
+    designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
+
+    context = {
+        'config': config,
+        'consultant_options': consultant_options,
+        'designations': designations,
+    }
+    return render(request, 'reports/print_template_settings.html', context)
+
 

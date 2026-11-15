@@ -104,6 +104,7 @@
         {% endif %}
 
         {% if IS_ADMIN_ONLY %}
+        <a href="{% url 'print_template_settings' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;" title="Configure Printout Header, Text & Layout (Admin Only)">🖨️ Print Layout & Texts</a>
         <a href="{% url 'audit_log_report' %}" class="action-ribbon-btn" style="color: #8b0000; font-weight: bold;" title="System Security & Clinical Audit Trail (Admin Only)">📋 Audit Logs</a>
         {% endif %}
 
