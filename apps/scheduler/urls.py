@@ -9,6 +9,7 @@ urlpatterns = [
     path('unscheduled/', views.unscheduled_patients_view, name='unscheduled_patients'),
     path('mappings/', views.machine_mappings_view, name='machine_mappings'),
     path('mappings/<int:mapping_id>/edit/', views.edit_machine_mapping_view, name='edit_machine_mapping'),
+    path('holidays/', views.holiday_manager_view, name='holiday_manager'),
     path('manual-grid/', report_views.manual_schedule_grid_view, name='scheduler_manual_grid'),
     
     # API endpoints

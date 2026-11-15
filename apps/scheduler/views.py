@@ -10,8 +10,9 @@ from decimal import Decimal
 
 from .models import (
     Machine, Shift, Technique, SpecialTechnique, SimulatedFor,
-    TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule
+    TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday
 )
+import json
 from apps.patients.models import Patient, DEFAULT_SITES
 from apps.core.models import AuditLog
 from apps.core.permissions import is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule
@@ -287,6 +288,8 @@ def schedule_patient_view(request, patient_id):
 
     jr_user_names = [u.get_full_name() or u.username for u in jr_users]
 
+    holiday_map = {h.date.isoformat(): (h.comment or 'Hospital Holiday') for h in Holiday.objects.all()}
+
     context = {
         'patient': patient,
         'schedule': existing_schedule,
@@ -305,6 +308,8 @@ def schedule_patient_view(request, patient_id):
         'jr_user_names': jr_user_names,
         'default_jr_val': default_jr_val,
         'is_new_course': is_new_course,
+        'holiday_map': holiday_map,
+        'holiday_map_json': json.dumps(holiday_map),
         'today': date.today().isoformat(),
     }
     return render(request, 'scheduler/schedule_patient.html', context)
@@ -407,11 +412,12 @@ def get_nearest_free_slot_api(request):
 
     available_slots = []
     curr_date = search_date
+    holiday_dates = set(Holiday.objects.values_list('date', flat=True))
 
     # Search up to 60 days ahead
     for _ in range(60):
-        # Skip Sundays (weekday 6)
-        if curr_date.weekday() != 6:
+        # Skip Sundays (weekday 6) and scheduled Holidays
+        if curr_date.weekday() != 6 and curr_date not in holiday_dates:
             machine_total_booked = TreatmentSchedule.objects.filter(machine=machine, date_of_start=curr_date).count()
 
             if shift:
@@ -476,6 +482,7 @@ def get_mapped_machines_slots_api(request):
     tech_obj = Technique.objects.filter(id=tech_id, is_active=True).first() if tech_id else None
     spec_tech_obj = SpecialTechnique.objects.filter(id=spec_tech_id, is_active=True).first() if spec_tech_id else None
 
+    holiday_dates = set(Holiday.objects.values_list('date', flat=True))
     machines = Machine.objects.filter(is_active=True).order_by('display_order', 'name')
     results = []
 
@@ -498,13 +505,13 @@ def get_mapped_machines_slots_api(request):
         if not active_shifts:
             continue
 
-        # Find earliest available free slot (skipping Sundays)
+        # Find earliest available free slot (skipping Sundays and scheduled Holidays)
         # Capacity rule: Exactly 1 patient per shift accommodated per day
         curr_date = start_search
         found_slot = None
 
         for _ in range(60):
-            if curr_date.weekday() != 6:  # Skip Sunday
+            if curr_date.weekday() != 6 and curr_date not in holiday_dates:  # Skip Sunday and Holidays
                 # Auto-designate the first open shift on this date with 0 bookings (< 1 patient/shift limit)
                 free_shift = None
                 for sh in active_shifts:
@@ -716,4 +723,82 @@ def tag_treatment_course_view(request, schedule_id):
             messages.success(request, f"Course #{schedule.id} is now an independent course.")
 
     return redirect('patient_detail', patient_id=patient.id)
+
+
+@login_required
+def holiday_manager_view(request):
+    """
+    Holiday Management View:
+    Accessible by Admin & SubAdmin.
+    Allows adding dates with an optional comment, and deleting holidays.
+    Holidays are excluded from auto-scheduling machine slots,
+    and display a warning symbol during manual scheduling.
+    """
+    if not is_admin_or_subadmin(request.user):
+        messages.error(request, "Access restricted. Hospital holidays can only be managed by Administrators and SubAdministrators.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'add':
+            date_raw = (request.POST.get('date') or request.POST.get('holiday_date') or '').strip()
+            comment = request.POST.get('comment', '').strip()
+
+            if not date_raw:
+                messages.error(request, "Holiday date is required.")
+                return redirect('holiday_manager')
+
+            try:
+                hol_date = datetime.strptime(date_raw, "%Y-%m-%d").date()
+            except ValueError:
+                messages.error(request, "Invalid date format.")
+                return redirect('holiday_manager')
+
+            if Holiday.objects.filter(date=hol_date).exists():
+                messages.warning(request, f"Holiday on {hol_date.strftime('%d-%b-%Y')} is already registered.")
+                return redirect('holiday_manager')
+
+            Holiday.objects.create(
+                date=hol_date,
+                comment=comment,
+                created_by=request.user
+            )
+
+            AuditLog.objects.create(
+                user=request.user,
+                action="HOLIDAY_ADDED",
+                details=f"Added hospital holiday on {hol_date.strftime('%d-%b-%Y')}: {comment or 'No description'}",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+
+            messages.success(request, f"Holiday on {hol_date.strftime('%d-%b-%Y')} ({comment or 'No description'}) added successfully.")
+            return redirect('holiday_manager')
+
+        elif action == 'delete':
+            holiday_id = request.POST.get('holiday_id')
+            hol = get_object_or_404(Holiday, id=holiday_id)
+            h_date_str = hol.date.strftime('%d-%b-%Y')
+            h_comment = hol.comment or ''
+            hol.delete()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action="HOLIDAY_REMOVED",
+                details=f"Removed hospital holiday for {h_date_str} ({h_comment})",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+
+            messages.success(request, f"Holiday for {h_date_str} removed.")
+            return redirect('holiday_manager')
+
+    holidays = Holiday.objects.all().order_by('date')
+    today = date.today()
+
+    context = {
+        'holidays': holidays,
+        'today': today.isoformat(),
+        'total_holidays': holidays.count(),
+    }
+    return render(request, 'scheduler/holidays.html', context)
+
 

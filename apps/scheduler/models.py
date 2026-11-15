@@ -205,21 +205,32 @@ class TreatmentSchedule(models.Model):
             from django.core.exceptions import ValidationError
             raise ValidationError({'date_of_start': "Treatment Start Date cannot be earlier than CT Simulation Date. Start date must be on or after simulation date."})
 
-    def calculate_end_date(self):
+    @staticmethod
+    def compute_end_date(start_date, no_of_fractions):
         """
-        Calculates estimated completion date based on date_of_start and no_of_fractions,
-        skipping Sundays (Monday to Saturday delivery, 1 fraction/day).
+        Calculates estimated completion date based on start_date and no_of_fractions,
+        skipping Sundays (Monday to Saturday delivery, 1 fraction/day) and scheduled Holidays.
         """
-        if not self.date_of_start or not self.no_of_fractions or self.no_of_fractions <= 0:
+        if not start_date or not no_of_fractions or no_of_fractions <= 0:
             return None
+
         from datetime import timedelta
-        curr = self.date_of_start
+        holiday_dates = set(Holiday.objects.values_list('date', flat=True))
+        curr = start_date
         fractions_done = 1
-        while fractions_done < self.no_of_fractions:
+        while fractions_done < no_of_fractions:
             curr += timedelta(days=1)
-            if curr.weekday() != 6:  # Skip Sunday
+            if curr.weekday() != 6 and curr not in holiday_dates:  # Skip Sunday and Holidays
                 fractions_done += 1
         return curr
+
+    def calculate_end_date(self, start_date=None, no_of_fractions=None):
+        """
+        Calculates estimated completion date for this schedule instance.
+        """
+        st = start_date or self.date_of_start
+        frac = no_of_fractions or self.no_of_fractions
+        return self.compute_end_date(st, frac)
 
     @property
     def treatment_end_date(self):
@@ -245,3 +256,26 @@ class TreatmentSchedule(models.Model):
         if self.shift:
             return self.shift.name
         return '-'
+
+
+class Holiday(models.Model):
+    """
+    Hospital / Department Scheduled Holidays.
+    Configured by Admin & SubAdmin.
+    Excluded from auto-scheduling machine slots.
+    Allowed with a warning symbol during manual scheduling.
+    """
+    date = models.DateField(unique=True, db_index=True, verbose_name="Holiday Date")
+    comment = models.CharField(max_length=255, blank=True, null=True, verbose_name="Comment / Description")
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['date']
+        verbose_name = "Hospital Holiday"
+        verbose_name_plural = "Hospital Holidays"
+
+    def __str__(self):
+        desc = f" ({self.comment})" if self.comment else ""
+        return f"{self.date.strftime('%d-%b-%Y')}{desc}"
+

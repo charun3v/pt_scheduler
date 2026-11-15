@@ -79,6 +79,7 @@
         {% if IS_ADMIN_OR_SUBADMIN %}
         <span style="color: #888; margin: 0 4px;">|</span>
         <a href="{% url 'machine_mappings' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;" title="Configure Machine-Shift-Technique Mappings & Quotas">⚙️ Machine Mappings</a>
+        <a href="{% url 'holiday_manager' %}" class="action-ribbon-btn" style="color: #003366; font-weight: bold;" title="Configure Hospital Holidays (Excludes from Auto-Scheduling)">📅 Holidays</a>
         {% endif %}
 
         {% if CAN_MANAGE_USERS %}

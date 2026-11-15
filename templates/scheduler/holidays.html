@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Hospital Holidays - {{ APP_TITLE }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+
+    <!-- Header Card -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #003366; padding-bottom: 10px; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 24px;">📅</span>
+                <div>
+                    <h2 style="margin: 0; font-size: 17px; color: #003366; font-weight: 700;">
+                        Hospital Holidays & Operational Calendar ({{ total_holidays }})
+                    </h2>
+                    <div style="font-size: 11px; color: #555; margin-top: 2px;">
+                        Holidays are <strong>automatically excluded from auto-scheduling</strong>. In manual scheduling, they may be selected but will display a <strong>warning symbol (⚠️)</strong>.
+                    </div>
+                </div>
+            </div>
+            <a href="{% url 'manual_schedule_grid' %}" target="_blank" class="action-ribbon-btn" style="color: #107c41; border-color: #107c41; font-weight: bold; font-size: 12px;">
+                📊 Open Schedule Worksheet ↗
+            </a>
+        </div>
+
+        <!-- Add Holiday Form (Single Line Form: Date + Comment + Add) -->
+        <form method="POST" action="{% url 'holiday_manager' %}" style="background: #f0f7ff; border: 1px solid #b8daff; border-radius: 4px; padding: 12px 14px; margin-bottom: 6px;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add">
+            
+            <div style="font-size: 12px; font-weight: 700; color: #003366; margin-bottom: 8px;">
+                ➕ Add Hospital Holiday
+            </div>
+
+            <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;">
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 3px; color: #333;">
+                        Holiday Date: *
+                    </label>
+                    <input type="date" name="date" required value="{{ today }}" min="2020-01-01" max="2035-12-31"
+                           style="padding: 5px 8px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; background: #fff; width: 140px; font-weight: 600;">
+                </div>
+
+                <div style="flex: 1; min-width: 220px;">
+                    <label style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 3px; color: #333;">
+                        Comment / Occasion (Optional):
+                    </label>
+                    <input type="text" name="comment" placeholder="e.g. Republic Day, Diwali, Annual Machine Calibration..."
+                           style="width: 100%; box-sizing: border-box; padding: 5px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; background: #fff;">
+                </div>
+
+                <div>
+                    <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 6px 16px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                        ➕ Add Holiday
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Holidays List Table -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden;">
+        <div style="background: #f6f8fa; padding: 8px 16px; border-bottom: 1px solid #d0d7de; font-weight: 600; font-size: 13px; color: #24292f;">
+            Configured Hospital Holidays
+        </div>
+
+        {% if holidays %}
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <thead>
+                    <tr style="background: #003366; color: #ffffff; text-align: left;">
+                        <th style="padding: 8px 10px; width: 40px; text-align: center;">#</th>
+                        <th style="padding: 8px 10px; width: 130px;">Holiday Date</th>
+                        <th style="padding: 8px 10px; width: 100px;">Day of Week</th>
+                        <th style="padding: 8px 10px;">Comment / Occasion</th>
+                        <th style="padding: 8px 10px; width: 130px;">Added By</th>
+                        <th style="padding: 8px 10px; width: 70px; text-align: center;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in holidays %}
+                    <tr style="border-bottom: 1px solid #e1e4e8; {% cycle 'background:#ffffff;' 'background:#fbfbfb;' %}"
+                        onmouseover="this.style.background='#f0f7ff';"
+                        onmouseout="this.style.background='{% cycle '#ffffff' '#fbfbfb' %}';">
+                        <td style="padding: 7px 10px; text-align: center; color: #888;">
+                            {{ forloop.counter }}
+                        </td>
+                        <td style="padding: 7px 10px; font-weight: 700; color: #b91c1c;">
+                            📅 {{ h.date|date:"d-M-Y" }}
+                        </td>
+                        <td style="padding: 7px 10px; font-weight: 500; color: #334155;">
+                            {{ h.date|date:"l" }}
+                        </td>
+                        <td style="padding: 7px 10px; color: #1e293b;">
+                            {% if h.comment %}
+                                <strong>{{ h.comment }}</strong>
+                            {% else %}
+                                <span style="color: #94a3b8; font-style: italic;">No comment entered</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 7px 10px; color: #64748b; font-size: 11px;">
+                            {{ h.created_by.username|default:"System" }}
+                        </td>
+                        <td style="padding: 7px 10px; text-align: center;">
+                            <form method="POST" action="{% url 'holiday_manager' %}" style="display: inline; margin: 0;"
+                                  onsubmit="return confirm('Remove holiday for {{ h.date|date:'d-M-Y' }}?');">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="holiday_id" value="{{ h.id }}">
+                                <button type="submit" class="btn-delete" style="padding: 2px 7px; font-size: 11px; cursor: pointer;" title="Remove this holiday">
+                                    🗑️
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 36px 16px; color: #64748b;">
+            <div style="font-size: 32px; margin-bottom: 8px;">📅</div>
+            <strong style="font-size: 13px; color: #1e293b;">No Hospital Holidays Configured</strong>
+            <p style="font-size: 12px; margin: 4px 0 0 0;">
+                All days Monday through Saturday are currently treated as active treatment days by the auto-scheduler.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

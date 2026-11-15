@@ -17,7 +17,7 @@ from apps.core.models import Role, UserProfile, Consultant, FieldValidationConfi
 from apps.core.validators import get_or_create_field_config, validate_field_value
 from apps.patients.models import Patient
 from apps.scheduler.models import (
-    Machine, Shift, Technique, SpecialTechnique, TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule
+    Machine, Shift, Technique, SpecialTechnique, TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday
 )
 from apps.core.permissions import (
     can_edit_locked_identity,
@@ -33,8 +33,9 @@ def run_tests():
     print("RUNNING RADIOTHERAPY PATIENT SCHEDULER TEST SUITE")
     print("==================================================")
 
-    # Clean up test patients
-    Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 7654321, 12345]).delete()
+    # Clean up test patients & test holidays
+    Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 7654321, 12345]).delete()
+    Holiday.objects.filter(date__in=[date(2026, 11, 20), date(2026, 11, 25)]).delete()
 
     # 1. Test Admin vs SubAdmin vs Resident Granular Permissions
     print("\n--- Test 1: Role Permissions (Admin vs SubAdmin vs Resident) ---")
@@ -1062,6 +1063,153 @@ def run_tests():
     # Cleanup
     test_pt19.delete()
     print("✓ Test 19 Passed: Dashboard single line layout, 'Schedule Status' header, Admin hide with comment confirmation, and renamed 'Add Treatment Course and Schedule' button fully verified.")
+
+    # 20. Test Schedule Worksheet Default Dates and Holiday Management & Warning Symbols
+    print("\n--- Test 20: Schedule Worksheet Default Dates (Upcoming Monday & +6 Months), Holiday Management, Auto-Scheduling Exclusion & Warning Symbols ---")
+    from apps.reports.views import get_upcoming_monday, add_six_months
+
+    # 1. Upcoming Monday calculation
+    assert get_upcoming_monday(date(2026, 11, 15)) == date(2026, 11, 16), "Sunday 2026-11-15 must lead to Monday 2026-11-16"
+    assert get_upcoming_monday(date(2026, 11, 16)) == date(2026, 11, 16), "Monday 2026-11-16 must remain Monday 2026-11-16"
+    assert get_upcoming_monday(date(2026, 11, 17)) == date(2026, 11, 23), "Tuesday 2026-11-17 must lead to next Monday 2026-11-23"
+
+    # 2. 6 Months calculation
+    assert add_six_months(date(2026, 11, 16)) == date(2027, 5, 16), "6 months from 2026-11-16 must be 2027-05-16"
+    assert add_six_months(date(2026, 8, 31)) == date(2027, 2, 28), "6 months from 2026-08-31 must clamp to 2027-02-28"
+
+    # 3. Schedule Worksheet Default Dates on GET
+    c.force_login(admin_user)
+    resp_grid_default = c.get('/reports/manual-grid/')
+    assert resp_grid_default.status_code == 200
+    expected_default_start = get_upcoming_monday(date.today()).isoformat()
+    expected_default_end = add_six_months(get_upcoming_monday(date.today())).isoformat()
+    assert resp_grid_default.context['start_date_str'] == expected_default_start, f"Expected start date {expected_default_start}"
+    assert resp_grid_default.context['end_date_str'] == expected_default_end, f"Expected end date {expected_default_end}"
+
+    # 4. Holiday Management RBAC & CRUD
+    # Clean test holidays first
+    Holiday.objects.filter(date__in=[date(2026, 11, 20), date(2026, 11, 25)]).delete()
+
+    # Clinical resident blocked from managing holidays
+    c.force_login(res_user)
+    resp_res_holiday = c.get('/scheduler/holidays/')
+    assert resp_res_holiday.status_code in [302, 403], "Resident must be blocked from holiday manager"
+
+    # SubAdmin can view and add holidays
+    c.force_login(subadmin_user)
+    resp_subadmin_hview = c.get('/scheduler/holidays/')
+    assert resp_subadmin_hview.status_code == 200, "SubAdmin can view holidays"
+
+    resp_add_h1 = c.post('/scheduler/holidays/', {
+        'action': 'add',
+        'holiday_date': '2026-11-20',
+        'comment': 'National Foundation Day'
+    })
+    assert resp_add_h1.status_code == 302
+    assert Holiday.objects.filter(date=date(2026, 11, 20)).exists(), "Holiday 2026-11-20 must be created"
+
+    # Admin can add holiday
+    c.force_login(admin_user)
+    resp_add_h2 = c.post('/scheduler/holidays/', {
+        'action': 'add',
+        'holiday_date': '2026-11-25',
+        'comment': 'Hospital Annual Day'
+    })
+    assert resp_add_h2.status_code == 302
+    assert Holiday.objects.filter(date=date(2026, 11, 25)).exists(), "Holiday 2026-11-25 must be created"
+
+    # Verify AuditLog recorded
+    h_audit = AuditLog.objects.filter(action='HOLIDAY_ADDED', details__icontains='National Foundation Day').first()
+    assert h_audit is not None, "HOLIDAY_ADDED audit log must be recorded"
+
+    # 5. TreatmentSchedule.calculate_end_date skips Sundays and Holidays
+    # 5 fractions starting Thursday 2026-11-19:
+    # Day 1: Thu 19
+    # Day 2: Sat 21 (Fri 20 is Holiday)
+    # Day 3: Mon 23 (Sun 22 is Sunday)
+    # Day 4: Tue 24
+    # Day 5: Thu 26 (Wed 25 is Holiday)
+    calc_end = TreatmentSchedule.compute_end_date(date(2026, 11, 19), 5)
+    assert calc_end == date(2026, 11, 26), f"Expected end date 2026-11-26, got {calc_end}"
+
+    # 6. Auto-scheduling slot API strictly excludes holidays
+    # If starting search from 2026-11-19, earliest slot cannot be on 2026-11-20 (Holiday)
+    tech_imrt = Technique.objects.filter(name__icontains='IMRT').first() or Technique.objects.first()
+    spec_none = SpecialTechnique.objects.filter(name__iexact='None').first() or SpecialTechnique.objects.first()
+    resp_slots_api = c.get(f'/scheduler/api/mapped-machine-slots/?technique_id={tech_imrt.id}&special_technique_id={spec_none.id}&sim_date=2026-11-19')
+    assert resp_slots_api.status_code == 200
+    slots_data = resp_slots_api.json()
+    assert slots_data['success'] is True
+    for m_info in slots_data['machines']:
+        if m_info['slot']:
+            assert m_info['slot']['date'] != '2026-11-20', "Auto-scheduling must NOT allocate on a holiday (2026-11-20)"
+            assert m_info['slot']['date'] != '2026-11-25', "Auto-scheduling must NOT allocate on a holiday (2026-11-25)"
+
+    # 7. Manual Scheduling Grid warning symbol & AJAX behavior
+    cons_test = Consultant.objects.first()
+    mach_test = Machine.objects.first()
+    shift_test = Shift.objects.first()
+    test_pt20 = Patient.objects.create(
+        mr_no=9999020,
+        pt_name="Test Holiday Pt Twenty",
+        age=50,
+        sex="Male",
+        primary_consultant=cons_test,
+        diagnosis="Test Cancer",
+        site_of_treatment="Head and neck"
+    )
+    sched20 = TreatmentSchedule.objects.create(
+        patient=test_pt20,
+        machine=mach_test,
+        shift=shift_test,
+        technique=tech_imrt,
+        special_technique=spec_none,
+        date_of_sim=date(2026, 11, 10),
+        date_of_start=date(2026, 11, 20),  # Falls on Holiday!
+        dose_planned=Decimal("50.00"),
+        no_of_fractions=25,
+        status='Scheduled'
+    )
+
+    resp_grid_view = c.get('/reports/manual-grid/?start_date=2026-11-01&end_date=2026-11-30')
+    assert resp_grid_view.status_code == 200
+    grid_html = resp_grid_view.content.decode('utf-8')
+    assert "⚠️ Holiday" in grid_html, "Warning badge '⚠️ Holiday' must be rendered in manual schedule grid"
+    assert "National Foundation Day" in grid_html, "Holiday comment must be present in tooltip"
+
+    # Inline AJAX save for manual grid with holiday date
+    resp_ajax_save = c.post('/reports/manual-grid/save-row/', {
+        'schedule_id': sched20.id,
+        'date_of_start': '2026-11-25',
+        'shift_id': str(shift_test.id),
+        'machine_id': str(mach_test.id),
+    })
+    assert resp_ajax_save.status_code == 200
+    ajax_data = resp_ajax_save.json()
+    assert ajax_data['success'] is True
+    assert ajax_data['is_holiday'] is True
+    assert ajax_data['holiday_comment'] == 'Hospital Annual Day'
+
+    # 8. Patient Scheduling View has holiday map
+    resp_sched_view = c.get(f'/scheduler/patient/{test_pt20.id}/')
+    assert resp_sched_view.status_code == 200
+    assert 'holiday_map' in resp_sched_view.context
+    assert '2026-11-20' in resp_sched_view.context['holiday_map']
+
+    # 9. Delete Holiday via SubAdmin
+    c.force_login(subadmin_user)
+    h_to_delete = Holiday.objects.get(date=date(2026, 11, 25))
+    resp_del_h = c.post('/scheduler/holidays/', {
+        'action': 'delete',
+        'holiday_id': h_to_delete.id
+    })
+    assert resp_del_h.status_code == 302
+    assert not Holiday.objects.filter(date=date(2026, 11, 25)).exists()
+
+    # Cleanup
+    Holiday.objects.filter(date=date(2026, 11, 20)).delete()
+    test_pt20.delete()
+    print("✓ Test 20 Passed: Schedule Worksheet default upcoming Monday & 6 months dates, Holiday management (Admin/SubAdmin), auto-scheduling exclusion, and manual scheduling warning symbols fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

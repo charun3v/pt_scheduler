@@ -324,13 +324,21 @@
                         </td>
 
                         <!-- 6. EDITABLE: Start Date -->
-                        <td style="background: #fdfdfd;">
-                            <input type="date" name="start_date_{{ s.id }}" id="start_date_{{ s.id }}"
-                                   value="{{ s.date_of_start|date:'Y-m-d' }}"
-                                   {% if s.date_of_sim %}min="{{ s.date_of_sim|date:'Y-m-d' }}" data-sim-date="{{ s.date_of_sim|date:'Y-m-d' }}"{% endif %}
-                                   data-orig-date="{{ s.date_of_start|date:'Y-m-d' }}"
-                                   class="excel-cell-input"
-                                   onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
+                        <td style="background: #fdfdfd; white-space: nowrap;">
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <input type="date" name="start_date_{{ s.id }}" id="start_date_{{ s.id }}"
+                                       value="{{ s.date_of_start|date:'Y-m-d' }}"
+                                       {% if s.date_of_sim %}min="{{ s.date_of_sim|date:'Y-m-d' }}" data-sim-date="{{ s.date_of_sim|date:'Y-m-d' }}"{% endif %}
+                                       data-orig-date="{{ s.date_of_start|date:'Y-m-d' }}"
+                                       class="excel-cell-input {% if s.is_holiday %}cell-holiday-warn{% endif %}"
+                                       onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');"
+                                       style="width: 125px; {% if s.is_holiday %}border-color: #d97706; background-color: #fffbeb;{% endif %}">
+                                <span id="holiday_warn_{{ s.id }}" class="holiday-warn-badge"
+                                      style="{% if not s.is_holiday %}display: none;{% endif %} background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: bold; cursor: help; white-space: nowrap;"
+                                      title="Hospital Holiday: {{ s.holiday_comment }}">
+                                    ⚠️ Holiday
+                                </span>
+                            </div>
                         </td>
 
                         <!-- 7. EDITABLE: Shift -->
@@ -402,6 +410,29 @@
 </div>
 
 <script>
+    const gHolidays = {{ holiday_map_json|safe }};
+
+    function updateHolidayWarning(schedId, dateVal) {
+        var warnBadge = document.getElementById('holiday_warn_' + schedId);
+        var dateEl = document.getElementById('start_date_' + schedId);
+        if (!warnBadge) return;
+
+        if (dateVal && gHolidays && gHolidays[dateVal]) {
+            warnBadge.style.display = 'inline-block';
+            warnBadge.title = 'Hospital Holiday: ' + gHolidays[dateVal];
+            if (dateEl) {
+                dateEl.style.borderColor = '#d97706';
+                dateEl.style.backgroundColor = '#fffbeb';
+            }
+        } else {
+            warnBadge.style.display = 'none';
+            if (dateEl && !dateEl.closest('tr').classList.contains('cell-modified')) {
+                dateEl.style.borderColor = '';
+                dateEl.style.backgroundColor = '';
+            }
+        }
+    }
+
     // Highlight cell when modified
     function markCellModified(schedId) {
         var row = document.getElementById('row-' + schedId);
@@ -432,6 +463,8 @@
             }
             return;
         }
+
+        updateHolidayWarning(schedId, dateVal);
 
         var shiftVal = document.getElementById('shift_' + schedId).value;
         var machVal = document.getElementById('machine_' + schedId).value;
@@ -469,6 +502,13 @@
                 if (ind) {
                     ind.className = 'save-indicator saved';
                     ind.innerText = 'Saved ✓';
+                }
+                if (data.is_holiday) {
+                    var warn = document.getElementById('holiday_warn_' + schedId);
+                    if (warn) {
+                        warn.style.display = 'inline-block';
+                        warn.title = 'Hospital Holiday: ' + (data.holiday_comment || 'Hospital Holiday');
+                    }
                 }
             } else {
                 if (ind) {

@@ -5,10 +5,12 @@ from django.http import HttpResponse, JsonResponse
 from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import date, datetime, timedelta
+import calendar
+import json
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-from apps.scheduler.models import Machine, TreatmentSchedule, Shift
+from apps.scheduler.models import Machine, TreatmentSchedule, Shift, Holiday
 from apps.patients.models import Patient
 from apps.core.models import Consultant, AuditLog
 from apps.core.permissions import is_admin_or_subadmin, is_admin_only
@@ -293,6 +295,28 @@ def manual_grid_ampersand_redirect(request, query_string=''):
     return redirect(target)
 
 
+def get_upcoming_monday(d):
+    """
+    Returns upcoming Monday.
+    If d is Monday, returns d.
+    If d is Tue-Sun, returns the immediately following Monday.
+    """
+    days_ahead = (0 - d.weekday()) % 7
+    return d + timedelta(days=days_ahead)
+
+
+def add_six_months(d):
+    """
+    Returns the date exactly 6 months from date d.
+    Clamps day to the last valid day of the target month.
+    """
+    m = d.month - 1 + 6
+    y = d.year + m // 12
+    m = m % 12 + 1
+    day = min(d.day, calendar.monthrange(y, m)[1])
+    return date(y, m, day)
+
+
 @login_required
 def manual_schedule_grid_view(request):
     """
@@ -323,6 +347,9 @@ def manual_schedule_grid_view(request):
         selected_machine = all_machines.filter(code__iexact='LA1').first() or all_machines.first()
 
     today = date.today()
+    default_start_date = get_upcoming_monday(today)
+    default_end_date = add_six_months(default_start_date)
+
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
     include_pending = request.GET.get('include_pending') == '1'
@@ -349,18 +376,20 @@ def manual_schedule_grid_view(request):
             try:
                 start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
             except ValueError:
-                start_date = date(today.year, 1, 1)
+                start_date = default_start_date
+                start_date_str = start_date.isoformat()
         else:
-            start_date = date(today.year, 1, 1)
+            start_date = default_start_date
             start_date_str = start_date.isoformat()
 
         if end_date_str:
             try:
                 end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
             except ValueError:
-                end_date = date(today.year, 12, 31)
+                end_date = add_six_months(start_date)
+                end_date_str = end_date.isoformat()
         else:
-            end_date = date(today.year, 12, 31)
+            end_date = add_six_months(start_date)
             end_date_str = end_date.isoformat()
 
     base_filter = Q()
@@ -375,6 +404,21 @@ def manual_schedule_grid_view(request):
     schedules_qs = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'shift', 'technique', 'special_technique', 'patient__primary_consultant'
     ).filter(base_filter & date_filter).exclude(status='Draft').order_by('date_of_start', 'shift__display_order', 'patient__pt_name')
+
+    # Load holidays
+    holidays_qs = Holiday.objects.all().order_by('date')
+    holiday_map = {h.date.isoformat(): (h.comment or 'Hospital Holiday') for h in holidays_qs}
+    holiday_map_json = json.dumps(holiday_map)
+    holiday_dates_dict = {h.date: (h.comment or 'Hospital Holiday') for h in holidays_qs}
+
+    schedules_list = list(schedules_qs)
+    for s in schedules_list:
+        if s.date_of_start and s.date_of_start in holiday_dates_dict:
+            s.is_holiday = True
+            s.holiday_comment = holiday_dates_dict[s.date_of_start]
+        else:
+            s.is_holiday = False
+            s.holiday_comment = ''
 
     # BATCH POST SAVE: Process all modified rows submitted via form
     if request.method == 'POST':
@@ -454,9 +498,11 @@ def manual_schedule_grid_view(request):
         'start_date_str': start_date_str,
         'end_date_str': end_date_str,
         'include_pending': include_pending,
-        'schedules': schedules_qs,
-        'total_count': schedules_qs.count(),
+        'schedules': schedules_list,
+        'total_count': len(schedules_list),
         'preset': preset,
+        'holiday_map': holiday_map,
+        'holiday_map_json': holiday_map_json,
     }
     return render(request, 'reports/manual_schedule_grid.html', context)
 
@@ -519,6 +565,14 @@ def manual_schedule_save_row_api(request):
         ip_address=request.META.get('REMOTE_ADDR')
     )
 
+    is_holiday = False
+    holiday_comment = ''
+    if sched.date_of_start:
+        h_obj = Holiday.objects.filter(date=sched.date_of_start).first()
+        if h_obj:
+            is_holiday = True
+            holiday_comment = h_obj.comment or 'Hospital Holiday'
+
     return JsonResponse({
         'success': True,
         'schedule_id': sched.id,
@@ -527,6 +581,8 @@ def manual_schedule_save_row_api(request):
         'shift_name': sched.shift_display,
         'machine_name': sched.machine_display,
         'status': sched.status,
+        'is_holiday': is_holiday,
+        'holiday_comment': holiday_comment,
     })
 
 
