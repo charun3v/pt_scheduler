@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technician Information Sheet - KMIO</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f1f5f9;
+            color: #1e293b;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        /* Non-printing Control Toolbar */
+        .no-print-toolbar {
+            background: #003366;
+            color: #ffffff;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .no-print-toolbar .btn {
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid transparent;
+        }
+        .btn-print {
+            background: #22c55e;
+            color: #ffffff;
+        }
+        .btn-print:hover {
+            background: #16a34a;
+        }
+        .btn-pdf {
+            background: #38bdf8;
+            color: #0f172a;
+        }
+        .btn-pdf:hover {
+            background: #0ea5e9;
+        }
+        .btn-back {
+            background: rgba(255,255,255,0.15);
+            color: #ffffff;
+            border-color: rgba(255,255,255,0.3);
+        }
+        .btn-back:hover {
+            background: rgba(255,255,255,0.25);
+        }
+
+        /* Printable Sheet Page */
+        .sheet-container {
+            max-width: 850px;
+            margin: 20px auto;
+        }
+        .sheet-page {
+            background: #ffffff;
+            padding: 24px 30px;
+            margin-bottom: 24px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border: 1px solid #cbd5e1;
+            min-height: 1050px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Header Layout */
+        .sheet-header-grid {
+            display: grid;
+            grid-template-columns: 140px 1fr 140px;
+            align-items: start;
+            margin-bottom: 12px;
+        }
+        .header-ref {
+            font-weight: 700;
+            font-size: 11px;
+            color: #000;
+        }
+        .header-center {
+            text-align: center;
+        }
+        .header-center h1 {
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            color: #000;
+            margin-bottom: 2px;
+        }
+        .header-center h2 {
+            font-size: 13px;
+            font-weight: 700;
+            font-style: italic;
+            color: #000;
+            margin-bottom: 2px;
+        }
+        .header-center p {
+            font-size: 11px;
+            font-style: italic;
+            color: #111;
+        }
+        .header-right {
+            text-align: right;
+        }
+        .header-date {
+            font-weight: 700;
+            font-size: 11px;
+            margin-bottom: 6px;
+        }
+        .machine-box {
+            display: inline-block;
+            border: 1.8px solid #000;
+            padding: 4px 12px;
+            font-size: 13px;
+            font-weight: 800;
+            color: #000;
+            background: #fff;
+            white-space: nowrap;
+        }
+
+        /* Descriptive Paragraph */
+        .narrative-intro {
+            font-size: 10px;
+            line-height: 1.35;
+            text-align: justify;
+            margin-bottom: 10px;
+            color: #111;
+        }
+
+        /* Section Title */
+        .section-title {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: #000;
+            margin: 6px 0 10px 0;
+        }
+
+        /* Table */
+        .technician-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin-bottom: 14px;
+        }
+        .technician-table th {
+            background-color: #cbd5e1;
+            color: #000;
+            font-weight: 700;
+            border: 1px solid #94a3b8;
+            padding: 5px 4px;
+            text-align: left;
+            vertical-align: middle;
+        }
+        .technician-table td {
+            border: 1px solid #cbd5e1;
+            padding: 4px 4px;
+            color: #000;
+            vertical-align: middle;
+        }
+        .technician-table tr:nth-child(even) td {
+            background-color: #f8fafc;
+        }
+
+        /* Notes block */
+        .notes-section {
+            font-size: 9.5px;
+            line-height: 1.35;
+            margin-top: 10px;
+            color: #111;
+        }
+        .notes-title {
+            font-weight: 800;
+            margin-bottom: 3px;
+        }
+        .notes-text {
+            margin-bottom: 5px;
+            text-align: justify;
+        }
+
+        /* Bottom Section: Copy To & Signature */
+        .bottom-signatures-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            margin-top: 18px;
+            align-items: end;
+        }
+        .copy-to-block {
+            font-size: 9.5px;
+            line-height: 1.35;
+            color: #111;
+        }
+        .copy-to-block strong {
+            display: block;
+            margin-bottom: 2px;
+        }
+        .copy-to-block ol {
+            margin-left: 16px;
+        }
+        .signature-block {
+            text-align: right;
+            font-size: 10.5px;
+            line-height: 1.3;
+        }
+        .signature-name {
+            font-size: 12px;
+            font-weight: 800;
+            color: #000;
+        }
+        .signature-title {
+            font-style: italic;
+            font-weight: 700;
+            color: #000;
+        }
+        .signature-dept {
+            font-weight: 800;
+            color: #000;
+        }
+
+        /* Footer line */
+        .sheet-footer {
+            margin-top: 18px;
+            padding-top: 6px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            font-size: 9px;
+            color: #475569;
+        }
+
+        @media print {
+            body {
+                background: #ffffff;
+                color: #000;
+                font-size: 9.5pt;
+            }
+            .no-print-toolbar {
+                display: none !important;
+            }
+            .sheet-container {
+                max-width: 100%;
+                margin: 0;
+            }
+            .sheet-page {
+                box-shadow: none;
+                border: none;
+                padding: 0;
+                margin: 0 0 15mm 0;
+                page-break-after: always;
+                min-height: auto;
+            }
+            .sheet-page:last-child {
+                page-break-after: avoid;
+            }
+            .technician-table th {
+                background-color: #cbd5e1 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            @page {
+                size: A4 portrait;
+                margin: 12mm 15mm 12mm 15mm;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Non-print action toolbar -->
+    <div class="no-print-toolbar">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 14px; font-weight: bold;">🖨️ KMIO Radiation Therapy Technician Information Sheet</span>
+            <span style="background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 3px; font-size: 11px;">
+                {{ sheets|length }} Machine Sheet{{ sheets|length|pluralize }} | {{ total_patients }} Total Scheduled Starts
+            </span>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="window.print()" class="btn btn-print">
+                🖨️ Print Now (Ctrl+P)
+            </button>
+            <a href="{% url 'print_treatment_schedule_pdf' %}?{{ request.GET.urlencode }}" class="btn btn-pdf" target="_blank">
+                📄 Download Official PDF
+            </a>
+            <a href="{% url 'manual_schedule_grid' %}?start_date={{ start_date_str }}&end_date={{ end_date_str }}" class="btn btn-back">
+                ⬅️ Back to Worksheet
+            </a>
+        </div>
+    </div>
+
+    <!-- Printable Sheets Container -->
+    <div class="sheet-container">
+        {% for sheet in sheets %}
+        <div class="sheet-page">
+            <div>
+                <!-- Top Header -->
+                <div class="sheet-header-grid">
+                    <div class="header-ref">
+                        KMIO/DRO/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/20___
+                    </div>
+                    <div class="header-center">
+                        <h1>KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY</h1>
+                        <h2>Department of Radiation Oncology</h2>
+                        <p>Radiation Therapy Technician information sheet</p>
+                    </div>
+                    <div class="header-right">
+                        <div class="header-date">{{ today_str }}</div>
+                        <div class="machine-box">{{ sheet.box_title }}</div>
+                    </div>
+                </div>
+
+                <!-- Narrative Paragraph -->
+                <p class="narrative-intro">
+                    The scheduled patient lists are handed over to Chief Radiotherapy Technologist RTTs posted in the respective machines to start radiotherapy for the new patients as scheduled in the table below. The following are the list of the new patients for whom radiotherapy is to be started on the respective dates. RTTs are required to perf the necessary procedures as per instructions on the RT chart, including setup and verification
+                </p>
+
+                <!-- Section Heading -->
+                <div class="section-title">
+                    New Patient starts from {{ start_date_formatted }} to {{ end_date_formatted }}
+                </div>
+
+                <!-- Patient Starts Table (9 Columns) -->
+                <table class="technician-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 58px;">Date</th>
+                            <th style="width: 28px; text-align: center;">Shift</th>
+                            <th style="width: 76px;">Hospital no.</th>
+                            <th style="width: 44px;">RT No.</th>
+                            <th style="width: 88px;">Patient name</th>
+                            <th style="width: 72px;">Phone No.</th>
+                            <th>Diagnosis</th>
+                            <th style="width: 76px;">Consultant Radiation Oncologist</th>
+                            <th style="width: 64px;">Junior Resident</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in sheet.schedules %}
+                        <tr>
+                            <td style="white-space: nowrap; font-weight: 600;">{{ s.date_of_start|date:"d-M-y" }}</td>
+                            <td style="text-align: center; font-weight: 600;">{{ s.shift.name|default:"-" }}</td>
+                            <td style="font-weight: 600;">{{ s.patient.mr_no }}</td>
+                            <td>{{ s.patient.rt_no|default:"-" }}</td>
+                            <td style="font-weight: 600;">{{ s.patient.pt_name }}</td>
+                            <td>{{ s.patient.phone_no|default:"-" }}</td>
+                            <td>{{ s.patient.diagnosis|default:"-" }}</td>
+                            <td>{{ s.patient.primary_consultant.name|default:"-" }}</td>
+                            <td>{{ s.jr_resident|default:"-" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">
+                                No new patient starts scheduled for {{ sheet.machine.name }} between {{ start_date_formatted }} and {{ end_date_formatted }}.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <!-- Please Note Block -->
+                <div class="notes-section">
+                    <div class="notes-title">Please note:</div>
+                    <p class="notes-text">
+                        Both the Consultant Radiation oncologist and the Radiation Physicist should have signed and dated the RT Chart and ensure that informed written consent should be signed by the patient and his/her attendant.
+                    </p>
+                    <p class="notes-text">
+                        The Radiation Oncologist and Physicist are requested to attend to new patients setup as per schedule in each shift. Time allocation for starting of new patients on RT to be utilised efficiently without disruption to ongoing treatments in the respective machines
+                    </p>
+                </div>
+            </div>
+
+            <!-- Bottom: Copy To & Signature -->
+            <div>
+                <div class="bottom-signatures-grid">
+                    <div class="copy-to-block">
+                        <strong>Copy to:</strong>
+                        <ol>
+                            <li>HOD Physics/Faculty concerned for setup verification</li>
+                            <li>HOU RT I/II/III/ Faculty concerned for setup inspection and verification</li>
+                            <li>Chief Radiotherapy technologist</li>
+                            <li>RTT of concerned shift to start the RT for patients mentioned in the above list</li>
+                            <li>Machine Notice board</li>
+                        </ol>
+                    </div>
+                    <div class="signature-block">
+                        <div class="signature-name">Dr. Naveen T</div>
+                        <div class="signature-title">Professor and Head of the Department</div>
+                        <div class="signature-dept">Department of Radiation Oncology</div>
+                    </div>
+                </div>
+
+                <!-- Footer Timestamp & Sheet Info -->
+                <div class="sheet-footer">
+                    <div>Report Generated on:&nbsp;&nbsp;&nbsp;&nbsp;{{ now_time_str }}&nbsp;&nbsp;&nbsp;&nbsp;{{ now_date_str }}</div>
+                    <div>Sheet {{ forloop.counter }} of {{ sheets|length }}</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</body>
+</html>

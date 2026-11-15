@@ -37,6 +37,7 @@ class Patient(models.Model):
     site_of_treatment = models.CharField(max_length=100, blank=True, null=True, verbose_name="Site of Treatment")
     primary_consultant = models.ForeignKey(Consultant, on_delete=models.SET_NULL, null=True, blank=True, related_name="patients", verbose_name="Primary Consultant")
     phone_no = models.CharField(max_length=50, blank=True, null=True, verbose_name="Phone Number")
+    alt_phone_no = models.CharField(max_length=50, blank=True, null=True, verbose_name="Alternate Phone Number")
 
     # Audit & Tracking
     created_at = models.DateTimeField(default=timezone.now)
@@ -88,3 +89,16 @@ class Patient(models.Model):
     def sim_date_display(self):
         sd = self.sim_date
         return sd.strftime("%d-%m-%Y") if sd else '-'
+
+
+class ClinicalUnit(models.Model):
+    """Radiation Oncology Clinical Units (e.g. Unit I, Unit II, Unit III)."""
+    name = models.CharField(max_length=50, unique=True, verbose_name="Clinical Unit")
+    display_order = models.IntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return self.name

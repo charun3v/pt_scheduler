@@ -40,25 +40,18 @@
                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
                 </div>
 
-                <div style="display: flex; gap: 10px; justify-content: space-between; align-items: center;">
-                    <a href="{% url 'register_account' %}" style="font-size: 12px; color: #003366; font-weight: bold; text-decoration: underline;">
-                        ➕ Create new user
-                    </a>
-                    <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 8px 20px; font-weight: bold; border-radius: 3px; cursor: pointer;">
+                <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center;">
+                    <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 8px 24px; font-weight: bold; border-radius: 3px; cursor: pointer;">
                         Login
                     </button>
                 </div>
             </form>
 
-            <div style="margin-top: 16px; padding: 10px 14px; background: #f0f7ff; border: 1px solid #bae0fd; border-radius: 4px; text-align: center;">
+            <div style="margin-top: 18px; padding: 10px 14px; background: #f0f7ff; border: 1px solid #bae0fd; border-radius: 4px; text-align: center;">
                 <span style="font-size: 12px; color: #333;">New clinical doctor or staff member?</span>
                 <a href="{% url 'register_account' %}" class="action-ribbon-btn btn-highlight" style="display: inline-block; margin-left: 6px; padding: 3px 10px; font-size: 11px; font-weight: bold; text-decoration: none;">
                     ➕ Create New User
                 </a>
-            </div>
-
-            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee; font-size: 11px; color: #777; text-align: center;">
-                Administrative login: <code>admin</code> or <code>n3v</code> (using your Gynae database credentials)
             </div>
         </div>
     </div>

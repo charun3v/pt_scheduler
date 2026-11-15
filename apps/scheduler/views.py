@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from .models import (
     Machine, Shift, Technique, SpecialTechnique, SimulatedFor,
-    TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday
+    TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday, EmergencyReason
 )
 import json
 from apps.patients.models import Patient, DEFAULT_SITES
@@ -816,7 +816,8 @@ def emergency_slot_view(request, schedule_id):
     )
     patient = sched.patient
 
-    emergency_reasons = [
+    db_reasons = list(EmergencyReason.objects.filter(is_active=True).values_list('name', flat=True))
+    emergency_reasons = db_reasons if db_reasons else [
         'Spinal cord compression',
         'Bleeding',
         'Pain',

@@ -288,3 +288,18 @@ class Holiday(models.Model):
         desc = f" ({self.comment})" if self.comment else ""
         return f"{self.date.strftime('%d-%b-%Y')}{desc}"
 
+
+class EmergencyReason(models.Model):
+    """Reasons for Emergency Radiotherapy Slots."""
+    name = models.CharField(max_length=150, unique=True, verbose_name="Reason for Emergency")
+    display_order = models.IntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        verbose_name = "Reason for Emergency"
+        verbose_name_plural = "Reasons for Emergency"
+
+    def __str__(self):
+        return self.name
+

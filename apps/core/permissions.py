@@ -50,12 +50,8 @@ def can_manage_users(user) -> bool:
 
 
 def can_manage_roles(user) -> bool:
-    if is_admin_or_subadmin(user):
-        return True
-    profile = getattr(user, 'profile', None)
-    if profile and profile.role and profile.role.is_active:
-        return bool(profile.role.cap_manage_roles)
-    return False
+    """Only Admin (not SubAdmin) can manage roles."""
+    return is_admin_only(user)
 
 
 def is_admin_only(user) -> bool:

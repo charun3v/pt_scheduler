@@ -51,10 +51,10 @@
                            {% if not can_edit_identity %}readonly style="background: #e9ecef; cursor: not-allowed; width: 100%; padding: 8px 10px; border: 1px solid #ced4da; border-radius: 3px; font-size: 13px;"{% else %}style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;"{% endif %}>
                 </div>
 
-                <!-- RT Number -->
+                <!-- RT Number (Mandatory) -->
                 <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">RT Number:</label>
-                    <input type="text" name="rt_no" value="{{ patient.rt_no|default:'' }}"
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; color: #003366;">RT Number: *</label>
+                    <input type="text" name="rt_no" value="{{ patient.rt_no|default:'' }}" required
                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
                 </div>
 
@@ -82,16 +82,28 @@
                            placeholder="Select or enter Unit" required
                            style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; font-weight: bold; color: #003366; background: #fff;">
                     <datalist id="unitListEdit">
-                        <option value="I">Unit I</option>
-                        <option value="II">Unit II</option>
-                        <option value="III">Unit III</option>
+                        {% for u in units %}
+                            <option value="{{ u.name }}">Unit {{ u.name }}</option>
+                        {% empty %}
+                            <option value="I">Unit I</option>
+                            <option value="II">Unit II</option>
+                            <option value="III">Unit III</option>
+                        {% endfor %}
                     </datalist>
                 </div>
 
-                <!-- Phone Number -->
+                <!-- Phone Number (Mandatory) -->
                 <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Phone Number:</label>
-                    <input type="text" name="phone_no" value="{{ patient.phone_no|default:'' }}"
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; color: #003366;">Phone Number: *</label>
+                    <input type="text" name="phone_no" value="{{ patient.phone_no|default:'' }}" required
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Alternate Phone Number (Optional) -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; color: #555;">Alternate Phone Number (Optional):</label>
+                    <input type="text" name="alt_phone_no" value="{{ patient.alt_phone_no|default:'' }}"
+                           placeholder="Secondary contact number"
                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
                 </div>
 

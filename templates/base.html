@@ -70,9 +70,11 @@
         <a href="{% url 'unscheduled_patients' %}" class="action-ribbon-btn">⏳ Unscheduled Queue</a>
         <a href="{% url 'pending_starts_report' %}" class="action-ribbon-btn">📋 Start Dates Pending</a>
         <a href="{% url 'machine_daily_list' %}" class="action-ribbon-btn">⚡ Machine Schedules</a>
+        {% if IS_ADMIN_ONLY %}
         <a href="{% url 'consultant_stats' %}" class="action-ribbon-btn">📊 Consultant Stats</a>
         <a href="{% url 'unit_stats' %}" class="action-ribbon-btn">🏥 Unit Stats</a>
         <a href="{% url 'simulation_report' %}" class="action-ribbon-btn">🔬 Simulation Stats</a>
+        {% endif %}
         <a href="{% url 'emergency_slots_report' %}" class="action-ribbon-btn" style="color: #b22222; font-weight: bold;">🚨 Emergency Slots</a>
 
         {% if CAN_MANUAL_SCHEDULE %}

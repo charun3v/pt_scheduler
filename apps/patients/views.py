@@ -5,7 +5,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 
 from django.utils import timezone
-from .models import Patient, SEX_CHOICES, DEFAULT_SITES
+from .models import Patient, ClinicalUnit, SEX_CHOICES, DEFAULT_SITES
 from apps.core.models import Consultant, AuditLog
 from apps.core.permissions import can_edit_locked_identity, can_delete_patient, can_register_patient, is_admin_only
 from apps.core.validators import validate_field_value
@@ -20,6 +20,7 @@ def patient_register_view(request):
     Site of treatment is captured during Treatment Scheduling (Stage 2).
     """
     consultants = Consultant.objects.filter(is_active=True).order_by('display_order', 'name')
+    units = ClinicalUnit.objects.filter(is_active=True).order_by('display_order')
 
     if request.method == 'POST':
         mr_no_raw = request.POST.get('mr_no', '').strip()
@@ -30,6 +31,7 @@ def patient_register_view(request):
         diagnosis = request.POST.get('diagnosis', '').strip()
         consultant_id = request.POST.get('primary_consultant')
         phone_no = request.POST.get('phone_no', '').strip()
+        alt_phone_no = request.POST.get('alt_phone_no', '').strip()
 
         # Configurable field validations for MR No and Phone No
         is_mr_valid, mr_err = validate_field_value('mr_no', mr_no_raw)
@@ -37,6 +39,25 @@ def patient_register_view(request):
             messages.error(request, mr_err)
             return render(request, 'patients/patient_register.html', {
                 'consultants': consultants,
+                'units': units,
+                'sex_choices': SEX_CHOICES,
+                'form_data': request.POST,
+            })
+
+        if not rt_no:
+            messages.error(request, "RT Number is mandatory.")
+            return render(request, 'patients/patient_register.html', {
+                'consultants': consultants,
+                'units': units,
+                'sex_choices': SEX_CHOICES,
+                'form_data': request.POST,
+            })
+
+        if not phone_no:
+            messages.error(request, "Phone Number is mandatory.")
+            return render(request, 'patients/patient_register.html', {
+                'consultants': consultants,
+                'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
             })
@@ -46,6 +67,7 @@ def patient_register_view(request):
             messages.error(request, ph_err)
             return render(request, 'patients/patient_register.html', {
                 'consultants': consultants,
+                'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
             })
@@ -54,6 +76,7 @@ def patient_register_view(request):
             messages.error(request, "Patient Name is mandatory.")
             return render(request, 'patients/patient_register.html', {
                 'consultants': consultants,
+                'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
             })
@@ -61,9 +84,10 @@ def patient_register_view(request):
         try:
             mr_no = int(mr_no_raw)
         except ValueError:
-            messages.error(request, "MR Number must be a valid integer number.")
+            messages.error(request, "MR Number must be a valid integer number (e.g. 20260000123).")
             return render(request, 'patients/patient_register.html', {
                 'consultants': consultants,
+                'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
             })
@@ -92,6 +116,7 @@ def patient_register_view(request):
             site_of_treatment=None,  # Moved to Scheduling form
             primary_consultant=consultant_obj,
             phone_no=phone_no,
+            alt_phone_no=alt_phone_no,
             created_by=request.user
         )
 
@@ -113,6 +138,7 @@ def patient_register_view(request):
 
     context = {
         'consultants': consultants,
+        'units': units,
         'sex_choices': SEX_CHOICES,
         'form_data': {},
     }
@@ -153,10 +179,25 @@ def patient_edit_view(request, patient_id):
                 patient.pt_name = new_name
 
         phone_no = request.POST.get('phone_no', '').strip()
+        rt_no = request.POST.get('rt_no', '').strip()
+        alt_phone_no = request.POST.get('alt_phone_no', '').strip()
+
+        if not phone_no:
+            messages.error(request, "Phone Number is mandatory.")
+            return redirect('patient_edit', patient_id=patient.id)
+        if not rt_no:
+            messages.error(request, "RT Number is mandatory.")
+            return redirect('patient_edit', patient_id=patient.id)
+
         is_ph_valid, ph_err = validate_field_value('phone_no', phone_no)
         if not is_ph_valid:
             messages.error(request, ph_err)
             return redirect('patient_edit', patient_id=patient.id)
+        if alt_phone_no:
+            is_alt_valid, alt_err = validate_field_value('phone_no', alt_phone_no)
+            if not is_alt_valid:
+                messages.error(request, f"Alternate Phone: {alt_err}")
+                return redirect('patient_edit', patient_id=patient.id)
 
         # Other clinical fields
         unit = request.POST.get('unit', '').strip()
@@ -164,11 +205,12 @@ def patient_edit_view(request, patient_id):
             patient.unit = unit
         age_raw = request.POST.get('age', '').strip()
         patient.age = int(float(age_raw)) if age_raw else None
-        patient.rt_no = request.POST.get('rt_no', '').strip()
+        patient.rt_no = rt_no
         patient.sex = request.POST.get('sex', patient.sex)
         patient.diagnosis = request.POST.get('diagnosis', '').strip()
         patient.site_of_treatment = request.POST.get('site_of_treatment', patient.site_of_treatment)
         patient.phone_no = phone_no
+        patient.alt_phone_no = alt_phone_no or None
 
         consultant_id = request.POST.get('primary_consultant')
         patient.primary_consultant = Consultant.objects.filter(id=consultant_id).first() if consultant_id else None
@@ -190,6 +232,7 @@ def patient_edit_view(request, patient_id):
         'patient': patient,
         'can_edit_identity': can_edit_identity,
         'consultants': consultants,
+        'units': ClinicalUnit.objects.filter(is_active=True).order_by('display_order', 'name'),
         'sex_choices': SEX_CHOICES,
         'site_choices': DEFAULT_SITES,
     }

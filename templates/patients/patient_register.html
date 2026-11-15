@@ -30,10 +30,10 @@
                 <!-- MR Number (Unique) -->
                 <div>
                     <label style="display: block; font-weight: bold; margin-bottom: 4px; color: #003366;">Hospital / MR Number: *</label>
-                    <input type="text" name="mr_no" id="id_mr_no" required placeholder="e.g. 2401895" autofocus
+                    <input type="text" name="mr_no" id="id_mr_no" required placeholder="e.g. 20260000123" autofocus
                            value="{{ form_data.mr_no|default:'' }}"
                            style="width: 100%; padding: 8px 10px; border: 2px solid #003366; border-radius: 3px; font-size: 14px; font-weight: bold;">
-                    <span style="font-size: 11px; color: #666;">Unique medical record number</span>
+                    <span style="font-size: 11px; color: #666;">Unique medical record number (e.g. 20260000123)</span>
                 </div>
 
                 <!-- Patient Name -->
@@ -44,12 +44,13 @@
                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
                 </div>
 
-                <!-- RT Number -->
+                <!-- RT Number (Mandatory) -->
                 <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">RT Number:</label>
-                    <input type="text" name="rt_no" placeholder="Radiation therapy registry no."
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; color: #003366;">RT Number: *</label>
+                    <input type="text" name="rt_no" required placeholder="Radiation therapy registry no."
                            value="{{ form_data.rt_no|default:'' }}"
                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                    <span style="font-size: 11px; color: #666;">Mandatory clinical RT registry number</span>
                 </div>
 
                 <!-- Age -->
@@ -77,19 +78,32 @@
                            placeholder="Select or enter Unit" required
                            style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; font-weight: bold; color: #003366; background: #fff;">
                     <datalist id="unitList">
-                        <option value="I">Unit I</option>
-                        <option value="II">Unit II</option>
-                        <option value="III">Unit III</option>
+                        {% for u in units %}
+                            <option value="{{ u.name }}">Unit {{ u.name }}</option>
+                        {% empty %}
+                            <option value="I">Unit I</option>
+                            <option value="II">Unit II</option>
+                            <option value="III">Unit III</option>
+                        {% endfor %}
                     </datalist>
                 </div>
 
-                <!-- Phone Number -->
+                <!-- Phone Number (Mandatory) -->
                 <div>
-                    <label style="display: block; font-weight: 600; margin-bottom: 4px;">Phone Number:</label>
-                    <input type="text" name="phone_no" placeholder="Contact number"
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; color: #003366;">Phone Number: *</label>
+                    <input type="text" name="phone_no" required placeholder="Mandatory contact number"
                            value="{{ form_data.phone_no|default:'' }}"
                            style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
-                    <span style="font-size: 11px; color: #666;">Patient or attendant phone</span>
+                    <span style="font-size: 11px; color: #666;">Primary contact phone (mandatory)</span>
+                </div>
+
+                <!-- Alternate Phone Number (Optional) -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; color: #555;">Alternate Phone Number (Optional):</label>
+                    <input type="text" name="alt_phone_no" placeholder="Secondary contact number"
+                           value="{{ form_data.alt_phone_no|default:'' }}"
+                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                    <span style="font-size: 11px; color: #666;">Not shown in technician printouts</span>
                 </div>
 
                 <!-- Diagnosis (Span 2) -->

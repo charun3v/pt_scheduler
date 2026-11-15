@@ -106,6 +106,30 @@ LOOKUP_CONFIG = {
         'secondary_field': None,
         'secondary_label': None,
     },
+    'emergency_reason': {
+        'title': 'Reasons for Emergency',
+        'icon': '🚨',
+        'table_name': 'tblEmergencyReason',
+        'app': 'scheduler',
+        'model_name': 'EmergencyReason',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Reason for Emergency (e.g. Spinal cord compression, SVCO)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
+    'unit': {
+        'title': 'Clinical Units',
+        'icon': '🏥',
+        'table_name': 'tblClinicalUnit',
+        'app': 'patients',
+        'model_name': 'ClinicalUnit',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Clinical Unit Name (e.g. I, II, III)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
 }
 
 

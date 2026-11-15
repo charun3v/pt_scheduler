@@ -122,7 +122,12 @@ def consultant_monthly_stats_view(request):
     """
     Consultant Monthly Starts Statistics.
     Replicates Access Query_RT_Starts_consultant_monthwise pivot.
+    Restricted strictly to Admin only.
     """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted to Administrators.")
+        return redirect('dashboard')
+
     year = int(request.GET.get('year', date.today().year))
     available_years = list(range(2020, date.today().year + 2))
 
@@ -190,8 +195,12 @@ def unit_monthly_stats_view(request):
     """
     Clinical Unit Starts Statistics.
     Groups treatment starts by Unit (Unit I, Unit II, Unit III, etc.) month-by-month for the year.
-    Supports CSV and Excel export.
+    Supports CSV and Excel export. Strictly restricted to Admin only.
     """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted to Administrators.")
+        return redirect('dashboard')
+
     year = int(request.GET.get('year', date.today().year))
     available_years = list(range(2020, date.today().year + 2))
 
@@ -202,20 +211,19 @@ def unit_monthly_stats_view(request):
         'date_of_start__month'
     ).annotate(total=Count('id'))
 
-    known_units = list(Patient.objects.exclude(unit__isnull=True).exclude(unit='').values_list('unit', flat=True).distinct())
-    if not known_units:
-        known_units = ['I', 'II', 'III']
-    else:
-        for u in ['I', 'II', 'III']:
-            if u not in known_units:
-                known_units.append(u)
-    known_units.sort()
+    known_units_set = set(['I', 'II', 'III'])
+    # Safely query any other distinct units from database without duplicating rows
+    db_units = Patient.objects.order_by().exclude(unit__isnull=True).exclude(unit='').values_list('unit', flat=True).distinct()
+    for u in db_units:
+        if u and str(u).strip():
+            known_units_set.add(str(u).strip())
+    known_units = sorted(list(known_units_set))
 
     months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     matrix = {u: {m: 0 for m in range(1, 13)} for u in known_units}
 
     for row in schedules:
-        u_val = row['patient__unit'] or 'I'
+        u_val = str(row['patient__unit'] or 'I').strip()
         m_idx = row['date_of_start__month']
         if u_val in matrix:
             matrix[u_val][m_idx] += row['total']
@@ -268,8 +276,12 @@ def simulation_report_view(request):
     """
     Patients Simulated Between Dates Report.
     Filters treatment schedules by CT Simulation Date range.
-    Supports CSV and Excel export.
+    Supports CSV and Excel export. Strictly restricted to Admin only.
     """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted to Administrators.")
+        return redirect('dashboard')
+
     today = date.today()
     start_sim_str = request.GET.get('start_sim') or request.GET.get('start_date')
     end_sim_str = request.GET.get('end_sim') or request.GET.get('end_date')
@@ -1160,5 +1172,365 @@ def export_emergency_slots_csv(schedules):
             s.patient.unit or "I",
             s.status
         ])
+    return response
+
+
+# ==============================================================================
+# RADIATION THERAPY TECHNICIAN INFORMATION SHEET (PRINT & PDF EXPORT)
+# ==============================================================================
+
+def get_print_schedule_data(request):
+    """
+    Shared helper to query and prepare schedule records for printing and PDF generation.
+    Filters by Modality (Teletherapy / Brachytherapy), Start Date, End Date, and Selected Machines.
+    """
+    modality = request.GET.get('modality', 'Teletherapy')
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+
+    today = date.today()
+    default_start = get_upcoming_monday(today)
+    default_end = add_six_months(default_start)
+
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            start_date = default_start
+    else:
+        start_date = default_start
+
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            end_date = default_end
+    else:
+        end_date = default_end
+
+    machine_ids = request.GET.getlist('machines')
+    if len(machine_ids) == 1 and ',' in machine_ids[0]:
+        machine_ids = [m.strip() for m in machine_ids[0].split(',') if m.strip()]
+
+    if machine_ids:
+        selected_machines = list(Machine.objects.filter(id__in=machine_ids, is_active=True).order_by('display_order'))
+    else:
+        selected_machines = list(Machine.objects.filter(is_active=True).order_by('display_order'))
+
+    schedules_qs = TreatmentSchedule.objects.select_related(
+        'patient', 'machine', 'shift', 'technique', 'special_technique', 'patient__primary_consultant'
+    ).filter(
+        machine__in=selected_machines,
+        date_of_start__range=[start_date, end_date]
+    )
+
+    if modality:
+        schedules_qs = schedules_qs.filter(treatment_type=modality)
+
+    schedules_qs = schedules_qs.exclude(
+        status__in=['Draft', 'Emergency', 'Vacant']
+    ).exclude(
+        is_emergency_slot=True
+    ).order_by('date_of_start', 'shift__display_order', 'patient__pt_name')
+
+    all_schedules = list(schedules_qs)
+
+    sheets = []
+    for m in selected_machines:
+        m_schedules = [s for s in all_schedules if s.machine_id == m.id]
+        sheets.append({
+            'machine': m,
+            'box_title': m.name,
+            'schedules': m_schedules,
+            'count': len(m_schedules)
+        })
+
+    now_dt = datetime.now()
+    return {
+        'modality': modality,
+        'start_date': start_date,
+        'end_date': end_date,
+        'start_date_str': start_date.isoformat(),
+        'end_date_str': end_date.isoformat(),
+        'start_date_formatted': f"{start_date.day}/{start_date.month}/{start_date.strftime('%y')}",
+        'end_date_formatted': f"{end_date.day}/{end_date.month}/{end_date.strftime('%y')}",
+        'selected_machines': selected_machines,
+        'sheets': sheets,
+        'total_patients': len(all_schedules),
+        'today_str': today.strftime("%d-%m-%Y"),
+        'now_time_str': now_dt.strftime("%H:%M"),
+        'now_date_str': now_dt.strftime("%d %B %Y"),
+    }
+
+
+def generate_technician_sheet_pdf(data):
+    """
+    Generates an official KMIO Radiation Therapy Technician Information Sheet PDF
+    using ReportLab, matching the layout, typography, and sign-offs of the template PDF.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.pdfgen import canvas
+    import io
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=32,
+        rightMargin=32,
+        topMargin=26,
+        bottomMargin=32
+    )
+
+    class NumberedCanvas(canvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._saved_page_states = []
+
+        def showPage(self):
+            self._saved_page_states.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            num_pages = len(self._saved_page_states)
+            for state in self._saved_page_states:
+                self.__dict__.update(state)
+                self.saveState()
+                self.setFont('Helvetica', 8)
+                self.setFillColor(colors.HexColor('#222222'))
+                self.drawString(32, 18, f"Report Generated on:   {data['now_time_str']}    {data['now_date_str']}")
+                self.drawRightString(A4[0] - 32, 18, f"Page {self._pageNumber} of {num_pages}")
+                self.restoreState()
+                super().showPage()
+            super().save()
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('KMIO_Title', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, alignment=1, leading=14)
+    dept_style = ParagraphStyle('KMIO_Dept', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=11, alignment=1, leading=13)
+    sub_style = ParagraphStyle('KMIO_Sub', parent=styles['Normal'], fontName='Helvetica-Oblique', fontSize=9, alignment=1, leading=11)
+    box_style = ParagraphStyle('KMIO_Box', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, alignment=1, leading=12)
+    left_ref_style = ParagraphStyle('KMIO_LeftRef', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11)
+    date_style = ParagraphStyle('KMIO_Date', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, alignment=2, leading=11)
+
+    intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=10, alignment=4)
+    sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10.5, leading=13, alignment=1)
+
+    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, alignment=0)
+    th_center = ParagraphStyle('KMIO_THC', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, alignment=1)
+    td_style = ParagraphStyle('KMIO_TD', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9, alignment=0)
+    td_bold = ParagraphStyle('KMIO_TDB', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, alignment=0)
+    td_center = ParagraphStyle('KMIO_TDC', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9, alignment=1)
+
+    note_title_style = ParagraphStyle('KMIO_NoteTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10)
+    note_text_style = ParagraphStyle('KMIO_NoteText', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9.5, alignment=4)
+
+    copy_style = ParagraphStyle('KMIO_Copy', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=10)
+    copy_bold = ParagraphStyle('KMIO_CopyB', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10)
+    sig_name = ParagraphStyle('KMIO_SigName', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10.5, leading=12, alignment=2)
+    sig_title = ParagraphStyle('KMIO_SigTitle', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=9, leading=11, alignment=2)
+    sig_dept = ParagraphStyle('KMIO_SigDept', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=2)
+
+    story = []
+    # Printable width: A4[0] - 64 = 531.27pt
+    col_widths = [56, 24, 68, 36, 76, 62, 95, 62, 52]
+
+    for sheet_idx, sheet in enumerate(data['sheets']):
+        if sheet_idx > 0:
+            story.append(PageBreak())
+
+        # Top Header (Left Ref, Center Titles, Right Date & Machine Box)
+        header_data = [
+            [
+                Paragraph('KMIO/DRO/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/20___', left_ref_style),
+                [
+                    Paragraph('KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY', title_style),
+                    Spacer(1, 2),
+                    Paragraph('Department of Radiation Oncology', dept_style),
+                    Spacer(1, 2),
+                    Paragraph('Radiation Therapy Technician information sheet', sub_style)
+                ],
+                [
+                    Paragraph(data['today_str'], date_style),
+                    Spacer(1, 4),
+                    Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[116], style=[
+                        ('BOX', (0,0), (-1,-1), 1.2, colors.black),
+                        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                        ('TOPPADDING', (0,0), (-1,-1), 4),
+                        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                        ('LEFTPADDING', (0,0), (-1,-1), 4),
+                        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+                    ])
+                ]
+            ]
+        ]
+        ht = Table(header_data, colWidths=[120, 291, 120])
+        ht.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
+        story.append(ht)
+        story.append(Spacer(1, 6))
+
+        # Narrative paragraph
+        intro_text = (
+            "The scheduled patient lists are handed over to Chief Radiotherapy Technologist RTTs posted in the "
+            "respective machines to start radiotherapy for the new patients as scheduled in the table below. "
+            "The following are the list of the new patients for whom radiotherapy is to be started on the respective "
+            "dates. RTTs are required to perf the necessary procedures as per instructions on the RT chart, "
+            "including setup and verification"
+        )
+        story.append(Paragraph(intro_text, intro_style))
+        story.append(Spacer(1, 6))
+
+        # Section Subtitle
+        sec_title = f"New Patient starts from {data['start_date_formatted']} to {data['end_date_formatted']}"
+        story.append(Paragraph(sec_title, sec_title_style))
+        story.append(Spacer(1, 6))
+
+        # 9-Column Table
+        table_rows = [
+            [
+                Paragraph('Date', th_style),
+                Paragraph('Shift', th_center),
+                Paragraph('Hospital no.', th_style),
+                Paragraph('RT No.', th_style),
+                Paragraph('Patient name', th_style),
+                Paragraph('Phone No.', th_style),
+                Paragraph('Diagnosis', th_style),
+                Paragraph('Consultant<br/>Radiation<br/>Oncologist', th_style),
+                Paragraph('Junior<br/>Resident', th_style),
+            ]
+        ]
+
+        if sheet['schedules']:
+            for s in sheet['schedules']:
+                shift_txt = s.shift.name if s.shift else '-'
+                cons_name = s.patient.primary_consultant.name if s.patient.primary_consultant else '-'
+                jr_name = s.jr_resident if s.jr_resident else '-'
+                table_rows.append([
+                    Paragraph(s.date_of_start.strftime("%d-%b-%y") if s.date_of_start else '-', td_bold),
+                    Paragraph(str(shift_txt), td_center),
+                    Paragraph(str(s.patient.mr_no), td_bold),
+                    Paragraph(str(s.patient.rt_no or '-'), td_style),
+                    Paragraph(str(s.patient.pt_name), td_bold),
+                    Paragraph(str(s.patient.phone_no or '-'), td_style),
+                    Paragraph(str(s.patient.diagnosis or '-'), td_style),
+                    Paragraph(str(cons_name), td_style),
+                    Paragraph(str(jr_name), td_style),
+                ])
+        else:
+            table_rows.append([
+                Paragraph(f"No new patient starts scheduled for {sheet['machine'].name} between {data['start_date_formatted']} and {data['end_date_formatted']}.", td_center),
+                '', '', '', '', '', '', '', ''
+            ])
+
+        pt_table = Table(table_rows, colWidths=col_widths, repeatRows=1)
+        ts = [
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
+            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING', (0,0), (-1,-1), 3),
+            ('RIGHTPADDING', (0,0), (-1,-1), 3),
+        ]
+        if not sheet['schedules']:
+            ts.append(('SPAN', (0,1), (-1,1)))
+            ts.append(('ALIGN', (0,1), (-1,1), 'CENTER'))
+            ts.append(('TOPPADDING', (0,1), (-1,1), 12))
+            ts.append(('BOTTOMPADDING', (0,1), (-1,1), 12))
+
+        pt_table.setStyle(TableStyle(ts))
+        story.append(pt_table)
+        story.append(Spacer(1, 8))
+
+        # Bottom block (Please note, Copy to & Dr. Naveen T Signature)
+        note_p1 = (
+            "Both the Consultant Radiation oncologist and the Radiation Physicist should have signed and dated the "
+            "RT Chart and ensure that informed written consent should be signed by the patient and his/her attendant."
+        )
+        note_p2 = (
+            "The Radiation Oncologist and Physicist are requested to attend to new patients setup as per schedule in each shift. "
+            "Time allocation for starting of new patients on RT to be utilised efficiently without disruption to ongoing treatments in the respective machines"
+        )
+
+        copy_to_flowables = [
+            Paragraph('<b>Copy to:</b>', copy_bold),
+            Paragraph('1. HOD Physics/Faculty concerned for setup verification', copy_style),
+            Paragraph('2. HOU RT I/II/III/ Faculty concerned for setup inspection and verification', copy_style),
+            Paragraph('3. Chief Radiotherapy technologist', copy_style),
+            Paragraph('4. RTT of concerned shift to start the RT for patients mentioned in the above list', copy_style),
+            Paragraph('5. Machine Notice board', copy_style),
+        ]
+
+        sig_flowables = [
+            Paragraph('Dr. Naveen T', sig_name),
+            Paragraph('Professor and Head of the Department', sig_title),
+            Paragraph('Department of Radiation Oncology', sig_dept),
+        ]
+
+        bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[311, 220])
+        bottom_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
+            ('TOPPADDING', (0,0), (-1,-1), 0),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+        ]))
+
+        footer_elements = [
+            Paragraph('Please note:', note_title_style),
+            Spacer(1, 2),
+            Paragraph(note_p1, note_text_style),
+            Spacer(1, 3),
+            Paragraph(note_p2, note_text_style),
+            Spacer(1, 8),
+            bottom_table
+        ]
+        story.append(KeepTogether(footer_elements))
+
+    doc.build(story, canvasmaker=NumberedCanvas)
+    return buffer.getvalue()
+
+
+@login_required
+def print_treatment_schedule_view(request):
+    """
+    Renders browser-optimised HTML print view of the Radiation Therapy Technician Information Sheet.
+    Includes print toolbar and @media print page styling.
+    """
+    if not is_admin_or_subadmin(request.user):
+        messages.error(request, "Access restricted. Printing treatment schedules is only available to clinical administrators.")
+        return redirect('dashboard')
+    data = get_print_schedule_data(request)
+    return render(request, 'reports/print_technician_sheet.html', data)
+
+
+@login_required
+def print_treatment_schedule_pdf_view(request):
+    """
+    Streams official KMIO Radiation Therapy Technician Information Sheet PDF download.
+    Generated via ReportLab with pixel-perfect fidelity to the institutional template.
+    """
+    if not is_admin_or_subadmin(request.user):
+        messages.error(request, "Access restricted. Printing treatment schedules is only available to clinical administrators.")
+        return redirect('dashboard')
+    data = get_print_schedule_data(request)
+    pdf_bytes = generate_technician_sheet_pdf(data)
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    start_tag = data['start_date_str']
+    end_tag = data['end_date_str']
+    response['Content-Disposition'] = f'inline; filename="KMIO_Technician_Information_Sheet_{start_tag}_to_{end_tag}.pdf"'
     return response
 

@@ -7,6 +7,7 @@
     
     <!-- Tab Navigation Ribbon -->
     <div style="display: flex; gap: 6px; border-bottom: 2px solid #003366; padding-bottom: 8px; margin-bottom: 14px; align-items: center; flex-wrap: wrap;">
+        {% if IS_ADMIN_ONLY %}
         <a href="{% url 'consultant_stats' %}" class="action-ribbon-btn" style="font-size: 12px;">
             📊 Consultant Starts
         </a>
@@ -16,6 +17,7 @@
         <a href="{% url 'simulation_report' %}" class="action-ribbon-btn" style="font-size: 12px;">
             📅 Simulations Between Dates
         </a>
+        {% endif %}
         <a href="{% url 'emergency_slots_report' %}" class="action-ribbon-btn btn-highlight" style="font-weight: bold; font-size: 12px; color: #b91c1c; border-color: #f87171;">
             🚨 Emergency / Vacant Slots ({{ total_count }})
         </a>

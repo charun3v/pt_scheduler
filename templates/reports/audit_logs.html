@@ -74,7 +74,7 @@
                     {{ log.log_datetime|date:"d-M-Y H:i:s" }}
                 </td>
                 <td style="padding: 8px; font-weight: 600; color: #003366;">
-                    {{ log.user.get_full_name|default:log.user.username|default:"System" }}
+                    {% if log.user %}{{ log.user.get_full_name|default:log.user.username }}{% else %}System{% endif %}
                 </td>
                 <td style="padding: 8px;">
                     {% if 'PHONE' in log.action %}

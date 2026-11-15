@@ -116,7 +116,7 @@ class FieldValidationConfig(models.Model):
     validation_mode = models.CharField(max_length=20, choices=VALIDATION_MODE_CHOICES, default='range')
     exact_length = models.PositiveIntegerField(null=True, blank=True, help_text="Required length when mode is 'exact'")
     min_length = models.PositiveIntegerField(null=True, blank=True, default=4, help_text="Minimum length when mode is 'range'")
-    max_length = models.PositiveIntegerField(null=True, blank=True, default=10, help_text="Maximum length when mode is 'range'")
+    max_length = models.PositiveIntegerField(null=True, blank=True, default=15, help_text="Maximum length when mode is 'range'")
     numeric_only = models.BooleanField(default=True, help_text="If True, only digits (0-9) are allowed")
     allow_blank = models.BooleanField(default=False, help_text="Whether this field can be left empty")
     custom_regex = models.CharField(max_length=255, blank=True, null=True, help_text="Optional custom regular expression")

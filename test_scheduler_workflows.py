@@ -36,7 +36,7 @@ def run_tests():
     # Clean up test patients & test holidays
     Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 9999021, 9999022, 7654321, 12345]).delete()
     Holiday.objects.filter(date__in=[date(2026, 11, 20), date(2026, 11, 25)]).delete()
-    User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix', 'test_new_reg_user']).delete()
+    User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix', 'test_new_reg_user', 'test_landing_user']).delete()
 
     # 1. Test Admin vs SubAdmin vs Resident Granular Permissions
     print("\n--- Test 1: Role Permissions (Admin vs SubAdmin vs Resident) ---")
@@ -106,12 +106,12 @@ def run_tests():
     ok, err = validate_field_value('mr_no', '7654321')  # exactly 7 digits
     assert ok is True, "7-digit numeric MR No should pass"
 
-    # Reset MR No rule to Range (4 to 10 digits) for standard institutional operation
+    # Reset MR No rule to Range (4 to 15 digits) for standard institutional operation (e.g. 20260000123)
     mr_cfg.validation_mode = 'range'
     mr_cfg.min_length = 4
-    mr_cfg.max_length = 10
+    mr_cfg.max_length = 15
     mr_cfg.numeric_only = True
-    mr_cfg.custom_error_message = "MR Number must be numeric and between 4 and 10 digits."
+    mr_cfg.custom_error_message = "MR Number must be numeric and between 4 and 15 digits."
     mr_cfg.save()
 
     ok, err = validate_field_value('mr_no', '9999001')
@@ -174,6 +174,7 @@ def run_tests():
         'age': '53',
         'diagnosis': 'Carcinoma Cervix IIB Confirmed',
         'site_of_treatment': 'Pelvis',
+        'rt_no': 'RT-2101',
         'phone_no': '9876543210',
         # Scheduling fields:
         'form_action': 'approve_schedule',
@@ -1334,6 +1335,7 @@ def run_tests():
         'primary_consultant_id': str(cons_test.id),
         'diagnosis': 'Ca Cervix Stage IIB',
         'site_of_treatment': 'Pelvis',
+        'rt_no': 'RT-2101',
         'phone_no': '9876543210'
     })
     assert resp_reg_post.status_code == 302
@@ -1349,6 +1351,7 @@ def run_tests():
         'primary_consultant_id': str(cons_test.id),
         'diagnosis': 'Ca Cervix Stage IIB',
         'site_of_treatment': 'Pelvis',
+        'rt_no': 'RT-2101',
         'phone_no': '9876543210'
     })
     assert resp_edit_post.status_code == 302
@@ -1643,6 +1646,214 @@ def run_tests():
     # Cleanup
     reg_user.delete()
     print("✓ Test 22 Passed: Login self-registration, 'Wait for Admin approval' flow, Admin-exclusive pending approvals, hide/unhide dashboard toggle, and user activation fully verified.")
+
+    # ==============================================================================
+    # TEST 23: Verification of Clinical & Administrative Enhancements
+    # 1. Login Page Cleanup (Red circle contents removed: inline create link & bottom note gone)
+    # 2. Admin-only Stats Access (Consultant, Unit, Simulation stats restricted to Admin)
+    # 3. Default Landing Page (Redirects to dashboard upon login)
+    # 4. Hide Roles page from SubAdmin
+    # 5. Patient Demographics (Mandatory RT No & Phone, Optional Alt Phone, 20260000123 example)
+    # 6. Reference Lookups (emergency_reason and unit)
+    # 7. Unit Stats deduplication fix
+    # 8. Print Treatment Schedule (Worksheet button, modal, HTML print view, ReportLab PDF)
+    # ==============================================================================
+    print("\n--- Test 23: Clinical & Administrative Enhancements (Prompt #10) ---")
+
+    # 1. Login Page Cleanup
+    c_anon = Client()
+    resp_login = c_anon.get('/login/')
+    assert resp_login.status_code == 200
+    login_html = resp_login.content.decode('utf-8')
+    # Must NOT contain red circle items:
+    assert "+ Create new user" not in login_html, "Inline '+ Create new user' next to Login button must be removed"
+    assert "Administrative login: admin or n3v" not in login_html, "Bottom administrative credentials note must be removed"
+    # Blue box card for new clinical user must remain
+    assert "New clinical doctor or staff member?" in login_html
+    assert "Create New User" in login_html
+
+    # 2. Login Landing Page (Redirects to dashboard)
+    User.objects.filter(username='test_landing_user').delete()
+    test_landing_user = User.objects.create_user(username='test_landing_user', password='LandingPass123!')
+    UserProfile.objects.create(user=test_landing_user, user_level='RESIDENT', is_approved=True)
+    resp_login_post = c_anon.post('/login/', {
+        'username': 'test_landing_user',
+        'password': 'LandingPass123!'
+    })
+    assert resp_login_post.status_code == 302
+    assert resp_login_post['Location'] in ['/', '/dashboard/'], f"Expected redirect to dashboard (/), got {resp_login_post['Location']}"
+    test_landing_user.delete()
+
+    # 3. Stats Access Restriction (Admin only)
+    # Admin can access stats
+    for stats_url in ['/reports/consultant-stats/', '/reports/unit-stats/', '/reports/simulations/']:
+        resp_admin_stats = c.get(stats_url)
+        assert resp_admin_stats.status_code == 200, f"Admin must have access to {stats_url}"
+
+    # SubAdmin is blocked from stats
+    c_sub = Client()
+    c_sub.force_login(subadmin_user)
+    for stats_url in ['/reports/consultant-stats/', '/reports/unit-stats/', '/reports/simulations/']:
+        resp_sub_stats = c_sub.get(stats_url)
+        assert resp_sub_stats.status_code == 302, f"SubAdmin must be redirected from {stats_url}"
+        assert resp_sub_stats['Location'] in ['/', '/dashboard/']
+
+    # Resident is blocked from stats
+    c_res = Client()
+    c_res.force_login(res_user)
+    for stats_url in ['/reports/consultant-stats/', '/reports/unit-stats/', '/reports/simulations/']:
+        resp_res_stats = c_res.get(stats_url)
+        assert resp_res_stats.status_code == 302, f"Resident must be redirected from {stats_url}"
+        assert resp_res_stats['Location'] in ['/', '/dashboard/']
+
+    # 4. Hide Roles page from SubAdmin
+    resp_sub_roles = c_sub.get('/roles/')
+    assert resp_sub_roles.status_code == 302, "SubAdmin must be blocked from /roles/"
+    resp_sub_nav = c_sub.get('/dashboard/')
+    assert 'href="/roles/"' not in resp_sub_nav.content.decode('utf-8'), "Roles nav link must not be visible to SubAdmin"
+
+    # Admin CAN access roles
+    resp_admin_roles = c.get('/roles/')
+    assert resp_admin_roles.status_code == 200, "Admin must have access to /roles/"
+
+    # 5. Patient Registration Validation & Alternate Phone
+    resp_reg_page = c.get('/patients/register/')
+    assert resp_reg_page.status_code == 200
+    reg_page_html = resp_reg_page.content.decode('utf-8')
+    assert '20260000123' in reg_page_html, "MR Number placeholder/helper must show '20260000123'"
+    assert 'alt_phone_no' in reg_page_html, "Alternate Phone field must be present in registration form"
+
+    # Missing mandatory phone_no fails
+    resp_fail_phone = c.post('/patients/register/', {
+        'mr_no': '20260000991',
+        'pt_name': 'Test Mandatory Fail',
+        'rt_no': 'RT-991',
+        'age': '45',
+        'sex': 'M',
+        'diagnosis': 'Ca Tongue',
+        'primary_consultant': Consultant.objects.first().id,
+        'phone_no': '',
+        'save_only': '1'
+    })
+    assert resp_fail_phone.status_code == 200
+    assert "Phone Number is mandatory" in resp_fail_phone.content.decode('utf-8')
+
+    # Missing mandatory rt_no fails
+    resp_fail_rt = c.post('/patients/register/', {
+        'mr_no': '20260000992',
+        'pt_name': 'Test Mandatory Fail 2',
+        'rt_no': '',
+        'age': '45',
+        'sex': 'M',
+        'diagnosis': 'Ca Tongue',
+        'primary_consultant': Consultant.objects.first().id,
+        'phone_no': '9876543210',
+        'save_only': '1'
+    })
+    assert resp_fail_rt.status_code == 200
+    assert "RT Number is mandatory" in resp_fail_rt.content.decode('utf-8')
+
+    # Successful registration with primary & alternate phone numbers
+    Patient.objects.filter(mr_no=20260000999).delete()
+    resp_reg_succ = c.post('/patients/register/', {
+        'mr_no': '20260000999',
+        'pt_name': 'Test Prompt Ten Patient',
+        'rt_no': 'RT-P10-01',
+        'unit': 'II',
+        'age': '56',
+        'sex': 'F',
+        'diagnosis': 'Ca Cervix Stage IIB',
+        'primary_consultant': Consultant.objects.first().id,
+        'phone_no': '9888877777',
+        'alt_phone_no': '9111122222',
+        'save_only': '1'
+    })
+    assert resp_reg_succ.status_code == 302
+    p10 = Patient.objects.get(mr_no=20260000999)
+    assert p10.phone_no == '9888877777'
+    assert p10.alt_phone_no == '9111122222'
+    assert p10.unit == 'II'
+
+    # Patient details display alternate phone number
+    resp_p10_detail = c.get(f'/patients/{p10.id}/')
+    assert resp_p10_detail.status_code == 200
+    p10_html = resp_p10_detail.content.decode('utf-8')
+    assert '9888877777' in p10_html
+    assert '9111122222' in p10_html
+    assert 'Alternate Phone' in p10_html
+
+    # 6. Reference Lookups (emergency_reason and unit)
+    from apps.core.lookup_config import LOOKUP_CONFIG
+    assert 'emergency_reason' in LOOKUP_CONFIG, "emergency_reason must be registered in LOOKUP_CONFIG"
+    assert 'unit' in LOOKUP_CONFIG, "unit must be registered in LOOKUP_CONFIG"
+
+    resp_lookup_em = c.get('/lookups/emergency_reason/')
+    assert resp_lookup_em.status_code == 200
+    assert "Reasons for Emergency" in resp_lookup_em.content.decode('utf-8')
+
+    resp_lookup_unit = c.get('/lookups/unit/')
+    assert resp_lookup_unit.status_code == 200
+    assert "Clinical Units" in resp_lookup_unit.content.decode('utf-8')
+
+    # 7. Unit Stats Deduplication Fix
+    resp_unit_stats = c.get('/reports/unit-stats/?year=2026')
+    assert resp_unit_stats.status_code == 200
+    unit_stats_html = resp_unit_stats.content.decode('utf-8')
+    # Count occurrences of 'Unit I' in table rows
+    unit_1_count = unit_stats_html.count('>Unit I</td>')
+    assert unit_1_count <= 2, f"Unit I must not be duplicated thousands of times! Found {unit_1_count} occurrences."
+
+    # 8. Print Treatment Schedule (Worksheet button, Modal, HTML view, ReportLab PDF)
+    resp_worksheet = c.get('/reports/manual-grid/?machine_code=LA1')
+    assert resp_worksheet.status_code == 200
+    ws_html = resp_worksheet.content.decode('utf-8')
+    assert "Print Treatment Schedule" in ws_html, "'Print Treatment Schedule' button must exist in worksheet"
+    assert "printScheduleModal" in ws_html, "Print modal must be present in worksheet"
+    assert "Teletherapy" in ws_html
+    assert "Brachytherapy" in ws_html
+
+    # Schedule a test course for p10 on LA1
+    m_la1 = Machine.objects.filter(code__iexact='LA1').first() or Machine.objects.first()
+    s_first = Shift.objects.first()
+    sched_p10 = TreatmentSchedule.objects.create(
+        patient=p10,
+        machine=m_la1,
+        shift=s_first,
+        treatment_type='Teletherapy',
+        date_of_start=date(2026, 1, 5),
+        status='Scheduled',
+        jr_resident='Dr Test Resident'
+    )
+
+    # HTML Print View
+    resp_print_html = c.get(f'/reports/print-schedule/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-01-11&machines={m_la1.id}')
+    assert resp_print_html.status_code == 200
+    print_html_content = resp_print_html.content.decode('utf-8')
+    assert "KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY" in print_html_content
+    assert "Department of Radiation Oncology" in print_html_content
+    assert "Radiation Therapy Technician information sheet" in print_html_content
+    assert "New Patient starts from 1/1/26 to 11/1/26" in print_html_content
+    assert m_la1.name in print_html_content
+    assert str(p10.mr_no) in print_html_content
+    assert p10.pt_name in print_html_content
+    assert "9888877777" in print_html_content, "Primary phone must appear in print sheet"
+    assert "9111122222" not in print_html_content, "Alternate phone number must NEVER appear in print sheet"
+    assert "Please note:" in print_html_content
+    assert "Dr. Naveen T" in print_html_content
+    assert "Professor and Head of the Department" in print_html_content
+    assert "Copy to:" in print_html_content
+
+    # PDF Export View
+    resp_print_pdf = c.get(f'/reports/print-schedule/pdf/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-01-11&machines={m_la1.id}')
+    assert resp_print_pdf.status_code == 200
+    assert resp_print_pdf['Content-Type'] == 'application/pdf'
+    assert resp_print_pdf.content.startswith(b'%PDF'), "PDF content must start with %PDF header"
+    assert len(resp_print_pdf.content) > 1000, "PDF must have non-trivial size"
+
+    # Cleanup test records
+    sched_p10.delete()
+    p10.delete()
+    print("✓ Test 23 Passed: Login cleanup, stats restriction, dashboard landing, roles hidden from SubAdmin, demographics with mandatory RT/Phone & optional Alt Phone, reference lookups, unit stats fix, and Treatment Schedule HTML & PDF print sheets fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

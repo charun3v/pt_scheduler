@@ -26,7 +26,7 @@ from apps.scheduler.models import Machine, Shift, Technique, SpecialTechnique, T
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect('patient_register')
+        return redirect('dashboard')
 
     if request.method == 'POST':
         uname = request.POST.get('username', '').strip()
@@ -55,7 +55,7 @@ def login_view(request):
             )
 
             messages.success(request, f"Welcome back, {user.first_name or user.username} ({profile_role})!")
-            return redirect('patient_register')
+            return redirect('dashboard')
         else:
             # Check if this user exists with valid password but is pending approval or inactive
             existing_user = User.objects.filter(username__iexact=uname).first()
