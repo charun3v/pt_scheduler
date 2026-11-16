@@ -624,17 +624,19 @@ def emergency_slots_report_view(request):
 
 
 
-def chunk_machine_schedules(schedules, max_per_page=20):
+def chunk_machine_schedules(schedules, max_single=26, max_per_page=25, min_per_page=18):
     """
     Paginates schedules per machine to guarantee clean physical A4 page rendering:
-    - If total <= max_per_page: 1 page, page_label is None (no page count displayed).
-    - If total > max_per_page: splits across pages evenly with at most max_per_page rows per page.
+    - If total <= max_single (default 26): 1 page, page_label is None (no page count displayed).
+      Accommodates at least 18 (and up to 26) patients on a single page without splitting.
+    - If total > max_single: splits across pages where each page accommodates at least min_per_page (18)
+      patients up to max_per_page (25), matching institutional layout standards.
       On multi-page sheets: page_label is e.g. '1/2 pages', '2/2 pages' (displayed in header & footer).
-    - Every page comfortably accommodates institutional header, title, up to 20 rows,
+    - Every page comfortably accommodates institutional header, title, table,
       notes, copy-to distribution, and signing authority without any cutoffs.
     """
     total = len(schedules)
-    if total <= max_per_page:
+    if total <= max_single:
         return [{
             'page_num': 1,
             'total_pages': 1,
@@ -648,13 +650,24 @@ def chunk_machine_schedules(schedules, max_per_page=20):
 
     num_pages = (total + max_per_page - 1) // max_per_page
     base_chunk = total // num_pages
-    remainder = total % num_pages
+
     pages_schedules = []
-    cur = 0
-    for i in range(num_pages):
-        chunk_size = base_chunk + (1 if i < remainder else 0)
-        pages_schedules.append(schedules[cur:cur + chunk_size])
-        cur += chunk_size
+    if base_chunk >= min_per_page:
+        # Balanced distribution across pages where each page has >= min_per_page (18)
+        remainder = total % num_pages
+        cur = 0
+        for i in range(num_pages):
+            chunk_size = base_chunk + (1 if i < remainder else 0)
+            pages_schedules.append(schedules[cur:cur + chunk_size])
+            cur += chunk_size
+    else:
+        # Fill leading pages up to max_per_page so Page 1 always accommodates >= min_per_page
+        cur = 0
+        while cur < total:
+            chunk_size = min(max_per_page, total - cur)
+            pages_schedules.append(schedules[cur:cur + chunk_size])
+            cur += chunk_size
+        num_pages = len(pages_schedules)
 
     result = []
     for idx, p_scheds in enumerate(pages_schedules):
@@ -1586,7 +1599,7 @@ def get_print_schedule_data(request):
     sheets = []
     for m in selected_machines:
         m_schedules = [s for s in all_schedules if s.machine_id == m.id]
-        m_pages = chunk_machine_schedules(m_schedules, max_per_page=20)
+        m_pages = chunk_machine_schedules(m_schedules)
         
         # Annotate schedules for HTML display & date merging
         for page in m_pages:
@@ -2165,7 +2178,7 @@ def get_print_emergency_schedule_data(request):
 
     sheets = []
     if is_consolidated:
-        m_pages = chunk_machine_schedules(all_schedules, max_per_page=20)
+        m_pages = chunk_machine_schedules(all_schedules)
         # Annotate schedules for HTML display & date merging
         for page in m_pages:
             cur_d = None
@@ -2203,7 +2216,7 @@ def get_print_emergency_schedule_data(request):
         selected_machines = list(Machine.objects.filter(id__in=machine_param_list, is_active=True).order_by('display_order'))
         for m in selected_machines:
             m_schedules = [s for s in all_schedules if s.machine_id == m.id]
-            m_pages = chunk_machine_schedules(m_schedules, max_per_page=20)
+            m_pages = chunk_machine_schedules(m_schedules)
             for page in m_pages:
                 cur_d = None
                 grp_start_s = None

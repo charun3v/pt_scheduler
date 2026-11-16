@@ -2375,6 +2375,17 @@ def run_tests():
     assert resp_em_pdf.status_code == 200
     assert resp_em_pdf.content.startswith(b'%PDF')
 
+    # 5. Verify that 22 patients fit on a single page and are not split across 2 pages
+    resp_22_html = c.get(f'/reports/print-schedule/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-01-11&machines={m_la1_obj.id}')
+    assert resp_22_html.status_code == 200
+    assert "1/2 pages" not in resp_22_html.content.decode('utf-8'), "22 patients must fit on 1 page and not show 1/2 pages"
+
+    resp_22_pdf = c.get(f'/reports/print-schedule/pdf/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-01-11&machines={m_la1_obj.id}')
+    assert resp_22_pdf.status_code == 200
+    import re
+    pdf_22_pages = len(re.findall(rb'/Type\s*/Page\b', resp_22_pdf.content))
+    assert pdf_22_pages == 1, f"Expected 1 page for 22 patients, got {pdf_22_pages}"
+
     print("✓ Test 28 Passed: Title Case formatting, vertical date merging (rowspan/SPAN), 'All Machines' box title, emergency date range, and footers on every page verified.")
 
     print("\n==================================================")
