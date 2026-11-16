@@ -1657,6 +1657,61 @@ def get_print_schedule_data(request):
     }
 
 
+def ensure_calibri_registered():
+    """
+    Registers Calibri and Calibri-Bold fonts in ReportLab if available.
+    Returns (font_regular, font_bold): ('Calibri', 'Calibri-Bold') if registered,
+    or ('Helvetica', 'Helvetica-Bold') as safe fallback.
+    """
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import os
+    from django.conf import settings
+
+    if 'Calibri' in pdfmetrics.getRegisteredFontNames() and 'Calibri-Bold' in pdfmetrics.getRegisteredFontNames():
+        return ('Calibri', 'Calibri-Bold')
+
+    search_dirs = [
+        os.path.join(os.path.dirname(__file__), 'fonts'),
+        os.path.join(settings.BASE_DIR, 'apps', 'reports', 'fonts'),
+        os.path.join(settings.BASE_DIR, 'static', 'fonts'),
+        'C:/Windows/Fonts',
+        'C:\\Windows\\Fonts',
+        '/usr/share/fonts/truetype/msttcorefonts',
+        '/usr/share/fonts/truetype',
+    ]
+
+    regular_path = None
+    bold_path = None
+    for d in search_dirs:
+        if not os.path.isdir(d):
+            continue
+        reg = os.path.join(d, 'calibri.ttf')
+        reg_cap = os.path.join(d, 'Calibri.ttf')
+        bld = os.path.join(d, 'calibrib.ttf')
+        bld_cap = os.path.join(d, 'CalibriB.ttf')
+
+        target_reg = reg if os.path.exists(reg) else (reg_cap if os.path.exists(reg_cap) else None)
+        target_bld = bld if os.path.exists(bld) else (bld_cap if os.path.exists(bld_cap) else None)
+
+        if target_reg and not regular_path:
+            regular_path = target_reg
+        if target_bld and not bold_path:
+            bold_path = target_bld
+
+    if regular_path:
+        try:
+            if 'Calibri' not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont('Calibri', regular_path))
+            if 'Calibri-Bold' not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont('Calibri-Bold', bold_path or regular_path))
+            return ('Calibri', 'Calibri-Bold')
+        except Exception:
+            return ('Helvetica', 'Helvetica-Bold')
+
+    return ('Helvetica', 'Helvetica-Bold')
+
+
 def generate_technician_sheet_pdf(data):
     """
     Generates an official KMIO Radiation Therapy Technician Information Sheet PDF
@@ -1719,6 +1774,8 @@ def generate_technician_sheet_pdf(data):
                 super().showPage()
             super().save()
 
+    tbl_font, tbl_font_bold = ensure_calibri_registered()
+
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('KMIO_Title', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=1, leading=13)
     dept_style = ParagraphStyle('KMIO_Dept', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=10, alignment=1, leading=12)
@@ -1731,7 +1788,7 @@ def generate_technician_sheet_pdf(data):
     intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9.5, alignment=4)
     sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
 
-    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=6.8, leading=8.5, alignment=0)
+    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName=tbl_font_bold, fontSize=6.8, leading=8.5, alignment=0)
 
     note_title_style = ParagraphStyle('KMIO_NoteTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9)
     note_text_style = ParagraphStyle('KMIO_NoteText', parent=styles['Normal'], fontName='Helvetica', fontSize=6.5, leading=8.5, alignment=4)
@@ -1743,7 +1800,7 @@ def generate_technician_sheet_pdf(data):
     sig_dept = ParagraphStyle('KMIO_SigDept', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2)
 
     story = []
-    col_widths = [36, 17, 54, 28, 70, 48, 86, 70, 44.5]
+    col_widths = [36, 17, 48, 28, 72, 44, 88, 72, 48.5]
 
     is_first_page_of_doc = True
     for sheet in data['sheets']:
@@ -1852,8 +1909,8 @@ def generate_technician_sheet_pdf(data):
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
                 ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
-                ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-                ('FONTSIZE', (0,1), (-1,-1), 6.5),
+                ('FONTNAME', (0,1), (-1,-1), tbl_font),
+                ('FONTSIZE', (0,1), (-1,-1), 6.6),
                 ('LEADING', (0,1), (-1,-1), 8),
                 ('TOPPADDING', (0,0), (-1,-1), v_pad),
                 ('BOTTOMPADDING', (0,0), (-1,-1), v_pad),
@@ -2153,8 +2210,8 @@ def get_print_emergency_schedule_data(request):
     if len(machine_param_list) == 1 and ',' in machine_param_list[0]:
         machine_param_list = [m.strip() for m in machine_param_list[0].split(',') if m.strip()]
 
-    # If 'all' is selected or nothing selected or machine_id == 'all', it is consolidated!
-    is_consolidated = ('all' in machine_param_list) or (not machine_param_list) or (request.GET.get('machine_id') == 'all')
+    # If 'all' or 'consolidated' is selected or nothing selected or machine_id in ['all', 'consolidated'], it is consolidated!
+    is_consolidated = ('all' in machine_param_list) or ('consolidated' in machine_param_list) or (not machine_param_list) or (request.GET.get('machine_id') in ['all', 'consolidated'])
 
     schedules_qs = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'shift', 'technique', 'patient__primary_consultant'
@@ -2342,6 +2399,8 @@ def generate_emergency_sheet_pdf(data):
                 super().showPage()
             super().save()
 
+    tbl_font, tbl_font_bold = ensure_calibri_registered()
+
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('KMIO_Title', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=1, leading=13)
     dept_style = ParagraphStyle('KMIO_Dept', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=10, alignment=1, leading=12)
@@ -2354,7 +2413,7 @@ def generate_emergency_sheet_pdf(data):
     intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9.5, alignment=4)
     sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
 
-    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=6.8, leading=8.5, alignment=0)
+    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName=tbl_font_bold, fontSize=6.8, leading=8.5, alignment=0)
 
     note_title_style = ParagraphStyle('KMIO_NoteTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9)
     note_text_style = ParagraphStyle('KMIO_NoteText', parent=styles['Normal'], fontName='Helvetica', fontSize=6.5, leading=8.5, alignment=4)
@@ -2475,8 +2534,8 @@ def generate_emergency_sheet_pdf(data):
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
                 ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
-                ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-                ('FONTSIZE', (0,1), (-1,-1), 6.5),
+                ('FONTNAME', (0,1), (-1,-1), tbl_font),
+                ('FONTSIZE', (0,1), (-1,-1), 6.6),
                 ('LEADING', (0,1), (-1,-1), 8),
                 ('TOPPADDING', (0,0), (-1,-1), v_pad),
                 ('BOTTOMPADDING', (0,0), (-1,-1), v_pad),
