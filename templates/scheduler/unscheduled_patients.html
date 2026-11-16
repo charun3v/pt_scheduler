@@ -42,9 +42,15 @@
                 <td style="padding: 10px;">{{ p.primary_consultant.name|default:'-' }}</td>
                 <td style="padding: 10px; color: #666;">{{ p.created_at|date:"d-M-Y" }}</td>
                 <td style="padding: 10px; text-align: center;">
+                    {% if CAN_SCHEDULE_PATIENT %}
                     <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn btn-highlight" style="padding: 5px 12px; font-size: 11px;">
                         ⚡ Schedule Now &rarr;
                     </a>
+                    {% else %}
+                    <a href="{% url 'patient_detail' p.id %}" class="action-ribbon-btn" style="padding: 5px 12px; font-size: 11px;">
+                        👁️ View Details
+                    </a>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

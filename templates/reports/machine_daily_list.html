@@ -24,6 +24,17 @@
             </a>
             {% endif %}
 
+            {% if CAN_PRINT_SCHEDULES %}
+            <a href="{% url 'print_treatment_schedule' %}?{% if selected_machine_id %}machines={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}"
+               target="_blank" class="action-ribbon-btn" style="background: #003366; color: #ffffff; border-color: #002244; font-weight: bold;" title="Print official KMIO Technician Information Sheet">
+                🖨️ Print Technician Sheet
+            </a>
+            <a href="{% url 'print_treatment_schedule_pdf' %}?{% if selected_machine_id %}machines={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}"
+               target="_blank" class="action-ribbon-btn" style="background: #b91c1c; color: #ffffff; border-color: #991b1b; font-weight: bold;" title="Download PDF official KMIO Technician Information Sheet">
+                📄 Download PDF
+            </a>
+            {% endif %}
+
             {% if schedules %}
             <a href="?{% if selected_machine_id %}machine_id={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}&export=excel"
                class="action-ribbon-btn" style="background: #28a745; color: #ffffff; border-color: #1e7e34; font-weight: bold;">
@@ -104,9 +115,15 @@
                 <td style="padding: 8px;">{{ s.jr_resident|default:'-' }}</td>
                 <td style="padding: 8px; font-weight: 500;">{{ s.machine_display }}</td>
                 <td style="padding: 8px; text-align: center; white-space: nowrap;">
+                    {% if CAN_SCHEDULE_PATIENT %}
                     <a href="{% url 'schedule_patient' s.patient.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px;">
                         Edit
                     </a>
+                    {% else %}
+                    <a href="{% url 'patient_detail' s.patient.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px;">
+                        View
+                    </a>
+                    {% endif %}
                     {% if CAN_REMOVE_FROM_SCHEDULE %}
                     <a href="{% url 'schedule_delete' s.id %}?next={{ request.get_full_path|urlencode }}" class="btn-delete" style="padding: 2px 6px; font-size: 10px; margin-left: 3px;" title="Remove from schedule list">
                         Remove

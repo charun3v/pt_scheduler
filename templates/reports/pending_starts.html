@@ -77,9 +77,15 @@
                 <td style="padding: 8px;">{{ s.machine_display }}</td>
                 <td style="padding: 8px;">{{ s.patient.phone_no|default:'-' }}</td>
                 <td style="padding: 8px; text-align: center; white-space: nowrap;">
+                    {% if CAN_SCHEDULE_PATIENT %}
                     <a href="{% url 'schedule_patient' s.patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 3px 8px; font-size: 11px;">
                         ⚡ Set Start Date &rarr;
                     </a>
+                    {% else %}
+                    <a href="{% url 'patient_detail' s.patient.id %}" class="action-ribbon-btn" style="padding: 3px 8px; font-size: 11px;">
+                        👁️ View
+                    </a>
+                    {% endif %}
                     {% if CAN_REMOVE_FROM_SCHEDULE %}
                     <a href="{% url 'schedule_delete' s.id %}?next={{ request.get_full_path|urlencode }}" class="btn-delete" style="padding: 3px 8px; font-size: 11px; margin-left: 4px;" title="Remove from schedule list">
                         🗑️ Remove

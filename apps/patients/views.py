@@ -7,7 +7,10 @@ from django.db.models import Q
 from django.utils import timezone
 from .models import Patient, ClinicalUnit, SEX_CHOICES, DEFAULT_SITES
 from apps.core.models import Consultant, AuditLog
-from apps.core.permissions import can_edit_locked_identity, can_delete_patient, can_register_patient, is_admin_only
+from apps.core.permissions import (
+    can_edit_locked_identity, can_delete_patient, can_register_patient,
+    is_admin_only, can_edit_patient, can_schedule_patient
+)
 from apps.core.validators import validate_field_value
 
 
@@ -19,6 +22,10 @@ def patient_register_view(request):
     Primary consultant, Phone Number.
     Site of treatment is captured during Treatment Scheduling (Stage 2).
     """
+    if not can_register_patient(request.user):
+        messages.error(request, "Access restricted. You do not have permission to register patients.")
+        return redirect('dashboard')
+
     consultants = Consultant.objects.filter(is_active=True).order_by('display_order', 'name')
     units = ClinicalUnit.objects.filter(is_active=True).order_by('display_order')
 
@@ -95,11 +102,18 @@ def patient_register_view(request):
         # Check uniqueness of MR No
         existing = Patient.objects.filter(mr_no=mr_no).first()
         if existing:
-            messages.warning(
-                request,
-                f"Patient with MR No. {mr_no} is already registered ({existing.pt_name}). You can schedule treatment directly below."
-            )
-            return redirect('schedule_patient', patient_id=existing.id)
+            if can_schedule_patient(request.user):
+                messages.warning(
+                    request,
+                    f"Patient with MR No. {mr_no} is already registered ({existing.pt_name}). You can schedule treatment directly below."
+                )
+                return redirect('schedule_patient', patient_id=existing.id)
+            else:
+                messages.warning(
+                    request,
+                    f"Patient with MR No. {mr_no} is already registered ({existing.pt_name})."
+                )
+                return redirect('patient_detail', patient_id=existing.id)
 
         age = int(float(age_raw)) if age_raw else None
         unit = request.POST.get('unit', 'I').strip() or 'I'
@@ -131,7 +145,7 @@ def patient_register_view(request):
         messages.success(request, f"Patient {patient.pt_name} (MR: {patient.mr_no}) registered successfully!")
 
         # Scheduling choice: schedule now or later
-        if 'schedule_now' in request.POST:
+        if 'schedule_now' in request.POST and can_schedule_patient(request.user):
             return redirect('schedule_patient', patient_id=patient.id)
         else:
             return redirect('patient_detail', patient_id=patient.id)
@@ -151,7 +165,12 @@ def patient_edit_view(request, patient_id):
     Patient Edit View.
     Rule: MR No and Patient Name are LOCKED. Only Admin / SubAdmin can edit them.
     Age, Diagnosis, Site, Phone, etc. can be edited by authorized users.
+    Front desk, nursing, and physics staff have read-only access.
     """
+    if not can_edit_patient(request.user):
+        messages.error(request, "Access restricted. You do not have permission to edit patient demographics.")
+        return redirect('patient_detail', patient_id=patient_id)
+
     patient = get_object_or_404(Patient, id=patient_id)
     can_edit_identity = can_edit_locked_identity(request.user)
     consultants = Consultant.objects.filter(is_active=True).order_by('display_order', 'name')
@@ -283,6 +302,18 @@ def patient_search_view(request):
     paginator = Paginator(patients, 25)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+
+    for p in page_obj:
+        schedules = list(p.schedules.all())
+        active_sched = next((s for s in schedules if s.date_of_start), None) or (schedules[0] if schedules else None)
+        if active_sched:
+            p.dashboard_schedule_status = active_sched.status or ('Emergency' if active_sched.is_emergency_slot else 'Scheduled')
+            p.dashboard_schedule_date = active_sched.date_of_start.strftime("%d-%b-%Y") if active_sched.date_of_start else ("Intended: " + active_sched.intended_start_date.strftime("%d-%b-%Y") if active_sched.intended_start_date else "Unscheduled")
+            p.dashboard_machine = active_sched.machine.name if active_sched.machine else "Unassigned"
+        else:
+            p.dashboard_schedule_status = "Pending"
+            p.dashboard_schedule_date = "-"
+            p.dashboard_machine = "-"
 
     context = {
         'page_obj': page_obj,

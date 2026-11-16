@@ -16,7 +16,9 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from apps.scheduler.models import Machine, TreatmentSchedule, Shift, Holiday
 from apps.patients.models import Patient
 from apps.core.models import Consultant, AuditLog, Designation, PrintTemplateConfig
-from apps.core.permissions import is_admin_or_subadmin, is_admin_only
+from apps.core.permissions import (
+    is_admin_or_subadmin, is_admin_only, can_print_schedules, is_frontdesk_nursing_or_physics
+)
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 
@@ -50,6 +52,23 @@ def machine_daily_list_view(request):
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
         except ValueError:
             end_date = start_date
+
+    # Front Desk, Nursing, and Physics staff: restricted to +/- 6 months from today
+    if is_frontdesk_nursing_or_physics(request.user):
+        min_allowed = today - timedelta(days=183)
+        max_allowed = today + timedelta(days=183)
+        if start_date < min_allowed:
+            start_date = min_allowed
+        elif start_date > max_allowed:
+            start_date = max_allowed
+        if end_date > max_allowed:
+            end_date = max_allowed
+        elif end_date < min_allowed:
+            end_date = min_allowed
+        if end_date < start_date:
+            end_date = start_date
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
 
     schedules = TreatmentSchedule.objects.select_related(
         'patient', 'machine', 'shift', 'technique', 'patient__primary_consultant'
@@ -1559,6 +1578,23 @@ def get_print_schedule_data(request):
     else:
         end_date = default_end
 
+    # Front Desk, Nursing, and Physics staff: restricted to +/- 6 months from today
+    if is_frontdesk_nursing_or_physics(request.user):
+        min_allowed = today - timedelta(days=183)
+        max_allowed = today + timedelta(days=183)
+        if start_date < min_allowed:
+            start_date = min_allowed
+        elif start_date > max_allowed:
+            start_date = max_allowed
+        if end_date > max_allowed:
+            end_date = max_allowed
+        elif end_date < min_allowed:
+            end_date = min_allowed
+        if end_date < start_date:
+            end_date = start_date
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+
     machine_ids = request.GET.getlist('machines')
     if len(machine_ids) == 1 and ',' in machine_ids[0]:
         machine_ids = [m.strip() for m in machine_ids[0].split(',') if m.strip()]
@@ -1817,9 +1853,6 @@ def generate_technician_sheet_pdf(data):
                     ('RIGHTPADDING', (0,0), (-1,-1), 2),
                 ])
             ]
-            if page['page_label']:
-                right_cell.append(Spacer(1, 2))
-                right_cell.append(Paragraph(page['page_label'], page_num_style))
 
             header_data = [
                 [
@@ -1999,8 +2032,8 @@ def print_treatment_schedule_view(request):
     Renders browser-optimised HTML print view of the Radiation Therapy Technician Information Sheet.
     Includes print toolbar and @media print page styling.
     """
-    if not is_admin_or_subadmin(request.user):
-        messages.error(request, "Access restricted. Printing treatment schedules is only available to clinical administrators.")
+    if not can_print_schedules(request.user):
+        messages.error(request, "Access restricted. You do not have permission to print schedules.")
         return redirect('dashboard')
     data = get_print_schedule_data(request)
     return render(request, 'reports/print_technician_sheet.html', data)
@@ -2012,8 +2045,8 @@ def print_treatment_schedule_pdf_view(request):
     Streams official KMIO Radiation Therapy Technician Information Sheet PDF download.
     Generated via ReportLab with pixel-perfect fidelity to the institutional template.
     """
-    if not is_admin_or_subadmin(request.user):
-        messages.error(request, "Access restricted. Printing treatment schedules is only available to clinical administrators.")
+    if not can_print_schedules(request.user):
+        messages.error(request, "Access restricted. You do not have permission to print schedules.")
         return redirect('dashboard')
     data = get_print_schedule_data(request)
     pdf_bytes = generate_technician_sheet_pdf(data)
@@ -2205,6 +2238,23 @@ def get_print_emergency_schedule_data(request):
             end_date = default_end
     else:
         end_date = default_end
+
+    # Front Desk, Nursing, and Physics staff: restricted to +/- 6 months from today
+    if is_frontdesk_nursing_or_physics(request.user):
+        min_allowed = today - timedelta(days=183)
+        max_allowed = today + timedelta(days=183)
+        if start_date < min_allowed:
+            start_date = min_allowed
+        elif start_date > max_allowed:
+            start_date = max_allowed
+        if end_date > max_allowed:
+            end_date = max_allowed
+        elif end_date < min_allowed:
+            end_date = min_allowed
+        if end_date < start_date:
+            end_date = start_date
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
 
     machine_param_list = request.GET.getlist('machines')
     if len(machine_param_list) == 1 and ',' in machine_param_list[0]:
@@ -2449,9 +2499,6 @@ def generate_emergency_sheet_pdf(data):
                     ('RIGHTPADDING', (0,0), (-1,-1), 2),
                 ])
             ]
-            if page['page_label']:
-                right_cell.append(Spacer(1, 2))
-                right_cell.append(Paragraph(page['page_label'], page_num_style))
 
             header_data = [
                 [
@@ -2624,8 +2671,8 @@ def print_emergency_schedule_view(request):
     Browser-optimised HTML print view of the Emergency / Vacant Slot list.
     Supports consolidated list across all machines or individual machine sheets.
     """
-    if not is_admin_or_subadmin(request.user):
-        messages.error(request, "Access restricted. Printing emergency schedules is only available to clinical administrators.")
+    if not can_print_schedules(request.user):
+        messages.error(request, "Access restricted. You do not have permission to print emergency schedules.")
         return redirect('dashboard')
     data = get_print_emergency_schedule_data(request)
     return render(request, 'reports/print_emergency_sheet.html', data)
@@ -2637,8 +2684,8 @@ def print_emergency_schedule_pdf_view(request):
     Streams official KMIO Emergency/Vacant Slot list PDF download.
     Generated via ReportLab with pixel-perfect 7-column fidelity to institutional template.
     """
-    if not is_admin_or_subadmin(request.user):
-        messages.error(request, "Access restricted. Printing emergency schedules is only available to clinical administrators.")
+    if not can_print_schedules(request.user):
+        messages.error(request, "Access restricted. You do not have permission to print emergency schedules.")
         return redirect('dashboard')
     data = get_print_emergency_schedule_data(request)
     pdf_bytes = generate_emergency_sheet_pdf(data)

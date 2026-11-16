@@ -142,12 +142,16 @@
 
             <!-- Action buttons for patient -->
             <div style="display: flex; gap: 6px; align-items: center;">
+                {% if CAN_SCHEDULE_PATIENT %}
                 <a href="{% url 'schedule_patient' patient.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 5px 14px; font-size: 12px; font-weight: bold;">
                     ➕ Add Treatment Course and Schedule
                 </a>
+                {% endif %}
+                {% if CAN_EDIT_PATIENT %}
                 <a href="{% url 'patient_edit' patient.id %}" class="action-ribbon-btn" style="padding: 5px 12px; font-size: 12px;">
                     ✏️ Edit Demographics
                 </a>
+                {% endif %}
                 {% if CAN_DELETE_PATIENT %}
                 <a href="{% url 'patient_delete' patient.id %}" class="btn-delete" style="padding: 5px 10px; font-size: 12px;" title="Permanently delete patient record (Admin only)">
                     🗑️ Delete
@@ -198,9 +202,11 @@
                 </h3>
             </div>
             <div>
+                {% if CAN_SCHEDULE_PATIENT %}
                 <a href="{% url 'schedule_patient' patient.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 4px 12px; font-size: 11px; font-weight: bold;">
                     ➕ Add Treatment Course and Schedule
                 </a>
+                {% endif %}
             </div>
         </div>
 
@@ -339,6 +345,7 @@
 
                         <!-- Actions & Course Tagging / Clubbing -->
                         <td style="text-align: center;">
+                            {% if CAN_SCHEDULE_PATIENT %}
                             <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
                                 <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: center;">
                                     <a href="{% url 'schedule_patient' patient.id %}?schedule_id={{ s.id }}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px;" title="Edit or Approve this course">
@@ -385,6 +392,9 @@
                                 </form>
                                 {% endif %}
                             </div>
+                            {% else %}
+                            <span style="color: #64748b; font-size: 11px; font-style: italic;">View Only</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -399,9 +409,11 @@
             <p style="color: #57606a; font-size: 12px; margin: 0 0 14px 0; max-width: 500px; margin-left: auto; margin-right: auto;">
                 This patient has been registered in the system but has no active or draft treatment schedules yet.
             </p>
+            {% if CAN_SCHEDULE_PATIENT %}
             <a href="{% url 'schedule_patient' patient.id %}" class="action-ribbon-btn btn-highlight" style="padding: 6px 20px; font-size: 13px; font-weight: bold;">
                 ➕ Add Treatment Course and Schedule
             </a>
+            {% endif %}
         </div>
         {% endif %}
     </div>

@@ -10,7 +10,12 @@ from .permissions import (
     can_delete_patient,
     can_remove_from_schedule,
     can_manual_schedule,
-    can_export_data
+    can_export_data,
+    can_schedule_patient,
+    can_register_patient,
+    can_edit_patient,
+    can_print_schedules,
+    is_frontdesk_nursing_or_physics
 )
 
 def role_permissions(request):
@@ -39,4 +44,9 @@ def role_permissions(request):
         'CAN_REMOVE_FROM_SCHEDULE': can_remove_from_schedule(request.user),
         'CAN_MANUAL_SCHEDULE': can_manual_schedule(request.user),
         'CAN_EXPORT_DATA': can_export_data(request.user),
+        'CAN_SCHEDULE_PATIENT': can_schedule_patient(request.user),
+        'CAN_REGISTER_PATIENT': can_register_patient(request.user),
+        'CAN_EDIT_PATIENT': can_edit_patient(request.user),
+        'CAN_PRINT_SCHEDULES': can_print_schedules(request.user),
+        'IS_FRONTDESK_NURSING_PHYSICS': is_frontdesk_nursing_or_physics(request.user),
     }

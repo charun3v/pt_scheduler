@@ -44,7 +44,8 @@
                 <th style="padding: 8px;">RT No.</th>
                 <th style="padding: 8px;">Site / Diagnosis</th>
                 <th style="padding: 8px;">Primary Consultant</th>
-                <th style="padding: 8px;">Status</th>
+                <th style="padding: 8px;">Schedule Status</th>
+                <th style="padding: 8px;">Schedule Date & Machine</th>
                 <th style="padding: 8px; text-align: center;">Actions</th>
             </tr>
         </thead>
@@ -65,24 +66,38 @@
                 </td>
                 <td style="padding: 8px;">{{ p.primary_consultant.name|default:'-' }}</td>
                 <td style="padding: 8px;">
-                    {% if p.has_schedule %}
+                    {% if p.dashboard_schedule_status == 'Scheduled' %}
                         <span class="badge-success">Scheduled</span>
+                    {% elif p.dashboard_schedule_status == 'Emergency' or p.dashboard_schedule_status == 'Vacant' %}
+                        <span class="badge-warning" style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-weight: bold;">🚨 {{ p.dashboard_schedule_status }}</span>
+                    {% elif p.dashboard_schedule_status == 'Draft' %}
+                        <span class="badge-warning">Draft</span>
                     {% else %}
-                        <span class="badge-warning">Unscheduled</span>
+                        <span class="badge-warning" style="background: #fff3cd; color: #856404; border: 1px solid #ffeeba;">Pending</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 8px;">
+                    {% if p.dashboard_schedule_date != '-' %}
+                        <strong style="color: #003366;">{{ p.dashboard_schedule_date }}</strong>
+                        <div style="font-size: 11px; color: #555;">{{ p.dashboard_machine }}</div>
+                    {% else %}
+                        <span style="color: #999;">Not Scheduled</span>
                     {% endif %}
                 </td>
                 <td style="padding: 8px; text-align: center; white-space: nowrap;">
+                    {% if CAN_SCHEDULE_PATIENT %}
                     <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn" style="padding: 4px 8px; font-size: 11px;">
                         ⚡ Schedule
                     </a>
-                    <a href="{% url 'patient_detail' p.id %}" target="_blank" class="action-ribbon-btn" style="padding: 4px 8px; font-size: 11px;" title="Open in new tab">
-                        View ↗
+                    {% endif %}
+                    <a href="{% url 'patient_detail' p.id %}" target="_blank" class="action-ribbon-btn btn-highlight" style="padding: 4px 8px; font-size: 11px;" title="Open in new tab">
+                        👁️ View Details
                     </a>
                 </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="8" style="padding: 24px; text-align: center; color: #777;">
+                <td colspan="9" style="padding: 24px; text-align: center; color: #777;">
                     No patients found matching your search criteria.
                 </td>
             </tr>

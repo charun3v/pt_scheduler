@@ -25,7 +25,12 @@ from apps.core.permissions import (
     is_admin_or_subadmin,
     is_admin_only,
     can_manage_validation_rules,
-    can_manage_lookups
+    can_manage_lookups,
+    is_frontdesk_nursing_or_physics,
+    can_schedule_patient,
+    can_edit_patient,
+    can_register_patient,
+    can_print_schedules
 )
 
 
@@ -2396,6 +2401,139 @@ def run_tests():
     assert pdf_46_pages == 2, f"Expected 2 pages for 46 patients, got {pdf_46_pages}"
 
     print("✓ Test 28 Passed: Title Case formatting, vertical date merging (rowspan/SPAN), 'All Machines' box title, emergency date range, footers on every page, Primary Consultant header, star Special Technique column, and dynamic max-capacity pagination verified.")
+
+    # 29. Test Header Page Label Omission & Front Desk, Nursing, and Physics Role Matrix
+    print("\n--- Test 29: Header Page Label Removal & Front Desk, Nursing, and Physics Access Controls ---")
+    
+    # Check that in both PDF generators and HTML, the header no longer includes the page_label
+    resp_hdr_tech = c.get(f'/reports/print-schedule/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-01-21&machines={m_la1_obj.id}')
+    assert resp_hdr_tech.status_code == 200
+    assert "header-page-num" not in resp_hdr_tech.content.decode('utf-8'), "Header page number must be removed from HTML print technician sheet"
+
+    resp_hdr_em = c.get('/reports/print-emergency-schedule/?machines=all&start_date=2026-01-01&end_date=2026-01-21')
+    assert resp_hdr_em.status_code == 200
+    assert "header-page-num" not in resp_hdr_em.content.decode('utf-8'), "Header page number must be removed from HTML print emergency sheet"
+
+    # Setup test users for Front Desk, Nursing, and Physics
+    fd_role = Role.objects.get(role_name='Front Desk')
+    nursing_role = Role.objects.get(role_name='Nursing')
+    physics_role = Role.objects.get(role_name='Physics')
+
+    fd_user, _ = User.objects.get_or_create(username='test_frontdesk')
+    fd_user.set_password('FrontDesk123!')
+    fd_user.is_active = True
+    fd_user.save()
+    UserProfile.objects.update_or_create(user=fd_user, defaults={'role': fd_role, 'user_level': 'STAFF'})
+
+    nursing_user, _ = User.objects.get_or_create(username='test_nursing')
+    nursing_user.set_password('Nursing123!')
+    nursing_user.is_active = True
+    nursing_user.save()
+    UserProfile.objects.update_or_create(user=nursing_user, defaults={'role': nursing_role, 'user_level': 'STAFF'})
+
+    physics_user, _ = User.objects.get_or_create(username='test_physics')
+    physics_user.set_password('Physics123!')
+    physics_user.is_active = True
+    physics_user.save()
+    UserProfile.objects.update_or_create(user=physics_user, defaults={'role': physics_role, 'user_level': 'STAFF'})
+
+    # Permission helper checks
+    for u in [fd_user, nursing_user, physics_user]:
+        assert is_frontdesk_nursing_or_physics(u) is True
+        assert can_schedule_patient(u) is False, f"{u.username} must not be allowed to schedule patients"
+        assert can_edit_patient(u) is False, f"{u.username} must not be allowed to edit patients"
+        assert can_register_patient(u) is True, f"{u.username} must be allowed to register patients"
+        assert can_print_schedules(u) is True, f"{u.username} must be allowed to print schedules"
+
+    # Test with Client logged in as Front Desk
+    c_fd = Client()
+    c_fd.login(username='test_frontdesk', password='FrontDesk123!')
+
+    # a. Search for patient & check schedule status/date
+    resp_dash_search = c_fd.get('/?q=JAYAMMA')
+    assert resp_dash_search.status_code == 200
+    dash_search_html = resp_dash_search.content.decode('utf-8')
+    assert "Schedule Status" in dash_search_html
+    assert "Schedule Date" in dash_search_html
+    assert "JAYAMMA" in dash_search_html
+
+    resp_pt_search = c_fd.get('/patients/search/?q=JAYAMMA')
+    assert resp_pt_search.status_code == 200
+    pt_search_html = resp_pt_search.content.decode('utf-8')
+    assert "Schedule Status" in pt_search_html
+    assert "Schedule Date & Machine" in pt_search_html
+    assert "View Details" in pt_search_html
+
+    # b. Dashboard default shows only pending patients (unscheduled)
+    resp_dash_def = c_fd.get('/')
+    assert resp_dash_def.status_code == 200
+    # Pending queue should be rendered, not showing the Quick Schedule modal or button
+    dash_def_html = resp_dash_def.content.decode('utf-8')
+    assert '<div id="quickScheduleModal"' not in dash_def_html
+    assert "⚡ Quick Schedule" not in dash_def_html
+    assert "Search & Track Patients" in dash_def_html
+    assert "Non-Scheduled Patients" in dash_def_html
+
+    # c. Register a patient (allowed)
+    test_reg_mr = 9999099
+    Patient.objects.filter(mr_no=test_reg_mr).delete()
+    cons_1 = Consultant.objects.filter(is_active=True).first()
+    reg_resp = c_fd.post('/patients/register/', {
+        'mr_no': test_reg_mr,
+        'pt_name': 'FRONTDESK TEST PATIENT',
+        'rt_no': 'RT-FD-01',
+        'age': 45,
+        'sex': 'M',
+        'diagnosis': 'Ca Lung',
+        'primary_consultant': cons_1.id,
+        'phone_no': '9876543210',
+        'save_only': '1'
+    }, follow=True)
+    assert reg_resp.status_code == 200
+    created_pt = Patient.objects.get(mr_no=test_reg_mr)
+    assert created_pt.pt_name == 'FRONTDESK TEST PATIENT'
+
+    # e. Front desk cannot schedule (blocked by backend redirect + error message)
+    sched_resp = c_fd.get(f'/scheduler/patient/{created_pt.id}/', follow=True)
+    assert sched_resp.status_code == 200
+    assert "Access restricted. You do not have permission to schedule patients." in sched_resp.content.decode('utf-8')
+
+    # f. Front desk cannot edit demographics (blocked by backend redirect + error message)
+    edit_resp = c_fd.get(f'/patients/{created_pt.id}/edit/', follow=True)
+    assert edit_resp.status_code == 200
+    assert "Access restricted. You do not have permission to edit patient demographics." in edit_resp.content.decode('utf-8')
+
+    # f2. Patient details page is visible but read-only (no edit/add/delete buttons)
+    det_resp = c_fd.get(f'/patients/{created_pt.id}/')
+    assert det_resp.status_code == 200
+    det_html = det_resp.content.decode('utf-8')
+    assert "FRONTDESK TEST PATIENT" in det_html
+    assert "Edit Demographics" not in det_html
+    assert "➕ Add Treatment Course and Schedule" not in det_html
+    assert "🗑️ Delete" not in det_html
+
+    # c. Printouts: Allowed +/- 6 months from present date, clamped when outside
+    # Normal in-range print view
+    resp_print = c_fd.get(f'/reports/print-schedule/?modality=Teletherapy&machines={m_la1_obj.id}')
+    assert resp_print.status_code == 200
+
+    resp_print_pdf = c_fd.get(f'/reports/print-schedule/pdf/?modality=Teletherapy&machines={m_la1_obj.id}')
+    assert resp_print_pdf.status_code == 200
+    assert resp_print_pdf.content.startswith(b'%PDF')
+
+    # Out-of-range test: requesting 2 years in future (should be clamped to today + 183 days)
+    today = date.today()
+    max_allowed = today + timedelta(days=183)
+    far_future_start = (today + timedelta(days=400)).strftime("%Y-%m-%d")
+    far_future_end = (today + timedelta(days=500)).strftime("%Y-%m-%d")
+
+    resp_clamped = c_fd.get(f'/reports/print-schedule/?start_date={far_future_start}&end_date={far_future_end}&machines={m_la1_obj.id}')
+    assert resp_clamped.status_code == 200
+    assert resp_clamped.context['start_date'] == max_allowed, f"Expected start_date clamped to {max_allowed}, got {resp_clamped.context['start_date']}"
+
+    # Clean up test patient
+    created_pt.delete()
+    print("✓ Test 29 Passed: Header page label removal, and Front Desk, Nursing, and Physics read-only & print controls verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

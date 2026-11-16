@@ -15,7 +15,7 @@ from .models import (
 import json
 from apps.patients.models import Patient, DEFAULT_SITES
 from apps.core.models import AuditLog
-from apps.core.permissions import is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule
+from apps.core.permissions import is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule, can_schedule_patient
 from apps.core.validators import validate_field_value
 
 
@@ -36,6 +36,9 @@ def schedule_patient_view(request, patient_id):
       - 'Approve & Schedule': validates all mandatory parameters and schedules on active list
     """
     patient = get_object_or_404(Patient, id=patient_id)
+    if not can_schedule_patient(request.user):
+        messages.error(request, "Access restricted. You do not have permission to schedule patients.")
+        return redirect('patient_detail', patient_id=patient.id)
     machines = Machine.objects.filter(is_active=True).order_by('display_order', 'name')
     shifts = Shift.objects.filter(is_active=True).order_by('display_order', 'name')
     techniques = Technique.objects.filter(is_active=True).order_by('display_order', 'name')
@@ -693,6 +696,10 @@ def tag_treatment_course_view(request, schedule_id):
     schedule = get_object_or_404(TreatmentSchedule, id=schedule_id)
     patient = schedule.patient
 
+    if not can_schedule_patient(request.user):
+        messages.error(request, "Access restricted. You do not have permission to modify treatment courses.")
+        return redirect('patient_detail', patient_id=patient.id)
+
     if request.method == 'POST':
         tagged_to_id = request.POST.get('tagged_to_id', '').strip()
         if tagged_to_id:
@@ -816,6 +823,10 @@ def emergency_slot_view(request, schedule_id):
         id=schedule_id
     )
     patient = sched.patient
+
+    if not can_schedule_patient(request.user):
+        messages.error(request, "Access restricted. You do not have permission to assign or modify emergency slots.")
+        return redirect('patient_detail', patient_id=patient.id)
 
     all_machines = Machine.objects.filter(is_active=True).order_by('display_order')
     all_shifts = Shift.objects.filter(is_active=True).order_by('display_order')
@@ -950,6 +961,10 @@ def revert_emergency_slot_view(request, schedule_id):
     """
     sched = get_object_or_404(TreatmentSchedule, id=schedule_id)
     patient = sched.patient
+
+    if not can_schedule_patient(request.user):
+        messages.error(request, "Access restricted. You do not have permission to modify treatment schedules.")
+        return redirect('patient_detail', patient_id=patient.id)
 
     if request.method == 'POST':
         prev_cat = sched.slot_category or 'Emergency'

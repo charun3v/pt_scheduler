@@ -131,14 +131,16 @@
                 <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="padding: 8px 16px;">Cancel</a>
                 
                 <button type="submit" name="save_only" value="1"
-                        style="background: #e2e8f0; color: #1a202c; border: 1px solid #cbd5e0; padding: 10px 18px; font-weight: 600; border-radius: 4px; cursor: pointer;">
+                        style="{% if CAN_SCHEDULE_PATIENT %}background: #e2e8f0; color: #1a202c; border: 1px solid #cbd5e0;{% else %}background: #003366; color: #ffffff; border: 1px solid #002244; box-shadow: 0 2px 4px rgba(0,0,0,0.15);{% endif %} padding: 10px 18px; font-weight: 600; border-radius: 4px; cursor: pointer;">
                     💾 Register & Save
                 </button>
                 
+                {% if CAN_SCHEDULE_PATIENT %}
                 <button type="submit" name="schedule_now" value="1"
                         style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 10px 22px; font-weight: bold; border-radius: 4px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
                     💾 Register & Schedule Treatment Now ➡️
                 </button>
+                {% endif %}
             </div>
         </form>
     </div>

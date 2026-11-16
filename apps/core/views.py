@@ -189,23 +189,28 @@ def dashboard_view(request):
     else:
         base_filter = Q(is_hidden_from_dashboard=False)
 
-    # Non-scheduled patients: either have no treatment schedule, or have schedule with no start date
-    non_scheduled_qs = Patient.objects.filter(
-        base_filter & (Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True))
-    ).distinct().select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
-
     if query:
+        # When searching, search across all patients (both scheduled and pending)
+        # to allow staff (Front desk, Nursing, Physics, Doctors) to search and check schedule status and date!
+        patient_qs = Patient.objects.filter(base_filter).distinct().select_related(
+            'primary_consultant'
+        ).prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
         if query.isdigit():
-            non_scheduled_qs = non_scheduled_qs.filter(
+            patient_qs = patient_qs.filter(
                 Q(mr_no=int(query)) | Q(phone_no__icontains=query)
             )
         else:
-            non_scheduled_qs = non_scheduled_qs.filter(
+            patient_qs = patient_qs.filter(
                 Q(pt_name__icontains=query) |
                 Q(rt_no__icontains=query) |
                 Q(diagnosis__icontains=query) |
                 Q(primary_consultant__name__icontains=query)
             )
+    else:
+        # Default view: Non-scheduled patients (pending patients awaiting scheduling)
+        patient_qs = Patient.objects.filter(
+            base_filter & (Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True))
+        ).distinct().select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
 
     hidden_count = Patient.objects.filter(
         is_hidden_from_dashboard=True
@@ -213,9 +218,36 @@ def dashboard_view(request):
         Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True)
     ).distinct().count() if user_is_admin else 0
 
-    paginator = Paginator(non_scheduled_qs, 15)
+    paginator = Paginator(patient_qs, 15)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
+
+    # Annotate schedule status and schedule date for display
+    for p in page_obj:
+        scheds = list(p.schedules.all())
+        active_sched = None
+        for s in scheds:
+            if s.date_of_start:
+                active_sched = s
+                break
+        if not active_sched and scheds:
+            active_sched = scheds[0]
+
+        if active_sched and active_sched.date_of_start:
+            p.dashboard_schedule_status = active_sched.status or 'Scheduled'
+            p.dashboard_schedule_date = active_sched.date_of_start.strftime("%d-%b-%Y")
+            p.dashboard_machine = active_sched.machine.name if active_sched.machine else ''
+            p.is_scheduled_active = True
+        elif active_sched:
+            p.dashboard_schedule_status = 'Pending'
+            p.dashboard_schedule_date = 'Unscheduled'
+            p.dashboard_machine = active_sched.machine.name if active_sched.machine else ''
+            p.is_scheduled_active = False
+        else:
+            p.dashboard_schedule_status = 'Pending'
+            p.dashboard_schedule_date = 'Unscheduled'
+            p.dashboard_machine = ''
+            p.is_scheduled_active = False
 
     # Pending User Account Approvals for Admin (strictly Admin only, not SubAdmin)
     pending_accounts = []

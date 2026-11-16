@@ -78,6 +78,20 @@ def can_manage_lookups(user) -> bool:
     return is_admin_only(user)
 
 
+def is_frontdesk_nursing_or_physics(user) -> bool:
+    """Checks if the user belongs to Front Desk, Nursing, or Physics roles."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return False
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role and profile.role.is_active:
+        r_name = profile.role.role_name.strip().lower()
+        if any(keyword in r_name for keyword in ('front desk', 'front office', 'nursing', 'nurse', 'physics')):
+            return True
+    return False
+
+
 def can_register_patient(user) -> bool:
     if is_admin_or_subadmin(user):
         return True
@@ -88,11 +102,40 @@ def can_register_patient(user) -> bool:
 
 
 def can_schedule_patient(user) -> bool:
+    """Front desk, Nursing, and Physics staff cannot schedule patients."""
+    if is_frontdesk_nursing_or_physics(user):
+        return False
     if is_admin_or_subadmin(user):
         return True
     profile = getattr(user, 'profile', None)
     if profile and profile.role and profile.role.is_active:
         return bool(profile.role.cap_schedule_patient)
+    return True
+
+
+def can_edit_patient(user) -> bool:
+    """Front desk, Nursing, and Physics staff can view patient details but cannot edit or add."""
+    if is_frontdesk_nursing_or_physics(user):
+        return False
+    if is_admin_or_subadmin(user):
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role and profile.role.is_active:
+        return bool(profile.role.cap_register_patient or profile.role.cap_edit_locked_identity)
+    return True
+
+
+def can_print_schedules(user) -> bool:
+    """Admin, SubAdmin, Doctors, Residents, Front Desk, Nursing, and Physics can take printouts."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_admin_or_subadmin(user):
+        return True
+    if is_frontdesk_nursing_or_physics(user):
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role and profile.role.is_active:
+        return bool(profile.role.cap_view_reports or profile.role.cap_view_patients)
     return True
 
 
