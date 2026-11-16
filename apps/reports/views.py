@@ -1794,7 +1794,7 @@ def generate_technician_sheet_pdf(data):
     sig_dept = ParagraphStyle('KMIO_SigDept', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2)
 
     story = []
-    col_widths = [35, 14, 44, 24, 68, 40, 86, 20, 73, 49.5]
+    col_widths = [35, 14, 44, 24, 60, 40, 96, 20, 68, 52.5]
 
     is_first_page_of_doc = True
     for sheet in data['sheets']:
