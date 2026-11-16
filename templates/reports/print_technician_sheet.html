@@ -365,19 +365,20 @@
                     New Patient starts from {{ start_date_formatted }} to {{ end_date_formatted }}{% if not page.is_first %} (Contd.){% endif %}
                 </div>
 
-                <!-- Patient Starts Table (9 Columns, One Line Per Patient, No Wrapping) -->
+                <!-- Patient Starts Table (10 Columns, One Line Per Patient, No Wrapping) -->
                 <table class="technician-table">
                     <thead>
                         <tr>
                             <th style="width: 12mm;">Date</th>
                             <th style="width: 6mm; text-align: center;">Shift</th>
-                            <th style="width: 17mm;">Hospital no.</th>
-                            <th style="width: 9mm;">RT No.</th>
-                            <th style="width: 23mm;">Patient name</th>
-                            <th style="width: 15mm;">Phone No.</th>
-                            <th style="width: 30mm;">Diagnosis</th>
-                            <th style="width: 28mm;">Consultant Radiation Oncologist</th>
-                            <th style="width: 20mm;">Junior Resident</th>
+                            <th style="width: 16mm;">Hospital no.</th>
+                            <th style="width: 8mm;">RT No.</th>
+                            <th style="width: 22mm;">Patient name</th>
+                            <th style="width: 14mm;">Phone No.</th>
+                            <th style="width: 28mm;">Diagnosis</th>
+                            <th style="width: 8mm; text-align: center;" title="Special Techniques">★</th>
+                            <th style="width: 26mm;">Primary Consultant</th>
+                            <th style="width: 18mm;">Junior Resident</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -392,12 +393,13 @@
                             <td style="font-weight: 600;" title="{{ s.patient_name_title }}">{{ s.patient_name_title }}</td>
                             <td>{{ s.patient.phone_no|default:"-" }}</td>
                             <td title="{{ s.diagnosis_title }}">{{ s.diagnosis_title }}</td>
+                            <td style="text-align: center; font-weight: 600;" title="{% if s.special_technique_display %}Special Technique: {{ s.special_technique_display }}{% endif %}">{{ s.special_technique_display }}</td>
                             <td title="{{ s.patient.primary_consultant.name|default:'-' }}">{{ s.patient.primary_consultant.name|default:"-" }}</td>
                             <td title="{{ s.jr_resident|default:'-' }}">{{ s.jr_resident|default:"-" }}</td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="9" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">
+                            <td colspan="10" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">
                                 No new patient starts scheduled for {{ sheet.machine.name }} between {{ start_date_formatted }} and {{ end_date_formatted }}.
                             </td>
                         </tr>

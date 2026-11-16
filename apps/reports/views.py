@@ -624,19 +624,19 @@ def emergency_slots_report_view(request):
 
 
 
-def chunk_machine_schedules(schedules, max_single=26, max_per_page=25, min_per_page=18):
+def chunk_machine_schedules(schedules, max_first=34, max_other=36):
     """
-    Paginates schedules per machine to guarantee clean physical A4 page rendering:
-    - If total <= max_single (default 26): 1 page, page_label is None (no page count displayed).
-      Accommodates at least 18 (and up to 26) patients on a single page without splitting.
-    - If total > max_single: splits across pages where each page accommodates at least min_per_page (18)
-      patients up to max_per_page (25), matching institutional layout standards.
-      On multi-page sheets: page_label is e.g. '1/2 pages', '2/2 pages' (displayed in header & footer).
+    Paginates schedules per machine dynamically to maximize page space utilization:
+    - If total <= max_first (34 rows): 1 single page, page_label is None (no page count displayed).
+      Dynamically accommodates maximum entries on a single page without splitting.
+    - If total > max_first: dynamically fills Page 1 up to max_first (34) to accommodate maximum entries
+      without leaving large empty gaps, and fills subsequent pages up to max_other (36).
+      Multi-page sheets display page_label: e.g. '1/2 pages', '2/2 pages' (displayed in header & footer).
     - Every page comfortably accommodates institutional header, title, table,
       notes, copy-to distribution, and signing authority without any cutoffs.
     """
     total = len(schedules)
-    if total <= max_single:
+    if total <= max_first:
         return [{
             'page_num': 1,
             'total_pages': 1,
@@ -648,27 +648,17 @@ def chunk_machine_schedules(schedules, max_single=26, max_per_page=25, min_per_p
             'schedules': schedules,
         }]
 
-    num_pages = (total + max_per_page - 1) // max_per_page
-    base_chunk = total // num_pages
-
     pages_schedules = []
-    if base_chunk >= min_per_page:
-        # Balanced distribution across pages where each page has >= min_per_page (18)
-        remainder = total % num_pages
-        cur = 0
-        for i in range(num_pages):
-            chunk_size = base_chunk + (1 if i < remainder else 0)
-            pages_schedules.append(schedules[cur:cur + chunk_size])
-            cur += chunk_size
-    else:
-        # Fill leading pages up to max_per_page so Page 1 always accommodates >= min_per_page
-        cur = 0
-        while cur < total:
-            chunk_size = min(max_per_page, total - cur)
-            pages_schedules.append(schedules[cur:cur + chunk_size])
-            cur += chunk_size
-        num_pages = len(pages_schedules)
+    cur = 0
+    page_idx = 0
+    while cur < total:
+        cap = max_first if page_idx == 0 else max_other
+        chunk = schedules[cur:cur + cap]
+        pages_schedules.append(chunk)
+        cur += len(chunk)
+        page_idx += 1
 
+    num_pages = len(pages_schedules)
     result = []
     for idx, p_scheds in enumerate(pages_schedules):
         page_num = idx + 1
@@ -1612,6 +1602,10 @@ def get_print_schedule_data(request):
                 s.patient_name_title = format_title_case(s.patient.pt_name)
                 s.diagnosis_title = format_title_case(s.patient.diagnosis)
                 s.consultant_name_title = s.patient.primary_consultant.name if s.patient.primary_consultant else '-'
+                st_val = ''
+                if s.special_technique and s.special_technique.name.strip().lower() not in ['none', '', '-']:
+                    st_val = s.special_technique.name.strip()
+                s.special_technique_display = st_val
                 if d_str == cur_d:
                     grp_count += 1
                     s.date_rowspan = 0
@@ -1800,7 +1794,7 @@ def generate_technician_sheet_pdf(data):
     sig_dept = ParagraphStyle('KMIO_SigDept', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2)
 
     story = []
-    col_widths = [36, 17, 48, 28, 72, 44, 88, 72, 48.5]
+    col_widths = [35, 14, 44, 24, 68, 40, 86, 20, 73, 49.5]
 
     is_first_page_of_doc = True
     for sheet in data['sheets']:
@@ -1865,7 +1859,8 @@ def generate_technician_sheet_pdf(data):
             story.append(Paragraph(sec_title, sec_title_style))
             story.append(Spacer(1, 4))
 
-            # 9-Column Table: Title Casing on Patient name and Diagnosis
+            # 10-Column Table: Title Casing on Patient name and Diagnosis, Star for Special Technique, Primary Consultant
+            th_star_style = ParagraphStyle('KMIO_TH_Star', parent=th_style, alignment=1)
             table_rows = [
                 [
                     Paragraph('Date', th_style),
@@ -1875,7 +1870,8 @@ def generate_technician_sheet_pdf(data):
                     Paragraph('Patient name', th_style),
                     Paragraph('Phone No.', th_style),
                     Paragraph('Diagnosis', th_style),
-                    Paragraph('Consultant Radiation<br/>Oncologist', th_style),
+                    Paragraph('★', th_star_style),
+                    Paragraph('Primary Consultant', th_style),
                     Paragraph('Junior Resident', th_style),
                 ]
             ]
@@ -1889,16 +1885,19 @@ def generate_technician_sheet_pdf(data):
                     pt_str = format_title_case(s.patient.pt_name).replace('\n', ' ').strip()[:18]
                     ph_str = str(s.patient.phone_no or '-')
                     diag_str = format_title_case(s.patient.diagnosis).replace('\n', ' ').strip()[:28]
+                    st_str = ''
+                    if s.special_technique and s.special_technique.name.strip().lower() not in ['none', '', '-']:
+                        st_str = s.special_technique.name.strip()
                     cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
                     jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:15]
 
                     table_rows.append([
-                        d_str, sh_str, mr_str, rt_str, pt_str, ph_str, diag_str, cons_str, jr_str
+                        d_str, sh_str, mr_str, rt_str, pt_str, ph_str, diag_str, st_str, cons_str, jr_str
                     ])
             else:
                 table_rows.append([
                     f"No new patient starts scheduled for {sheet['machine'].name} between {data['start_date_formatted']} and {data['end_date_formatted']}.",
-                    '', '', '', '', '', '', '', ''
+                    '', '', '', '', '', '', '', '', ''
                 ])
 
             v_pad = config.row_vertical_padding_pt or 2.7
@@ -1906,6 +1905,7 @@ def generate_technician_sheet_pdf(data):
             ts = [
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
                 ('ALIGN', (0,0), (-1,0), 'LEFT'),
+                ('ALIGN', (7,0), (7,-1), 'CENTER'),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
                 ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),

@@ -2378,7 +2378,10 @@ def run_tests():
     # 5. Verify that 22 patients fit on a single page and are not split across 2 pages
     resp_22_html = c.get(f'/reports/print-schedule/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-01-11&machines={m_la1_obj.id}')
     assert resp_22_html.status_code == 200
-    assert "1/2 pages" not in resp_22_html.content.decode('utf-8'), "22 patients must fit on 1 page and not show 1/2 pages"
+    r22_text = resp_22_html.content.decode('utf-8')
+    assert "1/2 pages" not in r22_text, "22 patients must fit on 1 page and not show 1/2 pages"
+    assert "Primary Consultant" in r22_text, "Must have 'Primary Consultant' column header"
+    assert "★" in r22_text, "Must have '★' star header for Special Techniques"
 
     resp_22_pdf = c.get(f'/reports/print-schedule/pdf/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-01-11&machines={m_la1_obj.id}')
     assert resp_22_pdf.status_code == 200
@@ -2386,7 +2389,13 @@ def run_tests():
     pdf_22_pages = len(re.findall(rb'/Type\s*/Page\b', resp_22_pdf.content))
     assert pdf_22_pages == 1, f"Expected 1 page for 22 patients, got {pdf_22_pages}"
 
-    print("✓ Test 28 Passed: Title Case formatting, vertical date merging (rowspan/SPAN), 'All Machines' box title, emergency date range, and footers on every page verified.")
+    # 6. Verify dynamic max-capacity pagination with 46 patients (1/1/26 to 21/1/26)
+    resp_46_pdf = c.get(f'/reports/print-schedule/pdf/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-01-21&machines={m_la1_obj.id}')
+    assert resp_46_pdf.status_code == 200
+    pdf_46_pages = len(re.findall(rb'/Type\s*/Page\b', resp_46_pdf.content))
+    assert pdf_46_pages == 2, f"Expected 2 pages for 46 patients, got {pdf_46_pages}"
+
+    print("✓ Test 28 Passed: Title Case formatting, vertical date merging (rowspan/SPAN), 'All Machines' box title, emergency date range, footers on every page, Primary Consultant header, star Special Technique column, and dynamic max-capacity pagination verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
