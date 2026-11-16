@@ -137,6 +137,13 @@
             background: #fff;
             white-space: nowrap;
         }
+        .header-page-num {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: #000;
+            margin-top: 3px;
+            text-align: center;
+        }
 
         /* Descriptive Paragraph */
         .narrative-intro {
@@ -278,9 +285,11 @@
                 width: 100%;
                 min-height: auto;
                 page-break-after: always;
+                break-after: page;
             }
             .sheet-page:last-child {
                 page-break-after: avoid;
+                break-after: avoid;
             }
             @page {
                 size: A4;
@@ -319,9 +328,10 @@
     <!-- Printable Content -->
     <div class="sheet-container">
         {% for sheet in sheets %}
+        {% for page in sheet.pages %}
         <div class="sheet-page">
             <div>
-                <!-- Institutional Header Grid -->
+                <!-- Institutional Header Grid (Repeated on each page) -->
                 <div class="sheet-header-grid">
                     <div class="header-ref">
                         {{ config.ref_code_prefix }}
@@ -335,18 +345,25 @@
                         <div class="header-date">{{ today_str }}</div>
                         {% if not sheet.is_consolidated and sheet.machine %}
                         <div class="machine-box">{{ sheet.box_title }}</div>
+                        {% elif sheet.is_consolidated %}
+                        <div class="machine-box">Consolidated</div>
+                        {% endif %}
+                        {% if page.page_label %}
+                        <div class="header-page-num">{{ page.page_label }}</div>
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- Narrative Notice Paragraph -->
+                <!-- Narrative Notice Paragraph (first page only) -->
+                {% if page.is_first %}
                 <p class="narrative-intro">
                     {{ config.emergency_intro_paragraph|default:config.intro_paragraph }}
                 </p>
+                {% endif %}
 
                 <!-- Section Title: Emergency/Vacant Slot list -->
                 <div class="section-title">
-                    {{ config.emergency_table_title|default:'Emergency/Vacant Slot list' }}
+                    {{ config.emergency_table_title|default:'Emergency/Vacant Slot list' }}{% if not page.is_first %} (Contd.){% endif %}
                 </div>
 
                 <!-- 7-Column Emergency Schedule Table -->
@@ -372,8 +389,8 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% if sheet.schedules %}
-                            {% for s in sheet.schedules %}
+                        {% if page.schedules %}
+                            {% for s in page.schedules %}
                             <tr>
                                 <td>{{ s.intended_start_date|date:"d-m-Y"|default:"-" }}</td>
                                 <td style="font-weight: 700; font-family: Consolas, monospace;">{{ s.patient.mr_no }}</td>
@@ -399,8 +416,9 @@
                 </table>
             </div>
 
-            <!-- Bottom Disclaimer, Notes, Copy-To and Sign-Off -->
+            <!-- Bottom Disclaimer, Notes, Copy-To and Sign-Off (last page of this machine only) -->
             <div>
+                {% if page.is_last %}
                 <!-- Clinical Instructions & Notes -->
                 <div class="notes-section">
                     <div class="notes-title">Please note:</div>
@@ -429,13 +447,18 @@
                         <div class="signature-dept">{{ config.department_signature_line }}</div>
                     </div>
                 </div>
+                {% endif %}
 
-                <!-- Sheet Footer with Timestamp (Page/Sheet numbers omitted) -->
+                <!-- Sheet Footer with Timestamp & Machine Page Counter (if multi-page) -->
                 <div class="sheet-footer">
                     <span>Report Generated on: &nbsp; {{ now_time_str }} &nbsp;&nbsp;&nbsp; {{ now_date_str }}</span>
+                    {% if page.page_label %}
+                    <span style="font-weight: 700; color: #1e293b;">{{ page.page_label }}</span>
+                    {% endif %}
                 </div>
             </div>
         </div>
+        {% endfor %}
         {% endfor %}
     </div>
 

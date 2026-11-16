@@ -137,6 +137,13 @@
             background: #fff;
             white-space: nowrap;
         }
+        .header-page-num {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: #000;
+            margin-top: 3px;
+            text-align: center;
+        }
 
         /* Descriptive Paragraph */
         .narrative-intro {
@@ -274,12 +281,14 @@
                 box-shadow: none;
                 border: none;
                 padding: 0;
-                margin: 0 0 10mm 0;
+                margin: 0;
                 page-break-after: always;
+                break-after: page;
                 min-height: auto;
             }
             .sheet-page:last-child {
                 page-break-after: avoid;
+                break-after: avoid;
             }
             .technician-table th {
                 background-color: #cbd5e1 !important;
@@ -319,9 +328,10 @@
     <!-- Printable Sheets Container -->
     <div class="sheet-container">
         {% for sheet in sheets %}
+        {% for page in sheet.pages %}
         <div class="sheet-page">
             <div>
-                <!-- Top Header -->
+                <!-- Top Header (Repeated on each page) -->
                 <div class="sheet-header-grid">
                     <div class="header-ref">
                         {{ config.ref_code_prefix }}
@@ -334,17 +344,22 @@
                     <div class="header-right">
                         <div class="header-date">{{ today_str }}</div>
                         <div class="machine-box">{{ sheet.box_title }}</div>
+                        {% if page.page_label %}
+                        <div class="header-page-num">{{ page.page_label }}</div>
+                        {% endif %}
                     </div>
                 </div>
 
-                <!-- Narrative Paragraph -->
+                <!-- Narrative Paragraph (first page only) -->
+                {% if page.is_first %}
                 <p class="narrative-intro">
                     {{ config.intro_paragraph }}
                 </p>
+                {% endif %}
 
                 <!-- Section Heading -->
                 <div class="section-title">
-                    New Patient starts from {{ start_date_formatted }} to {{ end_date_formatted }}
+                    New Patient starts from {{ start_date_formatted }} to {{ end_date_formatted }}{% if not page.is_first %} (Contd.){% endif %}
                 </div>
 
                 <!-- Patient Starts Table (9 Columns, One Line Per Patient, No Wrapping) -->
@@ -363,7 +378,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for s in sheet.schedules %}
+                        {% for s in page.schedules %}
                         <tr>
                             <td style="font-weight: 600;">{{ s.date_of_start|date:"d-M-y" }}</td>
                             <td style="text-align: center; font-weight: 600;">{{ s.shift.name|default:"-" }}</td>
@@ -385,7 +400,8 @@
                     </tbody>
                 </table>
 
-                <!-- Please Note Block -->
+                <!-- Please Note Block (last page of this machine only) -->
+                {% if page.is_last %}
                 <div class="notes-section">
                     <div class="notes-title">Please note:</div>
                     <p class="notes-text">
@@ -395,10 +411,12 @@
                         {{ config.note_paragraph_2 }}
                     </p>
                 </div>
+                {% endif %}
             </div>
 
-            <!-- Bottom: Copy To & Signature -->
+            <!-- Bottom: Copy To & Signature (last page of this machine only) -->
             <div>
+                {% if page.is_last %}
                 <div class="bottom-signatures-grid">
                     <div class="copy-to-block">
                         <strong>Copy to:</strong>
@@ -414,13 +432,18 @@
                         <div class="signature-dept">{{ config.department_signature_line }}</div>
                     </div>
                 </div>
+                {% endif %}
 
-                <!-- Footer Timestamp (No page/sheet number) -->
+                <!-- Footer Timestamp & Machine Page Counter (if multi-page) -->
                 <div class="sheet-footer">
                     <div>Report Generated on:&nbsp;&nbsp;&nbsp;&nbsp;{{ now_time_str }}&nbsp;&nbsp;&nbsp;&nbsp;{{ now_date_str }}</div>
+                    {% if page.page_label %}
+                    <div style="font-weight: 700; color: #1e293b;">{{ page.page_label }}</div>
+                    {% endif %}
                 </div>
             </div>
         </div>
+        {% endfor %}
         {% endfor %}
     </div>
 

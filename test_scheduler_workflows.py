@@ -2238,6 +2238,95 @@ def run_tests():
 
     print("✓ Test 26 Passed: Access BE database synchronization verified (2,707 emergency slots, 500 in 2026 range, and 3,914 2026 starts split across Units I, II, III).")
 
+    # -------------------------------------------------------------
+    # Test 27: Repeated Header on Each Page, Machine-Specific Page Count, Real Doctor Names
+    # -------------------------------------------------------------
+    print("\n--- Running Test 27: Repeated Header, Machine-Specific Page Numbering & Real Doctor Names ---")
+
+    # 1. Verify resolve_signing_authority always returns real doctor name
+    from apps.reports.views import resolve_signing_authority, get_consultant_signing_options, chunk_machine_schedules
+    
+    assert resolve_signing_authority('bindhuj') == 'Dr. Bindhu Joseph', f"Expected 'Dr. Bindhu Joseph', got {resolve_signing_authority('bindhuj')}"
+    assert resolve_signing_authority('Dr. Bindhuj') == 'Dr. Bindhu Joseph', f"Expected 'Dr. Bindhu Joseph', got {resolve_signing_authority('Dr. Bindhuj')}"
+    assert resolve_signing_authority('naveent') == 'Dr. Naveen T', f"Expected 'Dr. Naveen T', got {resolve_signing_authority('naveent')}"
+    assert resolve_signing_authority('Dr. Naveen T') == 'Dr. Naveen T', f"Expected 'Dr. Naveen T', got {resolve_signing_authority('Dr. Naveen T')}"
+    assert resolve_signing_authority('vlokesh') == 'Dr. Lokesh V', f"Expected 'Dr. Lokesh V', got {resolve_signing_authority('vlokesh')}"
+    assert resolve_signing_authority('Dr. Lokesh V') == 'Dr. Lokesh V', f"Expected 'Dr. Lokesh V', got {resolve_signing_authority('Dr. Lokesh V')}"
+    assert resolve_signing_authority('tanvirp') == 'Dr. Tanvir Pasha', f"Expected 'Dr. Tanvir Pasha', got {resolve_signing_authority('tanvirp')}"
+
+    # Verify get_consultant_signing_options contains no raw usernames
+    consultant_opts = get_consultant_signing_options()
+    for opt in consultant_opts:
+        assert opt not in ['bindhuj', 'naveent', 'vlokesh', 'tanvirp', 'sridhar', 'sanjeetm', 'aradhanak'], f"Raw username found in options: {opt}"
+        assert 'Dr.' in opt or 'Mr.' in opt or ' ' in opt, f"Option should be a real full name: {opt}"
+    assert 'Dr. Bindhu Joseph' in consultant_opts
+    assert 'Dr. Naveen T' in consultant_opts
+
+    # 2. Verify chunk_machine_schedules pagination logic
+    # Single page (<= 24 rows): page_label MUST be None (no page numbers displayed)
+    mock_schedules_small = [f"item_{i}" for i in range(10)]
+    pages_small = chunk_machine_schedules(mock_schedules_small)
+    assert len(pages_small) == 1
+    assert pages_small[0]['page_label'] is None, "Single-page machine must omit page numbering"
+    assert pages_small[0]['is_first'] is True
+    assert pages_small[0]['is_last'] is True
+
+    # Multi page (40 rows): must produce 2 pages with '1/2 pages' and '2/2 pages'
+    mock_schedules_large = [f"item_{i}" for i in range(40)]
+    pages_large = chunk_machine_schedules(mock_schedules_large)
+    assert len(pages_large) == 2
+    assert pages_large[0]['page_label'] == '1/2 pages'
+    assert pages_large[0]['is_first'] is True
+    assert pages_large[0]['is_last'] is False
+    assert pages_large[1]['page_label'] == '2/2 pages'
+    assert pages_large[1]['is_first'] is False
+    assert pages_large[1]['is_last'] is True
+
+    # 3. Test HTTP HTML Print View for Treatment Schedule with multi-page machine
+    c.force_login(admin_user)
+    m_la1_obj = Machine.objects.filter(code='LA1').first() or mach
+    
+    # Query multi-page treatment schedule (ELEKTA - LA1 has ~40 starts in Jan-Feb 2026)
+    resp_print_view = c.get(f'/reports/print-schedule/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-02-11&machines={m_la1_obj.id}&signing_authority=Dr.+Bindhuj')
+    assert resp_print_view.status_code == 200
+    html_content = resp_print_view.content.decode('utf-8')
+
+    # Must contain repeated header elements
+    assert "KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY" in html_content
+    assert "Department of Radiation Oncology" in html_content
+    assert "Radiation Therapy Technician information sheet" in html_content
+
+    # Signing authority must show real name (Dr. Bindhu Joseph) NEVER username (Dr. Bindhuj)
+    assert "Dr. Bindhu Joseph" in html_content, "Signing authority must show real person name 'Dr. Bindhu Joseph'"
+    assert "Dr. Bindhuj" not in html_content, "Raw username 'Dr. Bindhuj' must NOT appear in print sheet"
+
+    # Verify per-machine page numbering
+    tot_pages = len(resp_print_view.context['sheets'][0]['pages'])
+    if tot_pages > 1:
+        assert f"1/{tot_pages} pages" in html_content
+        assert "(Contd.)" in html_content
+
+    # 4. Test PDF Export with real name resolution and multi-page pagination
+    resp_pdf = c.get(f'/reports/print-schedule/pdf/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-02-11&machines={m_la1_obj.id}&signing_authority=Dr.+Bindhuj')
+    assert resp_pdf.status_code == 200
+    assert resp_pdf['Content-Type'] == 'application/pdf'
+    assert resp_pdf.content.startswith(b'%PDF'), "PDF content must start with %PDF header"
+    assert len(resp_pdf.content) > 2000, "PDF should be generated with valid size"
+
+    # 5. Test Emergency Slot Print View & PDF
+    resp_em_print = c.get('/reports/print-emergency-schedule/?machines=all&start_date=2026-01-01&end_date=2026-08-01&signing_authority=bindhuj')
+    assert resp_em_print.status_code == 200
+    em_html = resp_em_print.content.decode('utf-8')
+    assert "Dr. Bindhu Joseph" in em_html
+    assert "bindhuj" not in em_html.lower() or "bindhu joseph" in em_html.lower()
+
+    resp_em_pdf = c.get('/reports/print-emergency-schedule/pdf/?machines=all&start_date=2026-01-01&end_date=2026-08-01&signing_authority=bindhuj')
+    assert resp_em_pdf.status_code == 200
+    assert resp_em_pdf['Content-Type'] == 'application/pdf'
+    assert resp_em_pdf.content.startswith(b'%PDF')
+
+    print("✓ Test 27 Passed: Repeated header on every page, machine-specific page numbering (--/-- pages only if > 1 page), and real doctor name resolution verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

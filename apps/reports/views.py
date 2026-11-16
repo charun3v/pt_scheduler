@@ -329,6 +329,130 @@ def simulation_report_view(request):
     return render(request, 'reports/simulation_report.html', context)
 
 
+def resolve_signing_authority(raw_name):
+    """
+    Ensures signing authority always displays the real person name, never a raw username.
+    e.g. 'Dr. Bindhuj' or 'bindhuj' -> 'Dr. Bindhu Joseph'.
+    """
+    if not raw_name or not str(raw_name).strip():
+        config = PrintTemplateConfig.get_active()
+        raw_name = config.default_signing_authority or "Dr. Naveen T"
+
+    raw_str = str(raw_name).strip()
+
+    # 1. Clean prefix
+    clean = raw_str.lower()
+    for pfx in ['dr.', 'dr']:
+        if clean.startswith(pfx):
+            clean = clean[len(pfx):].strip()
+
+    # 2. Known mapping of short username/handle to full doctor name
+    user_to_full_name = {
+        'bindhuj': 'Dr. Bindhu Joseph',
+        'binduv': 'Dr. Bindu V',
+        'vlokesh': 'Dr. Lokesh V',
+        'thejaswini': 'Dr. Thejaswini',
+        'naveent': 'Dr. Naveen T',
+        'siddannap': 'Dr. Siddanna P',
+        'gov1': 'Dr. Govardhan',
+        'khaleeli': 'Dr. Ibrahim Khaleel',
+        'nandan': 'Dr. Nanda',
+        'aradhanak': 'Dr. Aradhana K',
+        'vinayk': 'Dr. Vinay K',
+        'shams': 'Dr. Shamsunder',
+        'tanvirp': 'Dr. Tanvir Pasha',
+        'sridhar': 'Dr. Sridhar',
+        'udayk': 'Dr. Uday Kumar',
+        'nikhilak': 'Dr. Nikhila K R',
+        'sunilr': 'Dr. Sunil R',
+        'sanjeetm': 'Dr. Sanjeeth Mandal',
+        'ashal': 'Dr. Ashalatha',
+        'pawar': 'Dr. Pawar',
+        'manjula': 'Dr. Manjula',
+        'n3v': 'Dr. Nithin Bhaskar V',
+        'rashmi': 'Dr. Rashmi',
+        'ajay': 'Dr. Ajay',
+    }
+
+    if clean in user_to_full_name:
+        return user_to_full_name[clean]
+
+    # 3. Match against User model's username or full name
+    matched_user = User.objects.filter(username__iexact=clean).first()
+    if not matched_user:
+        for u in User.objects.filter(is_active=True):
+            full_n = u.get_full_name().strip()
+            if full_n and full_n.lower() == clean:
+                matched_user = u
+                break
+
+    if matched_user:
+        full = matched_user.get_full_name().strip()
+        if full:
+            prefix = matched_user.profile.prefix if hasattr(matched_user, 'profile') and matched_user.profile and matched_user.profile.prefix else 'Dr.'
+            return f"{prefix} {full}".strip()
+
+    # 4. Exact match with Consultant name in database
+    for c in Consultant.objects.filter(is_active=True).order_by('name'):
+        if raw_str.lower() == c.name.strip().lower():
+            return c.name.strip()
+
+    # 5. If raw_str already has 2+ words (e.g. 'Dr. Naveen T' or 'Dr. Bindhu Joseph'), keep it
+    words = raw_str.split()
+    if len(words) >= 2 and any(raw_str.lower().startswith(p) for p in ['dr.', 'dr', 'mr.', 'ms.', 'mrs.']):
+        return raw_str
+
+    # 6. Fallback substring match in Consultant table
+    for c in Consultant.objects.filter(is_active=True).order_by('name'):
+        c_clean = c.name.lower()
+        for pfx in ['dr.', 'dr']:
+            if c_clean.startswith(pfx):
+                c_clean = c_clean[len(pfx):].strip()
+        if clean in c_clean or c_clean in clean:
+            return c.name.strip()
+
+    return raw_str
+
+
+def get_consultant_signing_options(default_authority=None):
+    """
+    Returns a deduplicated list of real person names for signing authority dropdowns/datalists.
+    NEVER includes raw usernames or un-named user accounts.
+    """
+    options = []
+    seen = set()
+
+    if default_authority:
+        resolved_default = resolve_signing_authority(default_authority)
+        if resolved_default and resolved_default.lower() not in seen:
+            options.append(resolved_default)
+            seen.add(resolved_default.lower())
+
+    for c in Consultant.objects.filter(is_active=True).order_by('name'):
+        c_name = c.name.strip()
+        if c_name.lower() not in seen:
+            options.append(c_name)
+            seen.add(c_name.lower())
+
+    consultant_users = User.objects.filter(
+        Q(profile__role__role_name__icontains='Consultant') | 
+        Q(profile__role__role_description__icontains='Consultant'),
+        is_active=True
+    ).select_related('profile').order_by('first_name', 'username')
+
+    for u in consultant_users:
+        full = u.get_full_name().strip()
+        if full:
+            prefix = u.profile.prefix if hasattr(u, 'profile') and u.profile and u.profile.prefix else 'Dr.'
+            name_str = f"{prefix} {full}".strip()
+            if name_str.lower() not in seen:
+                options.append(name_str)
+                seen.add(name_str.lower())
+
+    return options
+
+
+
 @login_required
 def emergency_slots_report_view(request):
     """
@@ -434,36 +558,94 @@ def emergency_slots_report_view(request):
 
     # For Print Modal: Consultant options, designations, and template config
     active_print_cfg = PrintTemplateConfig.get_active()
-    consultant_users = User.objects.filter(
-        Q(profile__role__role_name__icontains='Consultant') | 
-        Q(profile__role__role_description__icontains='Consultant'),
-        is_active=True
-    ).select_related('profile').order_by('first_name', 'username')
+    consultant_options = get_consultant_signing_options(active_print_cfg.default_signing_authority)
+    designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
 
-    consultant_options = []
-    seen = set()
-    if active_print_cfg.default_signing_authority:
-        consultant_options.append(active_print_cfg.default_signing_authority)
-        seen.add(active_print_cfg.default_signing_authority.strip().lower())
+    context = {
+        'schedules': schedules,
+        'total_count': schedules.count(),
+        'all_machines': all_machines,
+        'all_shifts': all_shifts,
+        'selected_machine': selected_machine,
+        'selected_machine_id': machine_id,
+        'start_date_str': start_date_str,
+        'end_date_str': end_date_str,
+        'print_default_start': default_start.isoformat(),
+        'print_default_end': default_end.isoformat(),
+        'preset': preset,
+        'consultant_options': consultant_options,
+        'designations': designations,
+        'print_template_config': active_print_cfg,
+    }
+    return render(request, 'reports/emergency_slots.html', context)
 
-    for u in consultant_users:
-        prefix = u.profile.prefix if hasattr(u, 'profile') and u.profile and u.profile.prefix else 'Dr.'
-        full = u.get_full_name().strip()
-        if full:
-            name_str = f"{prefix} {full}".strip()
-        elif u.first_name:
-            name_str = f"{prefix} {u.first_name}".strip()
-        else:
-            name_str = f"{prefix} {u.username.title()}".strip()
-        if name_str.strip().lower() not in seen:
-            consultant_options.append(name_str)
-            seen.add(name_str.strip().lower())
 
-    for c in Consultant.objects.filter(is_active=True).order_by('name'):
-        if c.name.strip().lower() not in seen:
-            consultant_options.append(c.name)
-            seen.add(c.name.strip().lower())
 
+
+def chunk_machine_schedules(schedules, max_single=24, max_first=28, max_middle=30, max_last=24):
+    """
+    Paginates schedules per machine to guarantee clean physical A4 page rendering:
+    - If total <= max_single: 1 page, page_label is None (no page count displayed).
+    - If total > max_single: splits across pages. On multi-page sheets:
+      page_label is e.g. '1/2 pages', '2/2 pages' (displayed in header & footer).
+    """
+    total = len(schedules)
+    if total <= max_single:
+        return [{
+            'page_num': 1,
+            'total_pages': 1,
+            'page_label': None,
+            'page_label_short': None,
+            'page_label_long': None,
+            'is_first': True,
+            'is_last': True,
+            'schedules': schedules,
+        }]
+
+    pages_schedules = []
+    if total <= (max_first + max_last):
+        half = (total + 1) // 2
+        p1_count = min(max_first, max(half, total - max_last))
+        pages_schedules.append(schedules[:p1_count])
+        pages_schedules.append(schedules[p1_count:])
+    else:
+        p1 = schedules[:max_first]
+        pages_schedules.append(p1)
+        rem = schedules[max_first:]
+        while rem:
+            if len(rem) <= max_last:
+                pages_schedules.append(rem)
+                break
+            elif len(rem) <= (max_middle + max_last):
+                half = (len(rem) + 1) // 2
+                mid_count = min(max_middle, max(half, len(rem) - max_last))
+                pages_schedules.append(rem[:mid_count])
+                pages_schedules.append(rem[mid_count:])
+                break
+            else:
+                pages_schedules.append(rem[:max_middle])
+                rem = rem[max_middle:]
+
+    total_pages = len(pages_schedules)
+    result = []
+    for idx, p_scheds in enumerate(pages_schedules):
+        page_num = idx + 1
+        result.append({
+            'page_num': page_num,
+            'total_pages': total_pages,
+            'page_label': f"{page_num}/{total_pages} pages",
+            'page_label_short': f"{page_num}/{total_pages}",
+            'page_label_long': f"Page {page_num} of {total_pages}",
+            'is_first': (page_num == 1),
+            'is_last': (page_num == total_pages),
+            'schedules': p_scheds,
+        })
+    return result
+
+
+    # For Print Modal: Consultant options, designations, and template config
+    active_print_cfg = PrintTemplateConfig.get_active()
+    consultant_options = get_consultant_signing_options(active_print_cfg.default_signing_authority)
     designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
 
     context = {
@@ -801,36 +983,7 @@ def manual_schedule_grid_view(request):
 
     # Print template and signing authority options
     active_print_cfg = PrintTemplateConfig.get_active()
-    consultant_users = User.objects.filter(
-        Q(profile__role__role_name__icontains='Consultant') | 
-        Q(profile__role__role_description__icontains='Consultant'),
-        is_active=True
-    ).select_related('profile').order_by('first_name', 'username')
-
-    consultant_options = []
-    seen = set()
-    if active_print_cfg.default_signing_authority:
-        consultant_options.append(active_print_cfg.default_signing_authority)
-        seen.add(active_print_cfg.default_signing_authority.strip().lower())
-
-    for u in consultant_users:
-        prefix = u.profile.prefix if hasattr(u, 'profile') and u.profile and u.profile.prefix else 'Dr.'
-        full = u.get_full_name().strip()
-        if full:
-            name_str = f"{prefix} {full}".strip()
-        elif u.first_name:
-            name_str = f"{prefix} {u.first_name}".strip()
-        else:
-            name_str = f"{prefix} {u.username.title()}".strip()
-        if name_str.strip().lower() not in seen:
-            consultant_options.append(name_str)
-            seen.add(name_str.strip().lower())
-
-    for c in Consultant.objects.filter(is_active=True).order_by('name'):
-        if c.name.strip().lower() not in seen:
-            consultant_options.append(c.name)
-            seen.add(c.name.strip().lower())
-
+    consultant_options = get_consultant_signing_options(active_print_cfg.default_signing_authority)
     designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
 
     context = {
@@ -1362,8 +1515,7 @@ def get_print_schedule_data(request):
     signing_authority = request.GET.get('signing_authority')
     if not signing_authority or not signing_authority.strip():
         signing_authority = config.default_signing_authority
-    else:
-        signing_authority = signing_authority.strip()
+    signing_authority = resolve_signing_authority(signing_authority)
 
     designation = request.GET.get('designation')
     if not designation or not designation.strip():
@@ -1423,11 +1575,14 @@ def get_print_schedule_data(request):
     sheets = []
     for m in selected_machines:
         m_schedules = [s for s in all_schedules if s.machine_id == m.id]
+        m_pages = chunk_machine_schedules(m_schedules)
         sheets.append({
             'machine': m,
             'box_title': m.name,
             'schedules': m_schedules,
-            'count': len(m_schedules)
+            'count': len(m_schedules),
+            'pages': m_pages,
+            'total_pages': len(m_pages),
         })
 
     now_dt = datetime.now()
@@ -1483,6 +1638,14 @@ def generate_technician_sheet_pdf(data):
         bottomMargin=margin_25mm
     )
 
+    canvas_pages_meta = []
+    for sheet in data['sheets']:
+        for page in sheet['pages']:
+            canvas_pages_meta.append({
+                'page_label': page['page_label'],
+                'box_title': sheet['box_title'],
+            })
+
     class NumberedCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -1493,14 +1656,18 @@ def generate_technician_sheet_pdf(data):
             self._startPage()
 
         def save(self):
-            for state in self._saved_page_states:
+            for page_idx, state in enumerate(self._saved_page_states):
                 self.__dict__.update(state)
                 self.saveState()
                 self.setFont('Helvetica', 7.5)
                 self.setFillColor(colors.HexColor('#222222'))
                 # Footer Left (at 2.5 cm left margin, 1.4 cm from bottom)
                 self.drawString(margin_25mm, 1.4 * cm, f"Report Generated on:   {data['now_time_str']}    {data['now_date_str']}")
-                # Note: "No need of sheet 1 of 6 in the print outs." - Right page/sheet number intentionally omitted
+                # Footer Right: machine-specific --/-- pages ONLY if machine spans > 1 page
+                if page_idx < len(canvas_pages_meta):
+                    lbl = canvas_pages_meta[page_idx].get('page_label')
+                    if lbl:
+                        self.drawRightString(A4[0] - margin_25mm, 1.4 * cm, lbl)
                 self.restoreState()
                 super().showPage()
             super().save()
@@ -1512,6 +1679,7 @@ def generate_technician_sheet_pdf(data):
     box_style = ParagraphStyle('KMIO_Box', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9.5, alignment=1, leading=11)
     left_ref_style = ParagraphStyle('KMIO_LeftRef', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=10)
     date_style = ParagraphStyle('KMIO_Date', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, alignment=2, leading=10)
+    page_num_style = ParagraphStyle('KMIO_PageNum', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, alignment=2, leading=9, textColor=colors.HexColor('#334155'))
 
     intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9.5, alignment=4)
     sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
@@ -1533,159 +1701,173 @@ def generate_technician_sheet_pdf(data):
     # Column allocation ensuring Consultant accommodates 20 chars and Resident accommodates 15 chars:
     col_widths = [33, 17, 47, 24, 65, 43, 85, 81, 58.5]  # Total = 453.5 pt
 
-    for sheet_idx, sheet in enumerate(data['sheets']):
-        if sheet_idx > 0:
-            story.append(PageBreak())
+    is_first_page_of_doc = True
+    for sheet in data['sheets']:
+        for page in sheet['pages']:
+            if not is_first_page_of_doc:
+                story.append(PageBreak())
+            is_first_page_of_doc = False
 
-        # Top Header (Left Ref 100pt, Center 253.5pt, Right 100pt = 453.5pt)
-        header_data = [
-            [
-                Paragraph(config.ref_code_prefix, left_ref_style),
+            # Top Header (Repeated on each page)
+            box_cell = [
+                Paragraph(data['today_str'], date_style),
+                Spacer(1, 3),
+                Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
+                    ('BOX', (0,0), (-1,-1), 1.2, colors.black),
+                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                    ('TOPPADDING', (0,0), (-1,-1), 3),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                    ('LEFTPADDING', (0,0), (-1,-1), 2),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 2),
+                ])
+            ]
+            if page['page_label']:
+                box_cell.append(Spacer(1, 2))
+                box_cell.append(Paragraph(page['page_label'], page_num_style))
+
+            header_data = [
                 [
-                    Paragraph(config.header_line_1, title_style),
-                    Spacer(1, 1),
-                    Paragraph(config.header_line_2, dept_style),
-                    Spacer(1, 1),
-                    Paragraph(config.header_line_3, sub_style)
-                ],
-                [
-                    Paragraph(data['today_str'], date_style),
-                    Spacer(1, 3),
-                    Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
-                        ('BOX', (0,0), (-1,-1), 1.2, colors.black),
-                        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                        ('TOPPADDING', (0,0), (-1,-1), 3),
-                        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-                        ('LEFTPADDING', (0,0), (-1,-1), 2),
-                        ('RIGHTPADDING', (0,0), (-1,-1), 2),
-                    ])
+                    Paragraph(config.ref_code_prefix, left_ref_style),
+                    [
+                        Paragraph(config.header_line_1, title_style),
+                        Spacer(1, 1),
+                        Paragraph(config.header_line_2, dept_style),
+                        Spacer(1, 1),
+                        Paragraph(config.header_line_3, sub_style)
+                    ],
+                    box_cell
                 ]
             ]
-        ]
-        ht = Table(header_data, colWidths=[100, 253.5, 100])
-        ht.setStyle(TableStyle([
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('LEFTPADDING', (0,0), (-1,-1), 0),
-            ('RIGHTPADDING', (0,0), (-1,-1), 0),
-            ('TOPPADDING', (0,0), (-1,-1), 0),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-        ]))
-        story.append(ht)
-        story.append(Spacer(1, 5))
+            ht = Table(header_data, colWidths=[100, 253.5, 100])
+            ht.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+            ]))
+            story.append(ht)
+            story.append(Spacer(1, 4))
 
-        # Narrative paragraph
-        intro_text = config.intro_paragraph
-        story.append(Paragraph(intro_text, intro_style))
-        story.append(Spacer(1, 5))
+            # Narrative paragraph (only on first page of this machine)
+            if page['is_first']:
+                intro_text = config.intro_paragraph
+                story.append(Paragraph(intro_text, intro_style))
+                story.append(Spacer(1, 4))
 
-        # Section Subtitle
-        try:
-            sec_title = config.table_section_title.format(start_date=data['start_date_formatted'], end_date=data['end_date_formatted'])
-        except Exception:
-            sec_title = f"New Patient starts from {data['start_date_formatted']} to {data['end_date_formatted']}"
-        story.append(Paragraph(sec_title, sec_title_style))
-        story.append(Spacer(1, 5))
+            # Section Subtitle
+            try:
+                base_title = config.table_section_title.format(start_date=data['start_date_formatted'], end_date=data['end_date_formatted'])
+            except Exception:
+                base_title = f"New Patient starts from {data['start_date_formatted']} to {data['end_date_formatted']}"
+            sec_title = base_title if page['is_first'] else f"{base_title} (Contd.)"
+            story.append(Paragraph(sec_title, sec_title_style))
+            story.append(Spacer(1, 4))
 
-        # 9-Column Table: Plain strings for data cells to guarantee single-line display with NO text wrapping
-        table_rows = [
-            [
-                Paragraph('Date', th_style),
-                Paragraph('Shift', th_center),
-                Paragraph('Hospital no.', th_style),
-                Paragraph('RT No.', th_style),
-                Paragraph('Patient name', th_style),
-                Paragraph('Phone No.', th_style),
-                Paragraph('Diagnosis', th_style),
-                Paragraph('Consultant<br/>Radiation Oncologist', th_style),
-                Paragraph('Junior<br/>Resident', th_style),
+            # 9-Column Table: Plain strings for data cells to guarantee single-line display with NO text wrapping
+            table_rows = [
+                [
+                    Paragraph('Date', th_style),
+                    Paragraph('Shift', th_center),
+                    Paragraph('Hospital no.', th_style),
+                    Paragraph('RT No.', th_style),
+                    Paragraph('Patient name', th_style),
+                    Paragraph('Phone No.', th_style),
+                    Paragraph('Diagnosis', th_style),
+                    Paragraph('Consultant<br/>Radiation Oncologist', th_style),
+                    Paragraph('Junior<br/>Resident', th_style),
+                ]
             ]
-        ]
 
-        if sheet['schedules']:
-            for s in sheet['schedules']:
-                d_str = s.date_of_start.strftime("%d-%b-%y") if s.date_of_start else '-'
-                sh_str = str(s.shift.name if s.shift else '-')
-                mr_str = str(s.patient.mr_no)
-                rt_str = str(s.patient.rt_no or '-')
-                pt_str = str(s.patient.pt_name or '-').replace('\n', ' ').strip()[:16]
-                ph_str = str(s.patient.phone_no or '-').replace('\n', ' ').strip()[:11]
-                diag_str = str(s.patient.diagnosis or '-').replace('\n', ' ').strip()[:26]
-                cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
-                jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:15]
+            if page['schedules']:
+                for s in page['schedules']:
+                    d_str = s.date_of_start.strftime("%d-%b-%y") if s.date_of_start else '-'
+                    sh_str = str(s.shift.name if s.shift else '-')
+                    mr_str = str(s.patient.mr_no)
+                    rt_str = str(s.patient.rt_no or '-')
+                    pt_str = str(s.patient.pt_name or '-').replace('\n', ' ').strip()[:16]
+                    ph_str = str(s.patient.phone_no or '-').replace('\n', ' ').strip()[:11]
+                    diag_str = str(s.patient.diagnosis or '-').replace('\n', ' ').strip()[:26]
+                    cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
+                    jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:15]
 
+                    table_rows.append([
+                        d_str, sh_str, mr_str, rt_str, pt_str, ph_str, diag_str, cons_str, jr_str
+                    ])
+            else:
                 table_rows.append([
-                    d_str, sh_str, mr_str, rt_str, pt_str, ph_str, diag_str, cons_str, jr_str
+                    f"No new patient starts scheduled for {sheet['machine'].name} between {data['start_date_formatted']} and {data['end_date_formatted']}.",
+                    '', '', '', '', '', '', '', ''
                 ])
-        else:
-            table_rows.append([
-                f"No new patient starts scheduled for {sheet['machine'].name} between {data['start_date_formatted']} and {data['end_date_formatted']}.",
-                '', '', '', '', '', '', '', ''
-            ])
 
-        # Vertical padding points: default 2.7 pt (increases vertical space by +0.5 mm)
-        v_pad = config.row_vertical_padding_pt or 2.7
-        pt_table = Table(table_rows, colWidths=col_widths, repeatRows=1)
-        ts = [
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-            ('ALIGN', (1,0), (1,-1), 'CENTER'),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
-            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
-            ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-            ('FONTSIZE', (0,1), (-1,-1), 6.5),
-            ('LEADING', (0,1), (-1,-1), 8),
-            ('TOPPADDING', (0,0), (-1,-1), v_pad),
-            ('BOTTOMPADDING', (0,0), (-1,-1), v_pad),
-            ('LEFTPADDING', (0,0), (-1,-1), 2),
-            ('RIGHTPADDING', (0,0), (-1,-1), 2),
-        ]
-        if not sheet['schedules']:
-            ts.append(('SPAN', (0,1), (-1,1)))
-            ts.append(('ALIGN', (0,1), (-1,1), 'CENTER'))
-            ts.append(('TOPPADDING', (0,1), (-1,1), 10))
-            ts.append(('BOTTOMPADDING', (0,1), (-1,1), 10))
+            v_pad = config.row_vertical_padding_pt or 2.7
+            pt_table = Table(table_rows, colWidths=col_widths)
+            ts = [
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
+                ('ALIGN', (0,0), (-1,0), 'LEFT'),
+                ('ALIGN', (1,0), (1,-1), 'CENTER'),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
+                ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
+                ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+                ('FONTSIZE', (0,1), (-1,-1), 6.5),
+                ('LEADING', (0,1), (-1,-1), 8),
+                ('TOPPADDING', (0,0), (-1,-1), v_pad),
+                ('BOTTOMPADDING', (0,0), (-1,-1), v_pad),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
+                ('RIGHTPADDING', (0,0), (-1,-1), 2),
+            ]
+            if not page['schedules']:
+                ts.append(('SPAN', (0,1), (-1,1)))
+                ts.append(('ALIGN', (0,1), (-1,1), 'CENTER'))
+                ts.append(('TOPPADDING', (0,1), (-1,1), 10))
+                ts.append(('BOTTOMPADDING', (0,1), (-1,1), 10))
+            else:
+                for r_idx in range(1, len(table_rows)):
+                    if r_idx % 2 == 0:
+                        ts.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f8fafc')))
 
-        pt_table.setStyle(TableStyle(ts))
-        story.append(pt_table)
-        story.append(Spacer(1, 6))
+            pt_table.setStyle(TableStyle(ts))
+            story.append(pt_table)
 
-        # Bottom block (Please note, Copy to & Signature Authority)
-        note_p1 = config.note_paragraph_1
-        note_p2 = config.note_paragraph_2
+            # If last page of the machine, append Notes & Signatures
+            if page['is_last']:
+                story.append(Spacer(1, 6))
+                note_p1 = config.note_paragraph_1
+                note_p2 = config.note_paragraph_2
 
-        copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
-        for c_item in data.get('copy_to_list', []):
-            copy_to_flowables.append(Paragraph(c_item, copy_style))
+                copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
+                for c_item in data.get('copy_to_list', []):
+                    copy_to_flowables.append(Paragraph(c_item, copy_style))
 
-        sig_name_val = data.get('signing_authority') or config.default_signing_authority
-        sig_desig_val = data.get('designation') or config.default_designation
-        sig_flowables = [
-            Paragraph(sig_name_val, sig_name),
-            Paragraph(sig_desig_val, sig_title),
-            Paragraph(config.department_signature_line, sig_dept),
-        ]
+                sig_name_val = resolve_signing_authority(data.get('signing_authority') or config.default_signing_authority)
+                sig_desig_val = data.get('designation') or config.default_designation
+                sig_flowables = [
+                    Paragraph(sig_name_val, sig_name),
+                    Paragraph(sig_desig_val, sig_title),
+                    Paragraph(config.department_signature_line, sig_dept),
+                ]
 
-        bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
-        bottom_table.setStyle(TableStyle([
-            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
-            ('LEFTPADDING', (0,0), (-1,-1), 0),
-            ('RIGHTPADDING', (0,0), (-1,-1), 0),
-            ('TOPPADDING', (0,0), (-1,-1), 0),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-        ]))
+                bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
+                bottom_table.setStyle(TableStyle([
+                    ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+                    ('LEFTPADDING', (0,0), (-1,-1), 0),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                    ('TOPPADDING', (0,0), (-1,-1), 0),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+                ]))
 
-        footer_elements = [
-            Paragraph('Please note:', note_title_style),
-            Spacer(1, 1),
-            Paragraph(note_p1, note_text_style),
-            Spacer(1, 2),
-            Paragraph(note_p2, note_text_style),
-            Spacer(1, 6),
-            bottom_table
-        ]
-        story.append(KeepTogether(footer_elements))
+                footer_elements = [
+                    Paragraph('Please note:', note_title_style),
+                    Spacer(1, 1),
+                    Paragraph(note_p1, note_text_style),
+                    Spacer(1, 2),
+                    Paragraph(note_p2, note_text_style),
+                    Spacer(1, 6),
+                    bottom_table
+                ]
+                story.append(KeepTogether(footer_elements))
 
     doc.build(story, canvasmaker=NumberedCanvas)
     return buffer.getvalue()
@@ -1808,7 +1990,7 @@ def print_template_settings_view(request):
         config.note_paragraph_1 = request.POST.get('note_paragraph_1', config.note_paragraph_1).strip()
         config.note_paragraph_2 = request.POST.get('note_paragraph_2', config.note_paragraph_2).strip()
         config.copy_to_recipients = request.POST.get('copy_to_recipients', config.copy_to_recipients).strip()
-        config.default_signing_authority = request.POST.get('default_signing_authority', config.default_signing_authority).strip()
+        config.default_signing_authority = resolve_signing_authority(request.POST.get('default_signing_authority', config.default_signing_authority).strip())
         config.default_designation = request.POST.get('default_designation', config.default_designation).strip()
         config.department_signature_line = request.POST.get('department_signature_line', config.department_signature_line).strip()
         try:
@@ -1832,37 +2014,8 @@ def print_template_settings_view(request):
         messages.success(request, f"Printout template texts and layout for '{template_label}' successfully saved!")
         return redirect(f"{reverse('print_template_settings')}?template={active_template}")
 
-    # Build consultant choices from Consultant role users + Consultant table
-    consultant_users = User.objects.filter(
-        Q(profile__role__role_name__icontains='Consultant') | 
-        Q(profile__role__role_description__icontains='Consultant'),
-        is_active=True
-    ).select_related('profile').order_by('first_name', 'username')
-
-    consultant_options = []
-    seen = set()
-    if config.default_signing_authority:
-        consultant_options.append(config.default_signing_authority)
-        seen.add(config.default_signing_authority.strip().lower())
-
-    for u in consultant_users:
-        prefix = u.profile.prefix if hasattr(u, 'profile') and u.profile and u.profile.prefix else 'Dr.'
-        full = u.get_full_name().strip()
-        if full:
-            name_str = f"{prefix} {full}".strip()
-        elif u.first_name:
-            name_str = f"{prefix} {u.first_name}".strip()
-        else:
-            name_str = f"{prefix} {u.username.title()}".strip()
-        if name_str.strip().lower() not in seen:
-            consultant_options.append(name_str)
-            seen.add(name_str.strip().lower())
-
-    for c in Consultant.objects.filter(is_active=True).order_by('name'):
-        if c.name.strip().lower() not in seen:
-            consultant_options.append(c.name)
-            seen.add(c.name.strip().lower())
-
+    # Build consultant choices (real person names only) + Designations
+    consultant_options = get_consultant_signing_options(config.default_signing_authority)
     designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
 
     context = {
@@ -1897,8 +2050,7 @@ def get_print_emergency_schedule_data(request):
     signing_authority = request.GET.get('signing_authority')
     if not signing_authority or not signing_authority.strip():
         signing_authority = config.default_signing_authority
-    else:
-        signing_authority = signing_authority.strip()
+    signing_authority = resolve_signing_authority(signing_authority)
 
     designation = request.GET.get('designation')
     if not designation or not designation.strip():
@@ -1957,23 +2109,29 @@ def get_print_emergency_schedule_data(request):
 
     sheets = []
     if is_consolidated:
+        m_pages = chunk_machine_schedules(all_schedules)
         sheets.append({
             'is_consolidated': True,
             'machine': None,
             'box_title': 'Consolidated',
             'schedules': all_schedules,
-            'count': len(all_schedules)
+            'count': len(all_schedules),
+            'pages': m_pages,
+            'total_pages': len(m_pages),
         })
     else:
         selected_machines = list(Machine.objects.filter(id__in=machine_param_list, is_active=True).order_by('display_order'))
         for m in selected_machines:
             m_schedules = [s for s in all_schedules if s.machine_id == m.id]
+            m_pages = chunk_machine_schedules(m_schedules)
             sheets.append({
                 'is_consolidated': False,
                 'machine': m,
                 'box_title': m.name,
                 'schedules': m_schedules,
-                'count': len(m_schedules)
+                'count': len(m_schedules),
+                'pages': m_pages,
+                'total_pages': len(m_pages),
             })
 
     now_dt = datetime.now()
@@ -2033,6 +2191,14 @@ def generate_emergency_sheet_pdf(data):
         bottomMargin=margin_25mm
     )
 
+    canvas_pages_meta = []
+    for sheet in data['sheets']:
+        for page in sheet['pages']:
+            canvas_pages_meta.append({
+                'page_label': page['page_label'],
+                'box_title': sheet['box_title'],
+            })
+
     class NumberedCanvas(canvas.Canvas):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
@@ -2043,12 +2209,16 @@ def generate_emergency_sheet_pdf(data):
             self._startPage()
 
         def save(self):
-            for state in self._saved_page_states:
+            for page_idx, state in enumerate(self._saved_page_states):
                 self.__dict__.update(state)
                 self.saveState()
                 self.setFont('Helvetica', 7.5)
                 self.setFillColor(colors.HexColor('#222222'))
                 self.drawString(margin_25mm, 1.4 * cm, f"Report Generated on:   {data['now_time_str']}    {data['now_date_str']}")
+                if page_idx < len(canvas_pages_meta):
+                    lbl = canvas_pages_meta[page_idx].get('page_label')
+                    if lbl:
+                        self.drawRightString(A4[0] - margin_25mm, 1.4 * cm, lbl)
                 self.restoreState()
                 super().showPage()
             super().save()
@@ -2060,6 +2230,7 @@ def generate_emergency_sheet_pdf(data):
     box_style = ParagraphStyle('KMIO_Box', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9.5, alignment=1, leading=11)
     left_ref_style = ParagraphStyle('KMIO_LeftRef', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=10)
     date_style = ParagraphStyle('KMIO_Date', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, alignment=2, leading=10)
+    page_num_style = ParagraphStyle('KMIO_PageNum', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, alignment=2, leading=9, textColor=colors.HexColor('#334155'))
 
     intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9.5, alignment=4)
     sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
@@ -2079,166 +2250,184 @@ def generate_emergency_sheet_pdf(data):
     # Usable width: 453.5 pt on A4 with 2.5cm margins
     col_widths = [50, 52, 72, 98, 80, 55, 46.5]
 
-    for sheet_idx, sheet in enumerate(data['sheets']):
-        if sheet_idx > 0:
-            story.append(PageBreak())
+    is_first_page_of_doc = True
+    for sheet in data['sheets']:
+        for page in sheet['pages']:
+            if not is_first_page_of_doc:
+                story.append(PageBreak())
+            is_first_page_of_doc = False
 
-        # Header block
-        if sheet.get('is_consolidated', False):
-            header_data = [
-                [
-                    Paragraph(config.ref_code_prefix, left_ref_style),
+            # Header block (Repeated on each page)
+            if sheet.get('is_consolidated', False):
+                right_cell = [Paragraph(data['today_str'], date_style)]
+                if page['page_label']:
+                    right_cell.append(Spacer(1, 2))
+                    right_cell.append(Paragraph(page['page_label'], page_num_style))
+                header_data = [
                     [
-                        Paragraph(config.header_line_1, title_style),
-                        Spacer(1, 1),
-                        Paragraph(config.header_line_2, dept_style),
-                        Spacer(1, 1),
-                        Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
-                    ],
-                    Paragraph(data['today_str'], date_style)
-                ]
-            ]
-        else:
-            header_data = [
-                [
-                    Paragraph(config.ref_code_prefix, left_ref_style),
-                    [
-                        Paragraph(config.header_line_1, title_style),
-                        Spacer(1, 1),
-                        Paragraph(config.header_line_2, dept_style),
-                        Spacer(1, 1),
-                        Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
-                    ],
-                    [
-                        Paragraph(data['today_str'], date_style),
-                        Spacer(1, 3),
-                        Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
-                            ('BOX', (0,0), (-1,-1), 1.2, colors.black),
-                            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                            ('TOPPADDING', (0,0), (-1,-1), 3),
-                            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-                            ('LEFTPADDING', (0,0), (-1,-1), 2),
-                            ('RIGHTPADDING', (0,0), (-1,-1), 2),
-                        ])
+                        Paragraph(config.ref_code_prefix, left_ref_style),
+                        [
+                            Paragraph(config.header_line_1, title_style),
+                            Spacer(1, 1),
+                            Paragraph(config.header_line_2, dept_style),
+                            Spacer(1, 1),
+                            Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
+                        ],
+                        right_cell
                     ]
                 ]
+            else:
+                right_cell = [
+                    Paragraph(data['today_str'], date_style),
+                    Spacer(1, 3),
+                    Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
+                        ('BOX', (0,0), (-1,-1), 1.2, colors.black),
+                        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                        ('TOPPADDING', (0,0), (-1,-1), 3),
+                        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                        ('LEFTPADDING', (0,0), (-1,-1), 2),
+                        ('RIGHTPADDING', (0,0), (-1,-1), 2),
+                    ])
+                ]
+                if page['page_label']:
+                    right_cell.append(Spacer(1, 2))
+                    right_cell.append(Paragraph(page['page_label'], page_num_style))
+                header_data = [
+                    [
+                        Paragraph(config.ref_code_prefix, left_ref_style),
+                        [
+                            Paragraph(config.header_line_1, title_style),
+                            Spacer(1, 1),
+                            Paragraph(config.header_line_2, dept_style),
+                            Spacer(1, 1),
+                            Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
+                        ],
+                        right_cell
+                    ]
+                ]
+            ht = Table(header_data, colWidths=[100, 253.5, 100])
+            ht.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+            ]))
+            story.append(ht)
+            story.append(Spacer(1, 4))
+
+            # Narrative paragraph (page 1 of machine)
+            if page['is_first']:
+                intro_text = config.emergency_intro_paragraph or config.intro_paragraph
+                story.append(Paragraph(intro_text, intro_style))
+                story.append(Spacer(1, 4))
+
+            # Table section title
+            base_title = config.emergency_table_title or "Emergency/Vacant Slot list"
+            sec_title = base_title if page['is_first'] else f"{base_title} (Contd.)"
+            story.append(Paragraph(sec_title, sec_title_style))
+            story.append(Spacer(1, 4))
+
+            # 7-Column Table
+            table_rows = [
+                [
+                    Paragraph('Start Date', th_style),
+                    Paragraph('Hospital no', th_style),
+                    Paragraph('Patient name', th_style),
+                    Paragraph('Diagnosis', th_style),
+                    Paragraph('Primary Consultant', th_style),
+                    Paragraph('Machine', th_style),
+                    Paragraph('Jr. Resident', th_style),
+                ]
             ]
-        ht = Table(header_data, colWidths=[100, 253.5, 100])
-        ht.setStyle(TableStyle([
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('LEFTPADDING', (0,0), (-1,-1), 0),
-            ('RIGHTPADDING', (0,0), (-1,-1), 0),
-            ('TOPPADDING', (0,0), (-1,-1), 0),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-        ]))
-        story.append(ht)
-        story.append(Spacer(1, 5))
 
-        # Narrative paragraph
-        intro_text = config.emergency_intro_paragraph or config.intro_paragraph
-        story.append(Paragraph(intro_text, intro_style))
-        story.append(Spacer(1, 5))
+            if page['schedules']:
+                for s in page['schedules']:
+                    d_str = s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else '-'
+                    mr_str = str(s.patient.mr_no)
+                    pt_str = str(s.patient.pt_name or '-').replace('\n', ' ').strip()[:18]
+                    diag_str = str(s.patient.diagnosis or '-').replace('\n', ' ').strip()[:28]
+                    cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
+                    mach_str = str(s.machine.name if s.machine else 'Unassigned').replace('\n', ' ').strip()[:14]
+                    jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:14]
 
-        # Table section title
-        sec_title = config.emergency_table_title or "Emergency/Vacant Slot list"
-        story.append(Paragraph(sec_title, sec_title_style))
-        story.append(Spacer(1, 5))
-
-        # 7-Column Table
-        table_rows = [
-            [
-                Paragraph('Start Date', th_style),
-                Paragraph('Hospital no', th_style),
-                Paragraph('Patient name', th_style),
-                Paragraph('Diagnosis', th_style),
-                Paragraph('Primary Consultant', th_style),
-                Paragraph('Machine', th_style),
-                Paragraph('Jr. Resident', th_style),
-            ]
-        ]
-
-        if sheet['schedules']:
-            for s in sheet['schedules']:
-                d_str = s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else '-'
-                mr_str = str(s.patient.mr_no)
-                pt_str = str(s.patient.pt_name or '-').replace('\n', ' ').strip()[:18]
-                diag_str = str(s.patient.diagnosis or '-').replace('\n', ' ').strip()[:28]
-                cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
-                mach_str = str(s.machine.name if s.machine else 'Unassigned').replace('\n', ' ').strip()[:14]
-                jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:14]
-
+                    table_rows.append([
+                        d_str, mr_str, pt_str, diag_str, cons_str, mach_str, jr_str
+                    ])
+            else:
+                label = "Emergency / Vacant slot queue" if sheet.get('is_consolidated') else sheet['machine'].name
                 table_rows.append([
-                    d_str, mr_str, pt_str, diag_str, cons_str, mach_str, jr_str
+                    f"No patients currently assigned to {label} between {data['start_date_formatted']} and {data['end_date_formatted']}.",
+                    '', '', '', '', '', ''
                 ])
-        else:
-            label = "Emergency / Vacant slot queue" if sheet.get('is_consolidated') else sheet['machine'].name
-            table_rows.append([
-                f"No patients currently assigned to {label} between {data['start_date_formatted']} and {data['end_date_formatted']}.",
-                '', '', '', '', '', ''
-            ])
 
-        v_pad = config.row_vertical_padding_pt or 2.7
-        pt_table = Table(table_rows, colWidths=col_widths, repeatRows=1)
-        ts = [
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
-            ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
-            ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-            ('FONTSIZE', (0,1), (-1,-1), 6.5),
-            ('LEADING', (0,1), (-1,-1), 8),
-            ('TOPPADDING', (0,0), (-1,-1), v_pad),
-            ('BOTTOMPADDING', (0,0), (-1,-1), v_pad),
-            ('LEFTPADDING', (0,0), (-1,-1), 2),
-            ('RIGHTPADDING', (0,0), (-1,-1), 2),
-        ]
-        if not sheet['schedules']:
-            ts.append(('SPAN', (0,1), (-1,1)))
-            ts.append(('ALIGN', (0,1), (-1,1), 'CENTER'))
-            ts.append(('TOPPADDING', (0,1), (-1,1), 10))
-            ts.append(('BOTTOMPADDING', (0,1), (-1,1), 10))
+            v_pad = config.row_vertical_padding_pt or 2.7
+            pt_table = Table(table_rows, colWidths=col_widths)
+            ts = [
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
+                ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
+                ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+                ('FONTSIZE', (0,1), (-1,-1), 6.5),
+                ('LEADING', (0,1), (-1,-1), 8),
+                ('TOPPADDING', (0,0), (-1,-1), v_pad),
+                ('BOTTOMPADDING', (0,0), (-1,-1), v_pad),
+                ('LEFTPADDING', (0,0), (-1,-1), 2),
+                ('RIGHTPADDING', (0,0), (-1,-1), 2),
+            ]
+            if not page['schedules']:
+                ts.append(('SPAN', (0,1), (-1,1)))
+                ts.append(('ALIGN', (0,1), (-1,1), 'CENTER'))
+                ts.append(('TOPPADDING', (0,1), (-1,1), 10))
+                ts.append(('BOTTOMPADDING', (0,1), (-1,1), 10))
+            else:
+                for r_idx in range(1, len(table_rows)):
+                    if r_idx % 2 == 0:
+                        ts.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f8fafc')))
 
-        pt_table.setStyle(TableStyle(ts))
-        story.append(pt_table)
-        story.append(Spacer(1, 6))
+            pt_table.setStyle(TableStyle(ts))
+            story.append(pt_table)
 
-        # Bottom block (Please note, Copy to & Signature Authority)
-        note_p1 = config.note_paragraph_1
-        note_p2 = config.note_paragraph_2
+            # If last page of the machine, append Notes & Signatures
+            if page['is_last']:
+                story.append(Spacer(1, 6))
+                note_p1 = config.note_paragraph_1
+                note_p2 = config.note_paragraph_2
 
-        copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
-        for c_item in data.get('copy_to_list', []):
-            copy_to_flowables.append(Paragraph(c_item, copy_style))
+                copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
+                for c_item in data.get('copy_to_list', []):
+                    copy_to_flowables.append(Paragraph(c_item, copy_style))
 
-        sig_name_val = data.get('signing_authority') or config.default_signing_authority
-        sig_desig_val = data.get('designation') or config.default_designation
-        sig_flowables = [
-            Paragraph(sig_name_val, sig_name),
-            Paragraph(sig_desig_val, sig_title),
-            Paragraph(config.department_signature_line, sig_dept),
-        ]
+                sig_name_val = resolve_signing_authority(data.get('signing_authority') or config.default_signing_authority)
+                sig_desig_val = data.get('designation') or config.default_designation
+                sig_flowables = [
+                    Paragraph(sig_name_val, sig_name),
+                    Paragraph(sig_desig_val, sig_title),
+                    Paragraph(config.department_signature_line, sig_dept),
+                ]
 
-        bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
-        bottom_table.setStyle(TableStyle([
-            ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
-            ('LEFTPADDING', (0,0), (-1,-1), 0),
-            ('RIGHTPADDING', (0,0), (-1,-1), 0),
-            ('TOPPADDING', (0,0), (-1,-1), 0),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-        ]))
+                bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
+                bottom_table.setStyle(TableStyle([
+                    ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+                    ('LEFTPADDING', (0,0), (-1,-1), 0),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                    ('TOPPADDING', (0,0), (-1,-1), 0),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+                ]))
 
-        footer_elements = [
-            Paragraph('Please note:', note_title_style),
-            Spacer(1, 1),
-            Paragraph(note_p1, note_text_style),
-            Spacer(1, 2),
-            Paragraph(note_p2, note_text_style),
-            Spacer(1, 6),
-            bottom_table
-        ]
-        story.append(KeepTogether(footer_elements))
+                footer_elements = [
+                    Paragraph('Please note:', note_title_style),
+                    Spacer(1, 1),
+                    Paragraph(note_p1, note_text_style),
+                    Spacer(1, 2),
+                    Paragraph(note_p2, note_text_style),
+                    Spacer(1, 6),
+                    bottom_table
+                ]
+                story.append(KeepTogether(footer_elements))
 
     doc.build(story, canvasmaker=NumberedCanvas)
     return buffer.getvalue()
