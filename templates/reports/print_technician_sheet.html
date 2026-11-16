@@ -380,13 +380,15 @@
                     <tbody>
                         {% for s in page.schedules %}
                         <tr>
-                            <td style="font-weight: 600;">{{ s.date_of_start|date:"d-M-y" }}</td>
+                            {% if s.date_rowspan > 0 %}
+                            <td rowspan="{{ s.date_rowspan }}" style="font-weight: 600; text-align: center; vertical-align: middle;">{{ s.formatted_date }}</td>
+                            {% endif %}
                             <td style="text-align: center; font-weight: 600;">{{ s.shift.name|default:"-" }}</td>
                             <td style="font-weight: 600;">{{ s.patient.mr_no }}</td>
                             <td>{{ s.patient.rt_no|default:"-" }}</td>
-                            <td style="font-weight: 600;" title="{{ s.patient.pt_name }}">{{ s.patient.pt_name }}</td>
+                            <td style="font-weight: 600;" title="{{ s.patient_name_title }}">{{ s.patient_name_title }}</td>
                             <td>{{ s.patient.phone_no|default:"-" }}</td>
-                            <td title="{{ s.patient.diagnosis|default:'-' }}">{{ s.patient.diagnosis|default:"-" }}</td>
+                            <td title="{{ s.diagnosis_title }}">{{ s.diagnosis_title }}</td>
                             <td title="{{ s.patient.primary_consultant.name|default:'-' }}">{{ s.patient.primary_consultant.name|default:"-" }}</td>
                             <td title="{{ s.jr_resident|default:'-' }}">{{ s.jr_resident|default:"-" }}</td>
                         </tr>
@@ -400,8 +402,7 @@
                     </tbody>
                 </table>
 
-                <!-- Please Note Block (last page of this machine only) -->
-                {% if page.is_last %}
+                <!-- Please Note Block (on every page) -->
                 <div class="notes-section">
                     <div class="notes-title">Please note:</div>
                     <p class="notes-text">
@@ -411,17 +412,15 @@
                         {{ config.note_paragraph_2 }}
                     </p>
                 </div>
-                {% endif %}
             </div>
 
-            <!-- Bottom: Copy To & Signature (last page of this machine only) -->
+            <!-- Bottom: Copy To & Signature (on every page) -->
             <div>
-                {% if page.is_last %}
                 <div class="bottom-signatures-grid">
                     <div class="copy-to-block">
                         <strong>Copy to:</strong>
                         <ol>
-                            {% for c_item in copy_to_list %}
+                            {% for c_item in copy_to_list_bare %}
                             <li>{{ c_item }}</li>
                             {% endfor %}
                         </ol>
@@ -432,7 +431,6 @@
                         <div class="signature-dept">{{ config.department_signature_line }}</div>
                     </div>
                 </div>
-                {% endif %}
 
                 <!-- Footer Timestamp & Machine Page Counter (if multi-page) -->
                 <div class="sheet-footer">

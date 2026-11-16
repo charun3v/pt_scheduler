@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 import calendar
 import json
 import csv
+import re
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -329,6 +330,47 @@ def simulation_report_view(request):
     return render(request, 'reports/simulation_report.html', context)
 
 
+def format_title_case(text):
+    """
+    Formats patient name and diagnosis into Title Case while preserving
+    standard clinical abbreviations (Ca, RT, LT, BM, SCC, ALL, NHL, PFS, SVCO, DMG, GBS, etc.).
+    """
+    if not text:
+        return '-'
+    text = str(text).strip()
+    if not text or text == '-':
+        return '-'
+    acronyms = {
+        'ca': 'Ca', 'rt': 'RT', 'lt': 'LT', 'bm': 'BM', 'scc': 'SCC',
+        'all': 'ALL', 'nhl': 'NHL', 'pfs': 'PFS', 'svco': 'SVCO',
+        'dmg': 'DMG', 'gbs': 'GBS', 'po': 'PO', 'nec': 'NEC',
+        'rms': 'RMS', 'fom': 'FOM', 'bot': 'BOT', 'vc': 'VC',
+        'rtts': 'RTTs', 'rtt': 'RTT', 'hod': 'HOD', 'hou': 'HOU'
+    }
+    words = text.split()
+    out = []
+    for w in words:
+        pfx = ''
+        sfx = ''
+        core = w
+        while core and not core[0].isalnum():
+            pfx += core[0]
+            core = core[1:]
+        while core and not core[-1].isalnum():
+            sfx = core[-1] + sfx
+            core = core[:-1]
+        
+        low = core.lower()
+        if low in acronyms:
+            out.append(pfx + acronyms[low] + sfx)
+        elif '/' in core:
+            parts = [acronyms.get(p.lower(), p.capitalize()) for p in core.split('/')]
+            out.append(pfx + '/'.join(parts) + sfx)
+        else:
+            out.append(pfx + core.capitalize() + sfx)
+    return ' '.join(out)
+
+
 def resolve_signing_authority(raw_name):
     """
     Ensures signing authority always displays the real person name, never a raw username.
@@ -582,15 +624,17 @@ def emergency_slots_report_view(request):
 
 
 
-def chunk_machine_schedules(schedules, max_single=24, max_first=28, max_middle=30, max_last=24):
+def chunk_machine_schedules(schedules, max_per_page=20):
     """
     Paginates schedules per machine to guarantee clean physical A4 page rendering:
-    - If total <= max_single: 1 page, page_label is None (no page count displayed).
-    - If total > max_single: splits across pages. On multi-page sheets:
-      page_label is e.g. '1/2 pages', '2/2 pages' (displayed in header & footer).
+    - If total <= max_per_page: 1 page, page_label is None (no page count displayed).
+    - If total > max_per_page: splits across pages evenly with at most max_per_page rows per page.
+      On multi-page sheets: page_label is e.g. '1/2 pages', '2/2 pages' (displayed in header & footer).
+    - Every page comfortably accommodates institutional header, title, up to 20 rows,
+      notes, copy-to distribution, and signing authority without any cutoffs.
     """
     total = len(schedules)
-    if total <= max_single:
+    if total <= max_per_page:
         return [{
             'page_num': 1,
             'total_pages': 1,
@@ -602,69 +646,30 @@ def chunk_machine_schedules(schedules, max_single=24, max_first=28, max_middle=3
             'schedules': schedules,
         }]
 
+    num_pages = (total + max_per_page - 1) // max_per_page
+    base_chunk = total // num_pages
+    remainder = total % num_pages
     pages_schedules = []
-    if total <= (max_first + max_last):
-        half = (total + 1) // 2
-        p1_count = min(max_first, max(half, total - max_last))
-        pages_schedules.append(schedules[:p1_count])
-        pages_schedules.append(schedules[p1_count:])
-    else:
-        p1 = schedules[:max_first]
-        pages_schedules.append(p1)
-        rem = schedules[max_first:]
-        while rem:
-            if len(rem) <= max_last:
-                pages_schedules.append(rem)
-                break
-            elif len(rem) <= (max_middle + max_last):
-                half = (len(rem) + 1) // 2
-                mid_count = min(max_middle, max(half, len(rem) - max_last))
-                pages_schedules.append(rem[:mid_count])
-                pages_schedules.append(rem[mid_count:])
-                break
-            else:
-                pages_schedules.append(rem[:max_middle])
-                rem = rem[max_middle:]
+    cur = 0
+    for i in range(num_pages):
+        chunk_size = base_chunk + (1 if i < remainder else 0)
+        pages_schedules.append(schedules[cur:cur + chunk_size])
+        cur += chunk_size
 
-    total_pages = len(pages_schedules)
     result = []
     for idx, p_scheds in enumerate(pages_schedules):
         page_num = idx + 1
         result.append({
             'page_num': page_num,
-            'total_pages': total_pages,
-            'page_label': f"{page_num}/{total_pages} pages",
-            'page_label_short': f"{page_num}/{total_pages}",
-            'page_label_long': f"Page {page_num} of {total_pages}",
+            'total_pages': num_pages,
+            'page_label': f"{page_num}/{num_pages} pages",
+            'page_label_short': f"{page_num}/{num_pages}",
+            'page_label_long': f"Page {page_num} of {num_pages}",
             'is_first': (page_num == 1),
-            'is_last': (page_num == total_pages),
+            'is_last': (page_num == num_pages),
             'schedules': p_scheds,
         })
     return result
-
-
-    # For Print Modal: Consultant options, designations, and template config
-    active_print_cfg = PrintTemplateConfig.get_active()
-    consultant_options = get_consultant_signing_options(active_print_cfg.default_signing_authority)
-    designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
-
-    context = {
-        'schedules': schedules,
-        'total_count': schedules.count(),
-        'all_machines': all_machines,
-        'all_shifts': all_shifts,
-        'selected_machine': selected_machine,
-        'selected_machine_id': machine_id,
-        'start_date_str': start_date_str,
-        'end_date_str': end_date_str,
-        'print_default_start': default_start.isoformat(),
-        'print_default_end': default_end.isoformat(),
-        'preset': preset,
-        'consultant_options': consultant_options,
-        'designations': designations,
-        'print_template_config': active_print_cfg,
-    }
-    return render(request, 'reports/emergency_slots.html', context)
 
 
 def export_machine_schedule_excel(schedules, machine, start_date, end_date):
@@ -1523,7 +1528,13 @@ def get_print_schedule_data(request):
     else:
         designation = designation.strip()
 
-    copy_to_list = [line.strip() for line in config.copy_to_recipients.strip().splitlines() if line.strip()]
+    raw_copy_lines = [line.strip() for line in config.copy_to_recipients.strip().splitlines() if line.strip()]
+    copy_to_list = []
+    copy_to_list_bare = []
+    for idx, line in enumerate(raw_copy_lines):
+        bare_line = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+        copy_to_list_bare.append(bare_line)
+        copy_to_list.append(f"{idx + 1}. {bare_line}")
 
     today = date.today()
     default_start = get_upcoming_monday(today)
@@ -1575,7 +1586,32 @@ def get_print_schedule_data(request):
     sheets = []
     for m in selected_machines:
         m_schedules = [s for s in all_schedules if s.machine_id == m.id]
-        m_pages = chunk_machine_schedules(m_schedules)
+        m_pages = chunk_machine_schedules(m_schedules, max_per_page=20)
+        
+        # Annotate schedules for HTML display & date merging
+        for page in m_pages:
+            cur_d = None
+            grp_start_s = None
+            grp_count = 0
+            for s in page['schedules']:
+                d_str = s.date_of_start.strftime("%d-%b-%y") if s.date_of_start else '-'
+                s.formatted_date = d_str
+                s.patient_name_title = format_title_case(s.patient.pt_name)
+                s.diagnosis_title = format_title_case(s.patient.diagnosis)
+                s.consultant_name_title = s.patient.primary_consultant.name if s.patient.primary_consultant else '-'
+                if d_str == cur_d:
+                    grp_count += 1
+                    s.date_rowspan = 0
+                else:
+                    if grp_start_s is not None:
+                        grp_start_s.date_rowspan = grp_count
+                    cur_d = d_str
+                    grp_start_s = s
+                    grp_count = 1
+                    s.date_rowspan = 1
+            if grp_start_s is not None:
+                grp_start_s.date_rowspan = grp_count
+
         sheets.append({
             'machine': m,
             'box_title': m.name,
@@ -1604,6 +1640,7 @@ def get_print_schedule_data(request):
         'signing_authority': signing_authority,
         'designation': designation,
         'copy_to_list': copy_to_list,
+        'copy_to_list_bare': copy_to_list_bare,
     }
 
 
@@ -1626,7 +1663,6 @@ def generate_technician_sheet_pdf(data):
     config = data.get('config') or PrintTemplateConfig.get_active()
     buffer = io.BytesIO()
 
-    # A4 size with configurable margins (default: 2.5 cm on all sides)
     margin_cm = config.page_margin_cm or 2.5
     margin_25mm = margin_cm * cm
     doc = SimpleDocTemplate(
@@ -1661,9 +1697,7 @@ def generate_technician_sheet_pdf(data):
                 self.saveState()
                 self.setFont('Helvetica', 7.5)
                 self.setFillColor(colors.HexColor('#222222'))
-                # Footer Left (at 2.5 cm left margin, 1.4 cm from bottom)
                 self.drawString(margin_25mm, 1.4 * cm, f"Report Generated on:   {data['now_time_str']}    {data['now_date_str']}")
-                # Footer Right: machine-specific --/-- pages ONLY if machine spans > 1 page
                 if page_idx < len(canvas_pages_meta):
                     lbl = canvas_pages_meta[page_idx].get('page_label')
                     if lbl:
@@ -1676,7 +1710,7 @@ def generate_technician_sheet_pdf(data):
     title_style = ParagraphStyle('KMIO_Title', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, alignment=1, leading=13)
     dept_style = ParagraphStyle('KMIO_Dept', parent=styles['Normal'], fontName='Helvetica-BoldOblique', fontSize=10, alignment=1, leading=12)
     sub_style = ParagraphStyle('KMIO_Sub', parent=styles['Normal'], fontName='Helvetica-Oblique', fontSize=8.5, alignment=1, leading=10)
-    box_style = ParagraphStyle('KMIO_Box', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9.5, alignment=1, leading=11)
+    box_style = ParagraphStyle('KMIO_Box', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, alignment=1, leading=12)
     left_ref_style = ParagraphStyle('KMIO_LeftRef', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=10)
     date_style = ParagraphStyle('KMIO_Date', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, alignment=2, leading=10)
     page_num_style = ParagraphStyle('KMIO_PageNum', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, alignment=2, leading=9, textColor=colors.HexColor('#334155'))
@@ -1684,8 +1718,7 @@ def generate_technician_sheet_pdf(data):
     intro_style = ParagraphStyle('KMIO_Intro', parent=styles['Normal'], fontName='Helvetica', fontSize=7, leading=9.5, alignment=4)
     sec_title_style = ParagraphStyle('KMIO_SecTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
 
-    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=6.5, leading=8, alignment=0)
-    th_center = ParagraphStyle('KMIO_THC', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=6.5, leading=8, alignment=1)
+    th_style = ParagraphStyle('KMIO_TH', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=6.8, leading=8.5, alignment=0)
 
     note_title_style = ParagraphStyle('KMIO_NoteTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9)
     note_text_style = ParagraphStyle('KMIO_NoteText', parent=styles['Normal'], fontName='Helvetica', fontSize=6.5, leading=8.5, alignment=4)
@@ -1697,9 +1730,7 @@ def generate_technician_sheet_pdf(data):
     sig_dept = ParagraphStyle('KMIO_SigDept', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=2)
 
     story = []
-    # Usable width: A4[0] - 2 * 2.5 * cm = 453.54 pt (16.0 cm)
-    # Column allocation ensuring Consultant accommodates 20 chars and Resident accommodates 15 chars:
-    col_widths = [33, 17, 47, 24, 65, 43, 85, 81, 58.5]  # Total = 453.5 pt
+    col_widths = [36, 17, 54, 28, 70, 48, 86, 70, 44.5]
 
     is_first_page_of_doc = True
     for sheet in data['sheets']:
@@ -1708,8 +1739,8 @@ def generate_technician_sheet_pdf(data):
                 story.append(PageBreak())
             is_first_page_of_doc = False
 
-            # Top Header (Repeated on each page)
-            box_cell = [
+            # Header block (Repeated on each page)
+            right_cell = [
                 Paragraph(data['today_str'], date_style),
                 Spacer(1, 3),
                 Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
@@ -1723,8 +1754,8 @@ def generate_technician_sheet_pdf(data):
                 ])
             ]
             if page['page_label']:
-                box_cell.append(Spacer(1, 2))
-                box_cell.append(Paragraph(page['page_label'], page_num_style))
+                right_cell.append(Spacer(1, 2))
+                right_cell.append(Paragraph(page['page_label'], page_num_style))
 
             header_data = [
                 [
@@ -1736,7 +1767,7 @@ def generate_technician_sheet_pdf(data):
                         Spacer(1, 1),
                         Paragraph(config.header_line_3, sub_style)
                     ],
-                    box_cell
+                    right_cell
                 ]
             ]
             ht = Table(header_data, colWidths=[100, 253.5, 100])
@@ -1750,45 +1781,44 @@ def generate_technician_sheet_pdf(data):
             story.append(ht)
             story.append(Spacer(1, 4))
 
-            # Narrative paragraph (only on first page of this machine)
+            # Narrative paragraph (page 1 of machine)
             if page['is_first']:
-                intro_text = config.intro_paragraph
-                story.append(Paragraph(intro_text, intro_style))
+                story.append(Paragraph(config.intro_paragraph, intro_style))
                 story.append(Spacer(1, 4))
 
-            # Section Subtitle
-            try:
-                base_title = config.table_section_title.format(start_date=data['start_date_formatted'], end_date=data['end_date_formatted'])
-            except Exception:
-                base_title = f"New Patient starts from {data['start_date_formatted']} to {data['end_date_formatted']}"
+            # Table section title
+            base_title = config.table_section_title.format(
+                start_date=data['start_date_formatted'],
+                end_date=data['end_date_formatted']
+            )
             sec_title = base_title if page['is_first'] else f"{base_title} (Contd.)"
             story.append(Paragraph(sec_title, sec_title_style))
             story.append(Spacer(1, 4))
 
-            # 9-Column Table: Plain strings for data cells to guarantee single-line display with NO text wrapping
+            # 9-Column Table: Title Casing on Patient name and Diagnosis
             table_rows = [
                 [
                     Paragraph('Date', th_style),
-                    Paragraph('Shift', th_center),
+                    Paragraph('Shift', th_style),
                     Paragraph('Hospital no.', th_style),
                     Paragraph('RT No.', th_style),
                     Paragraph('Patient name', th_style),
                     Paragraph('Phone No.', th_style),
                     Paragraph('Diagnosis', th_style),
-                    Paragraph('Consultant<br/>Radiation Oncologist', th_style),
-                    Paragraph('Junior<br/>Resident', th_style),
+                    Paragraph('Consultant Radiation<br/>Oncologist', th_style),
+                    Paragraph('Junior Resident', th_style),
                 ]
             ]
 
             if page['schedules']:
                 for s in page['schedules']:
                     d_str = s.date_of_start.strftime("%d-%b-%y") if s.date_of_start else '-'
-                    sh_str = str(s.shift.name if s.shift else '-')
+                    sh_str = str(s.shift.name if s.shift else '-').strip()
                     mr_str = str(s.patient.mr_no)
                     rt_str = str(s.patient.rt_no or '-')
-                    pt_str = str(s.patient.pt_name or '-').replace('\n', ' ').strip()[:16]
-                    ph_str = str(s.patient.phone_no or '-').replace('\n', ' ').strip()[:11]
-                    diag_str = str(s.patient.diagnosis or '-').replace('\n', ' ').strip()[:26]
+                    pt_str = format_title_case(s.patient.pt_name).replace('\n', ' ').strip()[:18]
+                    ph_str = str(s.patient.phone_no or '-')
+                    diag_str = format_title_case(s.patient.diagnosis).replace('\n', ' ').strip()[:28]
                     cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
                     jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:15]
 
@@ -1806,7 +1836,6 @@ def generate_technician_sheet_pdf(data):
             ts = [
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
                 ('ALIGN', (0,0), (-1,0), 'LEFT'),
-                ('ALIGN', (1,0), (1,-1), 'CENTER'),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
                 ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
@@ -1824,6 +1853,28 @@ def generate_technician_sheet_pdf(data):
                 ts.append(('TOPPADDING', (0,1), (-1,1), 10))
                 ts.append(('BOTTOMPADDING', (0,1), (-1,1), 10))
             else:
+                # Vertical merge for contiguous identical dates
+                date_spans = []
+                cur_d = None
+                start_r = None
+                for idx, s in enumerate(page['schedules']):
+                    r_idx = idx + 1
+                    d_str = s.date_of_start.strftime("%d-%b-%y") if s.date_of_start else '-'
+                    if d_str != cur_d:
+                        if cur_d is not None and start_r is not None and (r_idx - 1) > start_r:
+                            date_spans.append((start_r, r_idx - 1))
+                        cur_d = d_str
+                        start_r = r_idx
+                if cur_d is not None and start_r is not None and len(page['schedules']) > start_r:
+                    date_spans.append((start_r, len(page['schedules'])))
+
+                for (s_row, e_row) in date_spans:
+                    ts.append(('SPAN', (0, s_row), (0, e_row)))
+                    ts.append(('VALIGN', (0, s_row), (0, e_row), 'MIDDLE'))
+                    ts.append(('ALIGN', (0, s_row), (0, e_row), 'CENTER'))
+                    for r in range(s_row + 1, e_row + 1):
+                        table_rows[r][0] = ''
+
                 for r_idx in range(1, len(table_rows)):
                     if r_idx % 2 == 0:
                         ts.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f8fafc')))
@@ -1831,43 +1882,42 @@ def generate_technician_sheet_pdf(data):
             pt_table.setStyle(TableStyle(ts))
             story.append(pt_table)
 
-            # If last page of the machine, append Notes & Signatures
-            if page['is_last']:
-                story.append(Spacer(1, 6))
-                note_p1 = config.note_paragraph_1
-                note_p2 = config.note_paragraph_2
+            # Append Notes & Signatures on EVERY page
+            story.append(Spacer(1, 6))
+            note_p1 = config.note_paragraph_1
+            note_p2 = config.note_paragraph_2
 
-                copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
-                for c_item in data.get('copy_to_list', []):
-                    copy_to_flowables.append(Paragraph(c_item, copy_style))
+            copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
+            for c_item in data.get('copy_to_list', []):
+                copy_to_flowables.append(Paragraph(c_item, copy_style))
 
-                sig_name_val = resolve_signing_authority(data.get('signing_authority') or config.default_signing_authority)
-                sig_desig_val = data.get('designation') or config.default_designation
-                sig_flowables = [
-                    Paragraph(sig_name_val, sig_name),
-                    Paragraph(sig_desig_val, sig_title),
-                    Paragraph(config.department_signature_line, sig_dept),
-                ]
+            sig_name_val = resolve_signing_authority(data.get('signing_authority') or config.default_signing_authority)
+            sig_desig_val = data.get('designation') or config.default_designation
+            sig_flowables = [
+                Paragraph(sig_name_val, sig_name),
+                Paragraph(sig_desig_val, sig_title),
+                Paragraph(config.department_signature_line, sig_dept),
+            ]
 
-                bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
-                bottom_table.setStyle(TableStyle([
-                    ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
-                    ('LEFTPADDING', (0,0), (-1,-1), 0),
-                    ('RIGHTPADDING', (0,0), (-1,-1), 0),
-                    ('TOPPADDING', (0,0), (-1,-1), 0),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-                ]))
+            bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
+            bottom_table.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+            ]))
 
-                footer_elements = [
-                    Paragraph('Please note:', note_title_style),
-                    Spacer(1, 1),
-                    Paragraph(note_p1, note_text_style),
-                    Spacer(1, 2),
-                    Paragraph(note_p2, note_text_style),
-                    Spacer(1, 6),
-                    bottom_table
-                ]
-                story.append(KeepTogether(footer_elements))
+            footer_elements = [
+                Paragraph('Please note:', note_title_style),
+                Spacer(1, 1),
+                Paragraph(note_p1, note_text_style),
+                Spacer(1, 2),
+                Paragraph(note_p2, note_text_style),
+                Spacer(1, 6),
+                bottom_table
+            ]
+            story.append(KeepTogether(footer_elements))
 
     doc.build(story, canvasmaker=NumberedCanvas)
     return buffer.getvalue()
@@ -2035,7 +2085,7 @@ def get_print_emergency_schedule_data(request):
     """
     Shared helper to query and prepare Emergency / Vacant Slot records for printing and PDF generation.
     Supports:
-    - 'All machines consolidated' (first & default): single consolidated sheet of all emergency patients.
+    - 'All machines consolidated' (first & default): single consolidated sheet of all emergency patients, labeled 'All Machines'.
     - Individual machine selections: separate sheet per selected machine.
     - Start Date & End Date filtering on intended_start_date.
     - Modality (Teletherapy / Brachytherapy).
@@ -2058,7 +2108,13 @@ def get_print_emergency_schedule_data(request):
     else:
         designation = designation.strip()
 
-    copy_to_list = [line.strip() for line in config.copy_to_recipients.strip().splitlines() if line.strip()]
+    raw_copy_lines = [line.strip() for line in config.copy_to_recipients.strip().splitlines() if line.strip()]
+    copy_to_list = []
+    copy_to_list_bare = []
+    for idx, line in enumerate(raw_copy_lines):
+        bare_line = re.sub(r'^\d+[\.\)]\s*', '', line).strip()
+        copy_to_list_bare.append(bare_line)
+        copy_to_list.append(f"{idx + 1}. {bare_line}")
 
     today = date.today()
     default_start = get_upcoming_monday(today)
@@ -2109,11 +2165,35 @@ def get_print_emergency_schedule_data(request):
 
     sheets = []
     if is_consolidated:
-        m_pages = chunk_machine_schedules(all_schedules)
+        m_pages = chunk_machine_schedules(all_schedules, max_per_page=20)
+        # Annotate schedules for HTML display & date merging
+        for page in m_pages:
+            cur_d = None
+            grp_start_s = None
+            grp_count = 0
+            for s in page['schedules']:
+                d_str = s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else '-'
+                s.formatted_date = d_str
+                s.patient_name_title = format_title_case(s.patient.pt_name)
+                s.diagnosis_title = format_title_case(s.patient.diagnosis)
+                s.consultant_name_title = s.patient.primary_consultant.name if s.patient.primary_consultant else '-'
+                if d_str == cur_d:
+                    grp_count += 1
+                    s.date_rowspan = 0
+                else:
+                    if grp_start_s is not None:
+                        grp_start_s.date_rowspan = grp_count
+                    cur_d = d_str
+                    grp_start_s = s
+                    grp_count = 1
+                    s.date_rowspan = 1
+            if grp_start_s is not None:
+                grp_start_s.date_rowspan = grp_count
+
         sheets.append({
             'is_consolidated': True,
             'machine': None,
-            'box_title': 'Consolidated',
+            'box_title': 'All Machines',
             'schedules': all_schedules,
             'count': len(all_schedules),
             'pages': m_pages,
@@ -2123,7 +2203,30 @@ def get_print_emergency_schedule_data(request):
         selected_machines = list(Machine.objects.filter(id__in=machine_param_list, is_active=True).order_by('display_order'))
         for m in selected_machines:
             m_schedules = [s for s in all_schedules if s.machine_id == m.id]
-            m_pages = chunk_machine_schedules(m_schedules)
+            m_pages = chunk_machine_schedules(m_schedules, max_per_page=20)
+            for page in m_pages:
+                cur_d = None
+                grp_start_s = None
+                grp_count = 0
+                for s in page['schedules']:
+                    d_str = s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else '-'
+                    s.formatted_date = d_str
+                    s.patient_name_title = format_title_case(s.patient.pt_name)
+                    s.diagnosis_title = format_title_case(s.patient.diagnosis)
+                    s.consultant_name_title = s.patient.primary_consultant.name if s.patient.primary_consultant else '-'
+                    if d_str == cur_d:
+                        grp_count += 1
+                        s.date_rowspan = 0
+                    else:
+                        if grp_start_s is not None:
+                            grp_start_s.date_rowspan = grp_count
+                        cur_d = d_str
+                        grp_start_s = s
+                        grp_count = 1
+                        s.date_rowspan = 1
+                if grp_start_s is not None:
+                    grp_start_s.date_rowspan = grp_count
+
             sheets.append({
                 'is_consolidated': False,
                 'machine': m,
@@ -2153,6 +2256,7 @@ def get_print_emergency_schedule_data(request):
         'signing_authority': signing_authority,
         'designation': designation,
         'copy_to_list': copy_to_list,
+        'copy_to_list_bare': copy_to_list_bare,
     }
 
 
@@ -2162,10 +2266,12 @@ def generate_emergency_sheet_pdf(data):
     template (Template_-_EmergencySlotReport.pdf):
     - 7 Columns: Start Date, Hospital no, Patient name, Diagnosis, Primary Consultant, Machine, Jr. Resident.
     - A4 size with 2.5 cm margins on all sides.
-    - Consolidated mode: all machines continuous table.
+    - Consolidated mode: top-right machine box says 'All Machines'.
     - Machine mode: individual machine sheets with top-right machine box.
-    - Vertical padding: 2.7 pt (+0.5 mm).
-    - Footer with timestamp and no page/sheet numbering.
+    - Vertical date merging for contiguous identical dates.
+    - Title Casing on Patient name and Diagnosis.
+    - Date range displayed in section title: 'Emergency/Vacant Slot list from {start_date} to {end_date}'.
+    - Institutional headers, please note, copy-to distribution, and signing authority on EVERY page.
     """
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import cm
@@ -2257,55 +2363,37 @@ def generate_emergency_sheet_pdf(data):
                 story.append(PageBreak())
             is_first_page_of_doc = False
 
-            # Header block (Repeated on each page)
-            if sheet.get('is_consolidated', False):
-                right_cell = [Paragraph(data['today_str'], date_style)]
-                if page['page_label']:
-                    right_cell.append(Spacer(1, 2))
-                    right_cell.append(Paragraph(page['page_label'], page_num_style))
-                header_data = [
+            # Header block (Repeated on each page, ALWAYS including top-right machine box)
+            right_cell = [
+                Paragraph(data['today_str'], date_style),
+                Spacer(1, 3),
+                Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
+                    ('BOX', (0,0), (-1,-1), 1.2, colors.black),
+                    ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                    ('TOPPADDING', (0,0), (-1,-1), 3),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+                    ('LEFTPADDING', (0,0), (-1,-1), 2),
+                    ('RIGHTPADDING', (0,0), (-1,-1), 2),
+                ])
+            ]
+            if page['page_label']:
+                right_cell.append(Spacer(1, 2))
+                right_cell.append(Paragraph(page['page_label'], page_num_style))
+
+            header_data = [
+                [
+                    Paragraph(config.ref_code_prefix, left_ref_style),
                     [
-                        Paragraph(config.ref_code_prefix, left_ref_style),
-                        [
-                            Paragraph(config.header_line_1, title_style),
-                            Spacer(1, 1),
-                            Paragraph(config.header_line_2, dept_style),
-                            Spacer(1, 1),
-                            Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
-                        ],
-                        right_cell
-                    ]
+                        Paragraph(config.header_line_1, title_style),
+                        Spacer(1, 1),
+                        Paragraph(config.header_line_2, dept_style),
+                        Spacer(1, 1),
+                        Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
+                    ],
+                    right_cell
                 ]
-            else:
-                right_cell = [
-                    Paragraph(data['today_str'], date_style),
-                    Spacer(1, 3),
-                    Table([[Paragraph(sheet['box_title'], box_style)]], colWidths=[96], style=[
-                        ('BOX', (0,0), (-1,-1), 1.2, colors.black),
-                        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                        ('TOPPADDING', (0,0), (-1,-1), 3),
-                        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-                        ('LEFTPADDING', (0,0), (-1,-1), 2),
-                        ('RIGHTPADDING', (0,0), (-1,-1), 2),
-                    ])
-                ]
-                if page['page_label']:
-                    right_cell.append(Spacer(1, 2))
-                    right_cell.append(Paragraph(page['page_label'], page_num_style))
-                header_data = [
-                    [
-                        Paragraph(config.ref_code_prefix, left_ref_style),
-                        [
-                            Paragraph(config.header_line_1, title_style),
-                            Spacer(1, 1),
-                            Paragraph(config.header_line_2, dept_style),
-                            Spacer(1, 1),
-                            Paragraph(config.emergency_header_line_3 or config.header_line_3, sub_style)
-                        ],
-                        right_cell
-                    ]
-                ]
+            ]
             ht = Table(header_data, colWidths=[100, 253.5, 100])
             ht.setStyle(TableStyle([
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -2323,13 +2411,17 @@ def generate_emergency_sheet_pdf(data):
                 story.append(Paragraph(intro_text, intro_style))
                 story.append(Spacer(1, 4))
 
-            # Table section title
-            base_title = config.emergency_table_title or "Emergency/Vacant Slot list"
+            # Table section title with date range
+            em_title_raw = config.emergency_table_title or "Emergency/Vacant Slot list"
+            if '{start_date}' in em_title_raw:
+                base_title = em_title_raw.format(start_date=data['start_date_formatted'], end_date=data['end_date_formatted'])
+            else:
+                base_title = f"{em_title_raw} from {data['start_date_formatted']} to {data['end_date_formatted']}"
             sec_title = base_title if page['is_first'] else f"{base_title} (Contd.)"
             story.append(Paragraph(sec_title, sec_title_style))
             story.append(Spacer(1, 4))
 
-            # 7-Column Table
+            # 7-Column Table: Title Casing on Patient name and Diagnosis
             table_rows = [
                 [
                     Paragraph('Start Date', th_style),
@@ -2346,8 +2438,8 @@ def generate_emergency_sheet_pdf(data):
                 for s in page['schedules']:
                     d_str = s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else '-'
                     mr_str = str(s.patient.mr_no)
-                    pt_str = str(s.patient.pt_name or '-').replace('\n', ' ').strip()[:18]
-                    diag_str = str(s.patient.diagnosis or '-').replace('\n', ' ').strip()[:28]
+                    pt_str = format_title_case(s.patient.pt_name).replace('\n', ' ').strip()[:18]
+                    diag_str = format_title_case(s.patient.diagnosis).replace('\n', ' ').strip()[:28]
                     cons_str = str(s.patient.primary_consultant.name if s.patient.primary_consultant else '-').replace('\n', ' ').strip()[:20]
                     mach_str = str(s.machine.name if s.machine else 'Unassigned').replace('\n', ' ').strip()[:14]
                     jr_str = str(s.jr_resident or '-').replace('\n', ' ').strip()[:14]
@@ -2366,7 +2458,7 @@ def generate_emergency_sheet_pdf(data):
             pt_table = Table(table_rows, colWidths=col_widths)
             ts = [
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
-                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('ALIGN', (0,0), (-1,0), 'LEFT'),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#94a3b8')),
                 ('BOX', (0,0), (-1,-1), 1, colors.HexColor('#64748b')),
@@ -2384,6 +2476,28 @@ def generate_emergency_sheet_pdf(data):
                 ts.append(('TOPPADDING', (0,1), (-1,1), 10))
                 ts.append(('BOTTOMPADDING', (0,1), (-1,1), 10))
             else:
+                # Vertical merge for contiguous identical dates
+                date_spans = []
+                cur_d = None
+                start_r = None
+                for idx, s in enumerate(page['schedules']):
+                    r_idx = idx + 1
+                    d_str = s.intended_start_date.strftime("%d-%m-%Y") if s.intended_start_date else '-'
+                    if d_str != cur_d:
+                        if cur_d is not None and start_r is not None and (r_idx - 1) > start_r:
+                            date_spans.append((start_r, r_idx - 1))
+                        cur_d = d_str
+                        start_r = r_idx
+                if cur_d is not None and start_r is not None and len(page['schedules']) > start_r:
+                    date_spans.append((start_r, len(page['schedules'])))
+
+                for (s_row, e_row) in date_spans:
+                    ts.append(('SPAN', (0, s_row), (0, e_row)))
+                    ts.append(('VALIGN', (0, s_row), (0, e_row), 'MIDDLE'))
+                    ts.append(('ALIGN', (0, s_row), (0, e_row), 'CENTER'))
+                    for r in range(s_row + 1, e_row + 1):
+                        table_rows[r][0] = ''
+
                 for r_idx in range(1, len(table_rows)):
                     if r_idx % 2 == 0:
                         ts.append(('BACKGROUND', (0, r_idx), (-1, r_idx), colors.HexColor('#f8fafc')))
@@ -2391,43 +2505,42 @@ def generate_emergency_sheet_pdf(data):
             pt_table.setStyle(TableStyle(ts))
             story.append(pt_table)
 
-            # If last page of the machine, append Notes & Signatures
-            if page['is_last']:
-                story.append(Spacer(1, 6))
-                note_p1 = config.note_paragraph_1
-                note_p2 = config.note_paragraph_2
+            # Append Notes & Signatures on EVERY page
+            story.append(Spacer(1, 6))
+            note_p1 = config.note_paragraph_1
+            note_p2 = config.note_paragraph_2
 
-                copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
-                for c_item in data.get('copy_to_list', []):
-                    copy_to_flowables.append(Paragraph(c_item, copy_style))
+            copy_to_flowables = [Paragraph('<b>Copy to:</b>', copy_bold)]
+            for c_item in data.get('copy_to_list', []):
+                copy_to_flowables.append(Paragraph(c_item, copy_style))
 
-                sig_name_val = resolve_signing_authority(data.get('signing_authority') or config.default_signing_authority)
-                sig_desig_val = data.get('designation') or config.default_designation
-                sig_flowables = [
-                    Paragraph(sig_name_val, sig_name),
-                    Paragraph(sig_desig_val, sig_title),
-                    Paragraph(config.department_signature_line, sig_dept),
-                ]
+            sig_name_val = resolve_signing_authority(data.get('signing_authority') or config.default_signing_authority)
+            sig_desig_val = data.get('designation') or config.default_designation
+            sig_flowables = [
+                Paragraph(sig_name_val, sig_name),
+                Paragraph(sig_desig_val, sig_title),
+                Paragraph(config.department_signature_line, sig_dept),
+            ]
 
-                bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
-                bottom_table.setStyle(TableStyle([
-                    ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
-                    ('LEFTPADDING', (0,0), (-1,-1), 0),
-                    ('RIGHTPADDING', (0,0), (-1,-1), 0),
-                    ('TOPPADDING', (0,0), (-1,-1), 0),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-                ]))
+            bottom_table = Table([[copy_to_flowables, sig_flowables]], colWidths=[253.5, 200])
+            bottom_table.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+                ('LEFTPADDING', (0,0), (-1,-1), 0),
+                ('RIGHTPADDING', (0,0), (-1,-1), 0),
+                ('TOPPADDING', (0,0), (-1,-1), 0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 0),
+            ]))
 
-                footer_elements = [
-                    Paragraph('Please note:', note_title_style),
-                    Spacer(1, 1),
-                    Paragraph(note_p1, note_text_style),
-                    Spacer(1, 2),
-                    Paragraph(note_p2, note_text_style),
-                    Spacer(1, 6),
-                    bottom_table
-                ]
-                story.append(KeepTogether(footer_elements))
+            footer_elements = [
+                Paragraph('Please note:', note_title_style),
+                Spacer(1, 1),
+                Paragraph(note_p1, note_text_style),
+                Spacer(1, 2),
+                Paragraph(note_p2, note_text_style),
+                Spacer(1, 6),
+                bottom_table
+            ]
+            story.append(KeepTogether(footer_elements))
 
     doc.build(story, canvasmaker=NumberedCanvas)
     return buffer.getvalue()

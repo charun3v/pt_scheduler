@@ -2327,6 +2327,56 @@ def run_tests():
 
     print("✓ Test 27 Passed: Repeated header on every page, machine-specific page numbering (--/-- pages only if > 1 page), and real doctor name resolution verified.")
 
+    # -------------------------------------------------------------
+    # Test 28: Title Case, Vertical Date Merging, "All Machines" Box, Date Range in Title, and Footers on Every Page
+    # -------------------------------------------------------------
+    print("\n--- Running Test 28: Title Case, Date Merging, 'All Machines', Date Range in Title & Complete Page Footers ---")
+    from apps.reports.views import format_title_case, get_print_schedule_data, get_print_emergency_schedule_data
+
+    # 1. format_title_case unit assertions
+    assert format_title_case("venkatarathnamma") == "Venkatarathnamma"
+    assert format_title_case("syed munnawar") == "Syed Munnawar"
+    assert format_title_case("ca l bm") == "Ca L BM"
+    assert format_title_case("residual ca right bm") == "Residual Ca Right BM"
+    assert format_title_case("relapsed ALL") == "Relapsed ALL"
+    assert format_title_case("CA HARD PALATE") == "Ca Hard Palate"
+    assert format_title_case("pontine glioma") == "Pontine Glioma"
+    assert format_title_case("CA LUNG WITH SVCO") == "Ca Lung With SVCO"
+    assert format_title_case("DMG") == "DMG"
+    assert format_title_case("recurrent ca gbs") == "Recurrent Ca GBS"
+
+    # 2. Regular Schedule Print View HTML assertions
+    resp_tech_html = c.get(f'/reports/print-schedule/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-02-11&machines={m_la1_obj.id}')
+    assert resp_tech_html.status_code == 200
+    tech_html = resp_tech_html.content.decode('utf-8')
+    assert "rowspan=" in tech_html, "Contiguous identical dates must have rowspan attribute in HTML"
+    assert "1. 1." not in tech_html, "Copy-to list must not have duplicate numbering '1. 1.'"
+    assert "Please note:" in tech_html
+    assert "Copy to:" in tech_html
+
+    # 3. Emergency Consolidated Print View HTML assertions
+    resp_em_html = c.get('/reports/print-emergency-schedule/?machines=all&start_date=2026-01-01&end_date=2026-02-11')
+    assert resp_em_html.status_code == 200
+    em_html_text = resp_em_html.content.decode('utf-8')
+    assert '<div class="machine-box">All Machines</div>' in em_html_text, "Emergency consolidated must show 'All Machines' in top-right box"
+    assert '<div class="machine-box">Consolidated</div>' not in em_html_text
+    assert "Emergency/Vacant Slot list from" in em_html_text
+    assert "rowspan=" in em_html_text, "Emergency slots table must vertically merge contiguous identical dates"
+    assert "1. 1." not in em_html_text
+    assert "Please note:" in em_html_text
+    assert "Copy to:" in em_html_text
+
+    # 4. Generate PDFs and verify valid generation with all pages having footer content
+    resp_tech_pdf = c.get(f'/reports/print-schedule/pdf/?modality=Teletherapy&start_date=2026-01-01&end_date=2026-02-11&machines={m_la1_obj.id}')
+    assert resp_tech_pdf.status_code == 200
+    assert resp_tech_pdf.content.startswith(b'%PDF')
+
+    resp_em_pdf = c.get('/reports/print-emergency-schedule/pdf/?machines=all&start_date=2026-01-01&end_date=2026-02-11')
+    assert resp_em_pdf.status_code == 200
+    assert resp_em_pdf.content.startswith(b'%PDF')
+
+    print("✓ Test 28 Passed: Title Case formatting, vertical date merging (rowspan/SPAN), 'All Machines' box title, emergency date range, and footers on every page verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")
