@@ -47,11 +47,13 @@
         background: #fdfdfd;
     }
     .excel-table {
-        width: 100%;
+        width: max-content;
+        min-width: 0;
         border-collapse: collapse;
         font-family: "Segoe UI", Tahoma, Calibri, sans-serif;
         font-size: 11px;
         color: #201f1e;
+        table-layout: fixed;
     }
     .excel-table tr {
         height: 22px;
@@ -277,36 +279,50 @@
         <!-- Excel Spreadsheet Grid -->
         <div class="excel-grid-container">
             <table class="excel-table" id="excelSheetTable">
+                <colgroup>
+                    <col style="width: 32px;">                 <!-- # -->
+                    <col style="width: 13ch;">                 <!-- A: MR No. (11 chars max + 2 = 13ch) -->
+                    <col style="width: 18ch;">                 <!-- B: Patient Name -->
+                    <col style="width: 17ch;">                 <!-- C: Simulation Date (15 chars max + 2 = 17ch) -->
+                    <col style="width: 8ch;">                  <!-- D: RT No. (6 chars max + 2 = 8ch) -->
+                    <col style="width: 25ch;">                 <!-- E: Diagnosis -->
+                    <col style="width: 16ch;">                 <!-- F: Start Date (14 chars max + 2 = 16ch) -->
+                    <col style="width: 8ch;">                  <!-- G: Shift (5 chars max + 3 = 8ch) -->
+                    <col style="width: 9ch;">                  <!-- H: Machine (7 chars max + 2 = 9ch) -->
+                    <col style="width: 19ch;">                 <!-- I: Consultant Name (17 chars max + 2 = 19ch) -->
+                    <col style="width: 13ch;">                 <!-- J: Jr Resident -->
+                    <col style="width: 78px;">                 <!-- K: Status -->
+                </colgroup>
                 <thead>
                     <!-- Column Letters (Excel A-K) -->
                     <tr>
-                        <th class="col-letter"></th>
-                        <th class="col-letter">A</th>
-                        <th class="col-letter">B</th>
-                        <th class="col-letter">C</th>
-                        <th class="col-letter">D</th>
-                        <th class="col-letter">E</th>
-                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">F (Edit)</th>
-                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">G (Edit)</th>
-                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold;">H (Edit)</th>
-                        <th class="col-letter">I</th>
-                        <th class="col-letter">J</th>
-                        <th class="col-letter">K</th>
+                        <th class="col-letter" style="width: 32px;"></th>
+                        <th class="col-letter" style="width: 13ch;">A</th>
+                        <th class="col-letter" style="width: 18ch;">B</th>
+                        <th class="col-letter" style="width: 17ch;">C</th>
+                        <th class="col-letter" style="width: 8ch;">D</th>
+                        <th class="col-letter" style="width: 25ch;">E</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold; width: 16ch;">F (Edit)</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold; width: 8ch;">G (Edit)</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold; width: 9ch;">H (Edit)</th>
+                        <th class="col-letter" style="width: 19ch;">I</th>
+                        <th class="col-letter" style="width: 13ch;">J</th>
+                        <th class="col-letter" style="width: 78px;">K</th>
                     </tr>
                     <!-- Real Headers in User-Specified Order -->
                     <tr>
-                        <th style="width: 36px; text-align: center;">#</th>
-                        <th>MR No.</th>
-                        <th>Patient Name</th>
-                        <th style="min-width: 105px;">Simulation Date</th>
-                        <th>RT No.</th>
-                        <th>Diagnosis</th>
-                        <th style="background: #c3e6cb; color: #155724; min-width: 135px;">Start Date (Editable)</th>
-                        <th style="background: #c3e6cb; color: #155724; min-width: 105px;">Shift (Editable)</th>
-                        <th style="background: #c3e6cb; color: #155724; min-width: 125px;">Machine (Assigned)</th>
-                        <th>Consultant Name</th>
-                        <th>Jr Resident</th>
-                        <th style="text-align: center; min-width: 80px;">Status</th>
+                        <th style="width: 32px; text-align: center;">#</th>
+                        <th style="width: 13ch; white-space: nowrap;">MR No.</th>
+                        <th style="width: 18ch; white-space: nowrap;">Patient Name</th>
+                        <th style="width: 17ch; white-space: nowrap;">Simulation Date</th>
+                        <th style="width: 8ch; white-space: nowrap;">RT No.</th>
+                        <th style="width: 25ch; white-space: nowrap;">Diagnosis</th>
+                        <th style="background: #c3e6cb; color: #155724; width: 16ch; white-space: nowrap;" title="Start Date (Editable)">Start Date</th>
+                        <th style="background: #c3e6cb; color: #155724; width: 8ch; white-space: nowrap;" title="Shift (Editable)">Shift</th>
+                        <th style="background: #c3e6cb; color: #155724; width: 9ch; white-space: nowrap;" title="Machine (Assigned)">Machine</th>
+                        <th style="width: 19ch; white-space: nowrap;">Consultant Name</th>
+                        <th style="width: 13ch; white-space: nowrap;">Jr Resident</th>
+                        <th style="text-align: center; width: 78px; white-space: nowrap;">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -315,55 +331,55 @@
                         <!-- Hidden Schedule ID for Batch Form Submission -->
                         <input type="hidden" name="schedule_id" value="{{ s.id }}">
 
-                        <td class="row-num">{{ forloop.counter }}</td>
+                        <td class="row-num" style="width: 32px;">{{ forloop.counter }}</td>
                         
-                        <!-- 1. MR No. -->
-                        <td style="font-family: Consolas, monospace; font-weight: bold; white-space: nowrap;">
-                            <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="Open patient details in new tab">
+                        <!-- 1. MR No. (13ch max width: 11 digits + 2) -->
+                        <td style="font-family: Consolas, monospace; font-weight: bold; white-space: nowrap; width: 13ch; max-width: 13ch; overflow: hidden; text-overflow: ellipsis;">
+                            <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="{{ s.patient.mr_no }}">
                                 {{ s.patient.mr_no }}
                             </a>
                         </td>
 
                         <!-- 2. Patient Name -->
-                        <td style="font-weight: 600; color: #111; white-space: nowrap;">{{ s.patient.pt_name }}</td>
+                        <td style="font-weight: 600; color: #111; white-space: nowrap; width: 18ch; max-width: 18ch; overflow: hidden; text-overflow: ellipsis;" title="{{ s.patient.pt_name }}">{{ s.patient.pt_name }}</td>
 
-                        <!-- 3. Simulation Date -->
-                        <td style="white-space: nowrap; color: #333;">
+                        <!-- 3. Simulation Date (17ch max width: 15 chars + 2) -->
+                        <td style="white-space: nowrap; color: #333; width: 17ch; max-width: 17ch; overflow: hidden; text-overflow: ellipsis;">
                             {{ s.date_of_sim|date:"d-m-Y"|default:'-' }}
                         </td>
                         
-                        <!-- 4. RT No. -->
-                        <td style="color: #555; white-space: nowrap;">{{ s.patient.rt_no|default:'-' }}</td>
+                        <!-- 4. RT No. (8ch max width: 6 chars + 2) -->
+                        <td style="color: #555; white-space: nowrap; width: 8ch; max-width: 8ch; overflow: hidden; text-overflow: ellipsis;">{{ s.patient.rt_no|default:'-' }}</td>
 
                         <!-- 5. Diagnosis -->
-                        <td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ s.patient.diagnosis }}">
-                            {{ s.patient.diagnosis|truncatechars:32 }}
+                        <td style="width: 25ch; max-width: 25ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ s.patient.diagnosis }}">
+                            {{ s.patient.diagnosis|truncatechars:28 }}
                         </td>
 
-                        <!-- 6. EDITABLE: Start Date -->
-                        <td style="background: #fdfdfd; white-space: nowrap; padding: 1px 3px;">
-                            <div style="display: flex; align-items: center; gap: 3px;">
+                        <!-- 6. EDITABLE: Start Date (16ch max width: 14 chars + 2) -->
+                        <td style="background: #fdfdfd; white-space: nowrap; padding: 1px 2px; width: 16ch; max-width: 16ch; overflow: hidden;">
+                            <div style="display: flex; align-items: center; gap: 2px;">
                                 <input type="date" name="start_date_{{ s.id }}" id="start_date_{{ s.id }}"
                                        value="{{ s.date_of_start|date:'Y-m-d' }}"
                                        {% if s.date_of_sim %}min="{{ s.date_of_sim|date:'Y-m-d' }}" data-sim-date="{{ s.date_of_sim|date:'Y-m-d' }}"{% endif %}
                                        data-orig-date="{{ s.date_of_start|date:'Y-m-d' }}"
                                        class="excel-cell-input {% if s.is_holiday %}cell-holiday-warn{% endif %}"
                                        onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');"
-                                       style="width: 118px; height: 20px; font-size: 11px; padding: 0 3px; {% if s.is_holiday %}border-color: #d97706; background-color: #fffbeb;{% endif %}">
+                                       style="width: 100%; max-width: 120px; height: 20px; font-size: 11px; padding: 0 2px; {% if s.is_holiday %}border-color: #d97706; background-color: #fffbeb;{% endif %}">
                                 <span id="holiday_warn_{{ s.id }}" class="holiday-warn-badge"
-                                      style="{% if not s.is_holiday %}display: none;{% endif %} background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 2px; padding: 0 3px; font-size: 9px; line-height: 16px; font-weight: bold; cursor: help; white-space: nowrap;"
+                                      style="{% if not s.is_holiday %}display: none;{% endif %} background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 2px; padding: 0 3px; font-size: 8.5px; line-height: 16px; font-weight: bold; cursor: help; white-space: nowrap;"
                                       title="Hospital Holiday: {{ s.holiday_comment }}">
                                     ⚠️ Holiday
                                 </span>
                             </div>
                         </td>
 
-                        <!-- 7. EDITABLE: Shift -->
-                        <td style="background: #fdfdfd; padding: 1px 3px;">
+                        <!-- 7. EDITABLE: Shift (8ch max width: 5 chars + 3) -->
+                        <td style="background: #fdfdfd; padding: 1px 2px; width: 8ch; max-width: 8ch; overflow: hidden;">
                             <select name="shift_{{ s.id }}" id="shift_{{ s.id }}" class="excel-cell-select"
-                                    style="height: 20px; font-size: 11px; padding: 0 2px;"
+                                    style="width: 100%; height: 20px; font-size: 11px; padding: 0 1px;"
                                     onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
-                                <option value="" {% if not s.shift_id %}selected{% endif %}>-- None --</option>
+                                <option value="" {% if not s.shift_id %}selected{% endif %}>-</option>
                                 {% for sh in all_shifts %}
                                 <option value="{{ sh.id }}" {% if s.shift_id == sh.id %}selected{% endif %}>
                                     {{ sh.name }}
@@ -372,10 +388,10 @@
                             </select>
                         </td>
 
-                        <!-- 8. EDITABLE: Machine -->
-                        <td style="background: #fdfdfd; padding: 1px 3px;">
+                        <!-- 8. EDITABLE: Machine (9ch max width: 7 chars + 2) -->
+                        <td style="background: #fdfdfd; padding: 1px 2px; width: 9ch; max-width: 9ch; overflow: hidden;">
                             <select name="machine_{{ s.id }}" id="machine_{{ s.id }}" class="excel-cell-select"
-                                    style="height: 20px; font-size: 11px; padding: 0 2px;"
+                                    style="width: 100%; height: 20px; font-size: 11px; padding: 0 1px;"
                                     onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
                                 {% for m in all_machines %}
                                 <option value="{{ m.id }}" {% if s.machine_id == m.id %}selected{% endif %}>
@@ -385,19 +401,23 @@
                             </select>
                         </td>
 
-                        <!-- 9. Consultant Name -->
-                        <td style="white-space: nowrap; padding: 1px 4px;">{{ s.patient.consultant_display }}</td>
+                        <!-- 9. Consultant Name (19ch max width: 17 chars + 2) -->
+                        <td style="white-space: nowrap; padding: 1px 4px; width: 19ch; max-width: 19ch; overflow: hidden; text-overflow: ellipsis;" title="{{ s.patient.consultant_display }}">
+                            {{ s.patient.consultant_display }}
+                        </td>
 
                         <!-- 10. Jr Resident -->
-                        <td style="white-space: nowrap; padding: 1px 4px;">{{ s.jr_resident|default:'-' }}</td>
+                        <td style="white-space: nowrap; padding: 1px 4px; width: 13ch; max-width: 13ch; overflow: hidden; text-overflow: ellipsis;" title="{{ s.jr_resident|default:'-' }}">
+                            {{ s.jr_resident|default:'-' }}
+                        </td>
 
                         <!-- Action / Live Save Status -->
-                        <td style="text-align: center; white-space: nowrap; padding: 1px 3px;">
+                        <td style="text-align: center; white-space: nowrap; padding: 1px 2px; width: 78px; max-width: 78px;">
                             <span id="indicator-{{ s.id }}" class="save-indicator {% if s.date_of_start %}saved{% else %}dirty{% endif %}"
-                                  style="font-size: 9px; padding: 0 4px; line-height: 16px;">
+                                  style="font-size: 9px; padding: 0 3px; line-height: 16px;">
                                 {% if s.date_of_start %}Saved ✓{% else %}Pending{% endif %}
                             </span>
-                            <button type="button" onclick="liveAutoSave('{{ s.id }}');" class="action-ribbon-btn" style="padding: 0 4px; font-size: 9px; line-height: 16px; margin-left: 2px;" title="Push row changes immediately">
+                            <button type="button" onclick="liveAutoSave('{{ s.id }}');" class="action-ribbon-btn" style="padding: 0 3px; font-size: 9px; line-height: 16px; margin-left: 2px;" title="Push row changes immediately">
                                 💾
                             </button>
                         </td>
