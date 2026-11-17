@@ -2076,7 +2076,7 @@ def run_tests():
     resp_edit_form = c.get(f'/scheduler/course/{sched_em1.id}/emergency-slot/?next=/reports/emergency-slots/')
     assert resp_edit_form.status_code == 200
     edit_form_html = resp_edit_form.content.decode('utf-8')
-    assert "Edit Emergency / Vacant Slot" in edit_form_html
+    assert "Edit Teletherapy Emergency / Teletherapy Slot Assignment" in edit_form_html
     assert "Assigned Machine:" in edit_form_html
     assert "Treatment Shift:" in edit_form_html
     assert "Junior Resident:" in edit_form_html
@@ -3724,6 +3724,88 @@ def run_tests():
     assert 'width: 26ch; max-width: 26ch;' in em_html, "Emergency Indication must be styled with 26ch (max chars 23 + 3)"
     assert 'width: 18ch; max-width: 18ch;' in em_html, "Machine must be styled with 18ch (max chars 15 + 3)"
     print("✓ Test 40 Passed: Emergency table compact layout, 15ch MR No, 26ch Emergency Indication, 18ch Machine, and 'Machine' header fully verified.")
+
+    # =========================================================================
+    # TEST 41: Teletherapy Emergency / Teletherapy Slot Assignment Heading,
+    #          Prominent MR No Styling & Exclusively Teletherapy Machine Dropdown
+    # =========================================================================
+    print("\n--- Running Test 41: Teletherapy Emergency Slot Assignment Heading, Prominent MR & Teletherapy Machines ---")
+    c.force_login(admin_user)
+
+    # Setup patient and course
+    Patient.objects.filter(mr_no=9999041).delete()
+    cons_41 = Consultant.objects.first()
+    tech_41 = Technique.objects.first()
+    pt_41 = Patient.objects.create(
+        mr_no=9999041,
+        pt_name="Test41 Teletherapy Pt",
+        age=52,
+        sex='F',
+        diagnosis="Ca Cervix IIB",
+        primary_consultant=cons_41,
+        unit="I"
+    )
+    sched_41 = TreatmentSchedule.objects.create(
+        patient=pt_41,
+        treatment_type="Teletherapy",
+        technique=tech_41,
+        date_of_sim=date(2026, 1, 10),
+        status="Scheduled"
+    )
+
+    resp_em_page = c.get(f'/scheduler/course/{sched_41.id}/emergency-slot/')
+    assert resp_em_page.status_code == 200
+    page_html = resp_em_page.content.decode('utf-8')
+
+    # 1. Heading check: "Teletherapy Emergency / Teletherapy Slot Assignment"
+    assert "Teletherapy Emergency / Teletherapy Slot Assignment" in page_html, "Page must display 'Teletherapy Emergency / Teletherapy Slot Assignment' heading"
+
+    # 2. Prominent MR No badge check: font-size 14px, font-weight 800, 2px border
+    assert "MR: 9999041" in page_html
+    assert "font-size: 14px" in page_html and "font-weight: 800" in page_html and "border: 2px solid #b91c1c" in page_html, "MR No must be styled prominently"
+
+    # 3. Machine list check: ONLY Teletherapy machines in dropdown, NO Brachytherapy machines
+    all_machines_in_context = resp_em_page.context['all_machines']
+    tele_machine_names = list(Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').values_list('name', flat=True))
+    brachy_machine_names = list(Machine.objects.filter(is_active=True, treatment_mode='Brachytherapy').values_list('name', flat=True))
+
+    for m in all_machines_in_context:
+        assert m.treatment_mode == 'Teletherapy', f"Machine {m.name} must be Teletherapy, found {m.treatment_mode}"
+
+    for t_name in tele_machine_names:
+        assert t_name in page_html, f"Teletherapy machine {t_name} should be in dropdown"
+
+    for b_name in brachy_machine_names:
+        assert b_name not in [m.name for m in all_machines_in_context], f"Brachy machine {b_name} must NOT be in context"
+
+    # 4. Form submission with Teletherapy machine assigns successfully
+    tele_mach = Machine.objects.filter(treatment_mode='Teletherapy', is_active=True).first()
+    resp_post_em = c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
+        'slot_category': 'Emergency',
+        'intended_start_date': '2026-02-01',
+        'emergency_reason': 'Pain',
+        'machine_id': str(tele_mach.id)
+    }, follow=True)
+    assert resp_post_em.status_code == 200
+    sched_41.refresh_from_db()
+    assert sched_41.is_emergency_slot is True
+    assert sched_41.machine_id == tele_mach.id
+
+    # 5. Form submission with Brachytherapy machine is rejected/not assigned
+    brachy_mach = Machine.objects.filter(treatment_mode='Brachytherapy', is_active=True).first()
+    if brachy_mach:
+        c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
+            'slot_category': 'Emergency',
+            'intended_start_date': '2026-02-01',
+            'emergency_reason': 'Pain',
+            'machine_id': str(brachy_mach.id)
+        }, follow=True)
+        sched_41.refresh_from_db()
+        assert sched_41.machine_id != brachy_mach.id, "Brachytherapy machine must not be assigned to Teletherapy emergency slot"
+
+    # Cleanup
+    pt_41.delete()
+    print("✓ Test 41 Passed: 'Teletherapy Emergency / Teletherapy Slot Assignment' heading, prominent MR No badge & Teletherapy-only machines verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

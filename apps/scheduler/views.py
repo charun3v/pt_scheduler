@@ -1060,7 +1060,7 @@ def emergency_slot_view(request, schedule_id):
         messages.error(request, "Emergency slot option is not applicable for Brachytherapy courses.")
         return redirect('patient_detail', patient_id=patient.id)
 
-    all_machines = Machine.objects.filter(is_active=True).order_by('display_order')
+    all_machines = Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').order_by('display_order', 'name')
     all_shifts = Shift.objects.filter(is_active=True).order_by('display_order')
     jr_users = User.objects.filter(
         Q(profile__role__role_name__icontains='Resident') | 
@@ -1111,7 +1111,10 @@ def emergency_slot_view(request, schedule_id):
         # Update machine and shift if provided
         if machine_id_val:
             try:
-                sched.machine_id = int(machine_id_val)
+                mach_id_int = int(machine_id_val)
+                mach_cand = Machine.objects.filter(id=mach_id_int, treatment_mode='Teletherapy', is_active=True).first()
+                if mach_cand:
+                    sched.machine = mach_cand
             except (ValueError, TypeError):
                 pass
         elif machine_id_val == '':

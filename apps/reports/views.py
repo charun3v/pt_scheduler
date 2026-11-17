@@ -536,7 +536,7 @@ def emergency_slots_report_view(request):
     Allows filtering by Machine (All Machines Consolidated default), Start Date, End Date, Presets.
     Provides instant live search, editing, reverting, and official PDF/browser print designer.
     """
-    all_machines = Machine.objects.filter(is_active=True).order_by('display_order')
+    all_machines = Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').order_by('display_order', 'name')
     all_shifts = Shift.objects.filter(is_active=True).order_by('display_order')
 
     machine_id = request.GET.get('machine_id', 'all')

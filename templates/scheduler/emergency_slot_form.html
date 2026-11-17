@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Emergency / Vacant Slot - {{ patient.pt_name }}{% endblock %}
+{% block title %}Teletherapy Emergency / Teletherapy Slot Assignment - {{ patient.pt_name }}{% endblock %}
 
 {% block content %}
 <div style="max-width: 800px; margin: 0 auto;">
@@ -14,7 +14,7 @@
                 <span style="font-size: 20px;">🚨</span>
                 <div>
                     <h2 style="margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.3px;">
-                        {% if is_editing %}Edit Emergency / Vacant Slot{% else %}Emergency / Vacant Slot Assignment{% endif %}
+                        {% if is_editing %}Edit Teletherapy Emergency / Teletherapy Slot Assignment{% else %}Teletherapy Emergency / Teletherapy Slot Assignment{% endif %}
                     </h2>
                     <div style="font-size: 11px; opacity: 0.9; margin-top: 2px;">
                         Course #{{ sched.id }} &bull; {{ sched.treatment_type }}
@@ -31,7 +31,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <strong style="font-size: 15px; color: #991b1b;">{{ patient.pt_name }}</strong>
-                    <span style="background: #fff; color: #991b1b; border: 1px solid #f87171; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: monospace;">
+                    <span style="background: #ffffff; color: #b91c1c; border: 2px solid #b91c1c; padding: 2px 10px; border-radius: 4px; font-size: 14px; font-weight: 800; font-family: Consolas, monospace; letter-spacing: 0.5px; box-shadow: 0 1px 3px rgba(185,28,28,0.15);" title="Medical Record Number">
                         MR: {{ patient.mr_no }}
                     </span>
                     {% if patient.rt_no %}
