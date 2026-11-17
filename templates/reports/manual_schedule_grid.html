@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Treatment Schedule Grid (Excel View) - {{ selected_machine.code|default:'All' }}{% endblock %}
+{% block title %}Teletherapy Treatment Schedule Worksheet - {{ selected_machine.code|default:'All' }}{% endblock %}
 
 {% block extra_head %}
 <style>
@@ -175,10 +175,10 @@
             <span style="font-size: 20px;">📊</span>
             <div>
                 <strong style="font-size: 15px; letter-spacing: 0.5px;">
-                    Treatment Schedule Worksheet — Excel Format
+                    Teletherapy Treatment Schedule Worksheet
                 </strong>
                 <span style="font-size: 12px; opacity: 0.9; margin-left: 8px;">
-                    [Query: Treatment {{ selected_machine.code|default:'All Machines' }}]
+                    [Query: Treatment {{ selected_machine.code|default:'All Teletherapy Machines' }}]
                 </span>
             </div>
         </div>
@@ -198,7 +198,7 @@
             <div style="display: flex; align-items: center; gap: 6px;">
                 <label style="font-weight: bold; font-size: 11px; color: #333;">Machine:</label>
                 <select name="machine_id" onchange="this.form.submit();" style="padding: 5px 8px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; background: #fff; font-weight: 600; color: #003366;">
-                    <option value="" {% if not selected_machine_id %}selected{% endif %}>-- All Treatment Machines --</option>
+                    <option value="" {% if not selected_machine_id %}selected{% endif %}>-- All Teletherapy Machines --</option>
                     {% for m in all_machines %}
                     <option value="{{ m.id }}" {% if selected_machine_id == m.id %}selected{% endif %}>
                         {{ m.name }} [{{ m.code|default:m.name }}]
@@ -253,7 +253,7 @@
         <div class="excel-formula-bar">
             <span style="font-family: Consolas, monospace; font-weight: bold; color: #107c41; font-size: 13px;">fx</span>
             <span style="color: #666; font-size: 11px; border-right: 1px solid #ccc; padding-right: 10px;">
-                Sheet: <strong>{{ selected_machine.name|default:'All Machines' }}</strong>
+                Sheet: <strong>{{ selected_machine.name|default:'All Teletherapy Machines' }}</strong>
             </span>
             <div style="flex: 1; display: flex; align-items: center; gap: 10px;">
                 <span style="font-size: 12px; color: #333;">
@@ -445,7 +445,7 @@
     <!-- Excel Status Bar -->
     <div style="background: #107c41; color: #ffffff; padding: 4px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
         <div>
-            Ready | <strong>{{ total_count }}</strong> Rows Loaded | Machine: <strong>{{ selected_machine.name|default:'All' }}</strong>
+            Ready | <strong>{{ total_count }}</strong> Rows Loaded | Machine: <strong>{{ selected_machine.name|default:'All Teletherapy Machines' }}</strong>
         </div>
         <div>
             Changes are saved immediately via AJAX and can also be committed in batch via <strong>Save All Changes</strong>.
@@ -768,8 +768,8 @@
                     </div>
 
                     <div id="printMachinesContainer" style="height: 345px; max-height: 360px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px 10px; background: #ffffff;">
-                        {% for m in all_machines %}
-                        <label class="print-mach-item" data-type="{% if m.machine_type == 'Brachytherapy' %}Brachytherapy{% else %}Teletherapy{% endif %}"
+                        {% for m in print_machines %}
+                        <label class="print-mach-item" data-type="{% if m.treatment_mode == 'Brachytherapy' or m.machine_type.name == 'Brachytherapy' or m.machine_type == 'Brachytherapy' %}Brachytherapy{% else %}Teletherapy{% endif %}"
                                 style="display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-bottom: 1px solid #f1f5f9; font-size: 12px; cursor: pointer;">
                             <input type="checkbox" name="machines" value="{{ m.id }}" class="print-mach-checkbox"
                                    {% if selected_machine and selected_machine.id == m.id %}checked{% elif not selected_machine_id %}checked{% endif %}>

@@ -854,7 +854,8 @@ def manual_schedule_grid_view(request):
         messages.error(request, "Access restricted. Manual treatment scheduling is only available to Administrators and SubAdministrators.")
         return redirect('dashboard')
 
-    all_machines = Machine.objects.filter(is_active=True).order_by('display_order')
+    all_machines = Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').order_by('display_order')
+    print_machines = Machine.objects.filter(is_active=True).order_by('display_order')
     all_shifts = Shift.objects.filter(is_active=True).order_by('display_order')
 
     selected_machine_id = request.GET.get('machine_id')
@@ -862,9 +863,9 @@ def manual_schedule_grid_view(request):
 
     selected_machine = None
     if selected_machine_id:
-        selected_machine = Machine.objects.filter(id=selected_machine_id).first()
+        selected_machine = all_machines.filter(id=selected_machine_id).first()
     elif selected_machine_code:
-        selected_machine = Machine.objects.filter(code__iexact=selected_machine_code).first()
+        selected_machine = all_machines.filter(code__iexact=selected_machine_code).first()
     elif 'machine_id' not in request.GET and 'machine_code' not in request.GET:
         # Default to ELEKTA - LA1 (matching user requirement for Treatment LA1)
         selected_machine = all_machines.filter(code__iexact='LA1').first() or all_machines.first()
@@ -915,7 +916,7 @@ def manual_schedule_grid_view(request):
             end_date = add_six_months(start_date)
             end_date_str = end_date.isoformat()
 
-    base_filter = Q()
+    base_filter = Q(treatment_type='Teletherapy')
     if selected_machine:
         base_filter &= Q(machine=selected_machine)
 
@@ -988,8 +989,10 @@ def manual_schedule_grid_view(request):
                     row_changed = True
 
             if new_mach_id and str(sched.machine_id or '') != new_mach_id:
-                sched.machine_id = int(new_mach_id)
-                row_changed = True
+                new_mach = all_machines.filter(id=new_mach_id).first()
+                if new_mach:
+                    sched.machine = new_mach
+                    row_changed = True
 
             if row_changed:
                 # No quota restriction applied!
@@ -1020,6 +1023,7 @@ def manual_schedule_grid_view(request):
 
     context = {
         'all_machines': all_machines,
+        'print_machines': print_machines,
         'all_shifts': all_shifts,
         'selected_machine': selected_machine,
         'selected_machine_id': selected_machine.id if selected_machine else None,
@@ -1083,7 +1087,10 @@ def manual_schedule_save_row_api(request):
         sched.shift = None
 
     if machine_id:
-        sched.machine_id = int(machine_id)
+        mach_obj = Machine.objects.filter(id=machine_id, is_active=True, treatment_mode='Teletherapy').first()
+        if not mach_obj:
+            return JsonResponse({'success': False, 'error': 'Invalid machine. Only active Teletherapy machines are permitted on this worksheet.'}, status=400)
+        sched.machine = mach_obj
 
     # Save with NO quota restrictions!
     sched.save()
@@ -1120,7 +1127,7 @@ def manual_schedule_save_row_api(request):
 def export_manual_schedule_grid_excel(schedules, machine, start_date, end_date):
     wb = openpyxl.Workbook()
     ws = wb.active
-    mach_label = machine.name if machine else "All Machines"
+    mach_label = machine.name if machine else "All Teletherapy Machines"
     ws.title = "Treatment Grid"
 
     # Header Title
@@ -1131,7 +1138,7 @@ def export_manual_schedule_grid_excel(schedules, machine, start_date, end_date):
     ws['A1'].alignment = Alignment(horizontal="center", vertical="center")
 
     ws.merge_cells('A2:K2')
-    ws['A2'] = f"Manual Treatment Schedule Worksheet: {mach_label} | {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')} | Total: {schedules.count()} Patients"
+    ws['A2'] = f"Teletherapy Treatment Schedule Worksheet: {mach_label} | {start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')} | Total: {schedules.count()} Patients"
     ws['A2'].font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     ws['A2'].fill = PatternFill(start_color="0E6333", end_color="0E6333", fill_type="solid")
     ws['A2'].alignment = Alignment(horizontal="center", vertical="center")

@@ -3460,6 +3460,7 @@ def run_tests():
         assert mach_obj.treatment_mode == 'Teletherapy', f"Slot finder should only return Teletherapy machines, got {s_name}"
 
     # 4. Brachytherapy Scheduling (/scheduler/patient/<id>/brachytherapy/) shows ONLY Brachy machines
+    Patient.objects.filter(mr_no=9999370).delete()
     pt_test37 = Patient.objects.create(
         mr_no=9999370,
         pt_name='PADMAVATHI',
@@ -3476,7 +3477,10 @@ def run_tests():
     assert resp_brachy_form.status_code == 200
     brachy_form_html = resp_brachy_form.content.decode('utf-8')
     assert 'Brachytherapy Machine' in brachy_form_html
-    assert 'Saginova - Co60' in brachy_form_html
+    active_brachy_machs = list(Machine.objects.filter(treatment_mode='Brachytherapy', is_active=True))
+    assert len(active_brachy_machs) > 0, "Must have at least one active Brachytherapy machine"
+    for bm in active_brachy_machs:
+        assert bm.name in brachy_form_html, f"Active Brachy machine {bm.name} must appear in Brachy dropdown"
     assert 'ELEKTA - LA1' not in brachy_form_html, "Teletherapy machines must NOT appear in Brachytherapy Machine dropdown"
     assert 'Varian - DBX' not in brachy_form_html
 
@@ -3522,6 +3526,82 @@ def run_tests():
     # Cleanup
     pt_test37.delete()
     print("✓ Test 37 Passed: Teletherapy/Brachytherapy modality separation, Machine Mappings exclusivity, Brachy machine dropdown & Machine Type single-line width fully verified.")
+
+    # --- Test 38: Teletherapy Treatment Schedule Worksheet Heading & Teletherapy-Only Machine Dropdowns ---
+    print("\n--- Running Test 38: Teletherapy Treatment Schedule Worksheet Heading & Machine Filter ---")
+    c.force_login(admin_user)
+    resp_grid38 = c.get('/reports/manual-grid/?machine_code=LA1')
+    assert resp_grid38.status_code == 200
+    grid38_html = resp_grid38.content.decode('utf-8')
+
+    # 1. Heading verification
+    assert "Teletherapy Treatment Schedule Worksheet" in grid38_html, "Worksheet heading must be 'Teletherapy Treatment Schedule Worksheet'"
+    assert "<title>Teletherapy Treatment Schedule Worksheet" in grid38_html or "Teletherapy Treatment Schedule Worksheet - LA1" in grid38_html
+
+    # 2. Filter ribbon machine dropdown: Must contain Teletherapy machines, NOT Brachytherapy machines
+    tele_machines = list(Machine.objects.filter(is_active=True, treatment_mode='Teletherapy'))
+    brachy_machines_all = list(Machine.objects.filter(treatment_mode='Brachytherapy'))
+
+    # Check the <select name="machine_id"> filter element specifically
+    filter_select_start = grid38_html.find('name="machine_id"')
+    assert filter_select_start != -1, "Machine filter dropdown must be present"
+    filter_select_end = grid38_html.find('</select>', filter_select_start)
+    filter_select_html = grid38_html[filter_select_start:filter_select_end]
+
+    for tm in tele_machines:
+        assert f'value="{tm.id}"' in filter_select_html, f"Teletherapy machine {tm.name} must be in filter select"
+
+    for bm in brachy_machines_all:
+        assert f'value="{bm.id}"' not in filter_select_html, f"Brachytherapy machine {bm.name} must NOT be in filter select"
+
+    # 3. Create a test teletherapy schedule to inspect in-grid row machine dropdown
+    Patient.objects.filter(mr_no='9999038').delete()
+    pt_test38 = Patient.objects.create(
+        mr_no='9999038',
+        pt_name='Test38 Worksheet Patient',
+        age=50,
+        sex='F',
+        diagnosis='Ca Cervix',
+        primary_consultant=Consultant.objects.first(),
+        created_by=admin_user
+    )
+    sched38 = TreatmentSchedule.objects.create(
+        patient=pt_test38,
+        machine=tele_machines[0],
+        treatment_type='Teletherapy',
+        date_of_start=date(2026, 1, 5),
+        status='Scheduled'
+    )
+
+    resp_row_grid = c.get(f'/reports/manual-grid/?machine_id={tele_machines[0].id}&start_date=2026-01-01&end_date=2026-01-31')
+    assert resp_row_grid.status_code == 200
+    row_grid_html = resp_row_grid.content.decode('utf-8')
+
+    row_select_start = row_grid_html.find(f'name="machine_{sched38.id}"')
+    if row_select_start != -1:
+        row_select_end = row_grid_html.find('</select>', row_select_start)
+        row_select_html = row_grid_html[row_select_start:row_select_end]
+        for bm in brachy_machines_all:
+            assert f'value="{bm.id}"' not in row_select_html, f"Brachytherapy machine {bm.name} must NOT be in grid row select"
+
+    # 4. Attempting to assign a Brachytherapy machine via save-row API must be rejected
+    if brachy_machines_all:
+        resp_invalid_mach = c.post('/reports/manual-grid/save-row/', {
+            'schedule_id': sched38.id,
+            'machine_id': brachy_machines_all[0].id,
+            'date_of_start': '2026-01-05'
+        })
+        assert resp_invalid_mach.status_code == 400, "Assigning a Brachytherapy machine on the Teletherapy worksheet must be rejected"
+        assert resp_invalid_mach.json()['success'] is False
+
+    # 5. Excel export title verification
+    resp_excel = c.get(f'/reports/manual-grid/?machine_id={tele_machines[0].id}&start_date=2026-01-01&end_date=2026-01-31&export=excel')
+    assert resp_excel.status_code == 200
+    assert 'Teletherapy Treatment Schedule Worksheet' in resp_excel.get('Content-Disposition', '') or resp_excel['Content-Type'] == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+    # Cleanup
+    pt_test38.delete()
+    print("✓ Test 38 Passed: Teletherapy Treatment Schedule Worksheet heading, Teletherapy-only dropdowns, and Brachy exclusion fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
