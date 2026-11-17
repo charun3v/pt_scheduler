@@ -131,6 +131,30 @@ def can_register_patient(user) -> bool:
     return True  # default clinical user
 
 
+def is_consultant_or_admin(user) -> bool:
+    """True if user is Administrator, SubAdmin, or Consultant (who can authorize >4 brachytherapy appointments)."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, 'profile', None)
+    if not profile or not profile.role or not profile.role.is_active:
+        return False
+    role_name = (profile.role.role_name or '').lower()
+    return profile.role.role_id in [1, 2, 3] or 'admin' in role_name or 'consultant' in role_name or 'faculty' in role_name
+
+
+def is_resident(user) -> bool:
+    """True if user is a Junior / Senior Resident (restricted to max 4 brachytherapy appointments unless authorized)."""
+    if not user or not user.is_authenticated:
+        return False
+    profile = getattr(user, 'profile', None)
+    if not profile or not profile.role or not profile.role.is_active:
+        return False
+    role_name = (profile.role.role_name or '').lower()
+    return profile.role.role_id == 4 or 'resident' in role_name
+
+
 def can_schedule_patient(user) -> bool:
     """Front desk, Nursing, and Physics staff cannot schedule patients unless role capability is enabled."""
     if not user or not user.is_authenticated:

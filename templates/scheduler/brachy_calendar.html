@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+
+{% block title %}Brachytherapy Monthly Schedule Planner - {{ APP_TITLE }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .planner-container {
+        border: 2px solid #003366;
+        border-radius: 4px;
+        background: #ffffff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+    .planner-title-bar {
+        background: #ffffff;
+        border-bottom: 2px solid #003366;
+        padding: 14px 20px;
+        text-align: center;
+    }
+    .planner-main-title {
+        font-size: 16px;
+        font-weight: 900;
+        letter-spacing: 1.5px;
+        color: #003366;
+        text-transform: uppercase;
+        margin: 0 0 6px 0;
+    }
+    .planner-month-year {
+        font-size: 15px;
+        font-weight: 800;
+        color: #1e293b;
+        letter-spacing: 1px;
+    }
+    .calendar-grid {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }
+    .calendar-grid th {
+        background: #e2e8f0;
+        color: #0f172a;
+        font-size: 11.5px;
+        font-weight: 800;
+        text-transform: uppercase;
+        text-align: center;
+        padding: 10px 6px;
+        border: 1px solid #cbd5e1;
+        letter-spacing: 0.5px;
+    }
+    .calendar-grid td {
+        border: 1px solid #cbd5e1;
+        height: 115px;
+        min-height: 115px;
+        vertical-align: top;
+        padding: 5px;
+        position: relative;
+        background: #ffffff;
+        transition: background-color 0.15s;
+    }
+    .calendar-grid td.other-month {
+        background: #f8fafc;
+        color: #94a3b8;
+    }
+    .calendar-grid td.is-today {
+        background: #eff6ff;
+        border: 2px solid #3b82f6 !important;
+    }
+    .date-box-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+    .day-number-bracket {
+        font-size: 11.5px;
+        font-weight: 800;
+        color: #003366;
+        background: #f1f5f9;
+        padding: 1px 6px;
+        border-radius: 3px;
+        border: 1px solid #cbd5e1;
+        user-select: none;
+    }
+    .appt-pill {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+        padding: 2px 5px;
+        margin-bottom: 3px;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        line-height: 1.25;
+        border: 1px solid rgba(0,0,0,0.15);
+        text-decoration: none;
+    }
+    .appt-pill:hover {
+        filter: brightness(0.92);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .more-appts-pill {
+        background: #e2e8f0;
+        color: #003366;
+        font-size: 9.5px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 3px;
+        text-align: center;
+        cursor: pointer;
+        display: block;
+        margin-top: 2px;
+        border: 1px dashed #94a3b8;
+    }
+    .more-appts-pill:hover {
+        background: #cbd5e1;
+    }
+    .brachy-tooltip {
+        position: absolute;
+        display: none;
+        z-index: 10000;
+        background: #002244;
+        color: #ffffff;
+        padding: 12px 14px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        line-height: 1.4;
+        width: 270px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        pointer-events: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;">
+
+    <!-- TOP HEADER & CONTROLS -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div>
+            <h2 style="margin: 0 0 4px 0; font-size: 18px; color: #003366; display: flex; align-items: center; gap: 8px;">
+                <span>☢️</span> Departmental Brachytherapy Schedule Planner
+            </h2>
+            <div style="font-size: 12px; color: #64748b;">
+                Interactive visual monthly calendar of all brachytherapy fractions and applicator procedures.
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <a href="{% url 'dashboard' %}" class="btn" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 7px 14px; border-radius: 4px; font-size: 12px; text-decoration: none;">
+                ← Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- PLANNER CONTAINER -->
+    <div class="planner-container">
+        
+        <!-- Planner Title Bar -->
+        <div class="planner-title-bar">
+            <div class="planner-main-title">MONTHLY SCHEDULE PLANNER</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 6px;">
+                
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button type="button" onclick="navigateCalendarMonth(-1)" class="btn" style="background: #f1f5f9; color: #003366; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                        ◀ Prev Month
+                    </button>
+                    <button type="button" onclick="goToTodayMonth()" class="btn" style="background: #003366; color: #ffffff; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                        Today
+                    </button>
+                    <button type="button" onclick="navigateCalendarMonth(1)" class="btn" style="background: #f1f5f9; color: #003366; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                        Next Month ▶
+                    </button>
+                </div>
+
+                <div class="planner-month-year" id="plannerMonthYearHeading">
+                    [{{ calendar.month_name|upper }}] [{{ calendar.year }}]
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <select id="jumpMonthSelect" onchange="jumpToMonthYear()" style="padding: 5px 8px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: 600;">
+                        {% for m_num, m_name in calendar.all_months %}
+                            <option value="{{ m_num }}" {% if m_num == calendar.month %}selected{% endif %}>{{ m_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <select id="jumpYearSelect" onchange="jumpToMonthYear()" style="padding: 5px 8px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: 600;">
+                        {% for y in calendar.all_years %}
+                            <option value="{{ y }}" {% if y == calendar.year %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Applicator Colour Legend -->
+        <div style="background: #f8fafc; border-bottom: 1px solid #cbd5e1; padding: 8px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 11px;">
+            <span style="font-weight: 800; color: #003366; text-transform: uppercase;">Colour Legend:</span>
+            {% for app in applicators %}
+                <span style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: #334155;">
+                    <span style="display: inline-block; width: 12px; height: 12px; background: {{ app.color_code }}; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2);"></span>
+                    {{ app.name }}
+                </span>
+            {% endfor %}
+        </div>
+
+        <!-- Calendar Table Grid -->
+        <div style="overflow-x: auto;">
+            <table class="calendar-grid">
+                <thead>
+                    <tr>
+                        <th style="width: 14.28%;">MON</th>
+                        <th style="width: 14.28%;">TUE</th>
+                        <th style="width: 14.28%;">WED</th>
+                        <th style="width: 14.28%;">THUR</th>
+                        <th style="width: 14.28%;">FRI</th>
+                        <th style="width: 14.28%;">SAT</th>
+                        <th style="width: 14.28%;">SUN</th>
+                    </tr>
+                </thead>
+                <tbody id="calendarGridBody">
+                    {% for week in calendar.weeks %}
+                        <tr>
+                            {% for day in week %}
+                                <td class="{% if not day.is_current_month %}other-month{% endif %} {% if day.is_today %}is-today{% endif %}">
+                                    <div class="date-box-header">
+                                        <span class="day-number-bracket">[ {{ day.day }} ]</span>
+                                        {% if day.is_today %}
+                                            <span style="background: #3b82f6; color: #fff; font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 3px;">TODAY</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="day-appointments-list">
+                                        {% for appt in day.appointments|slice:":3" %}
+                                            <a href="{% url 'patient_detail' appt.patient_id %}"
+                                               class="appt-pill"
+                                               style="background: {{ appt.color }}; color: {{ appt.text_color }};"
+                                               onmouseenter="showApptTooltip(event, this)"
+                                               onmouseleave="hideApptTooltip()"
+                                               onclick="event.stopPropagation();"
+                                               data-patient-name="{{ appt.patient_name }}"
+                                               data-age-sex="{{ appt.age_sex }}"
+                                               data-mr-no="{{ appt.mr_no }}"
+                                               data-rt-no="{{ appt.rt_no }}"
+                                               data-diagnosis="{{ appt.diagnosis }}"
+                                               data-site="{{ appt.site }}"
+                                               data-applicator="{{ appt.applicator }}"
+                                               data-anesthesia="{{ appt.anesthesia }}"
+                                               data-fraction="{{ appt.fraction }}"
+                                               data-date="{{ appt.date }}"
+                                               data-status="{{ appt.status }}"
+                                               data-remarks="{{ appt.remarks }}">
+                                                {{ appt.patient_name }} | MR{{ appt.mr_no }} | {{ appt.diagnosis }}
+                                            </a>
+                                        {% endfor %}
+
+                                        {% if day.appointment_count > 3 %}
+                                            <div class="more-appts-pill" onclick="showDayAllApptsModal('{{ day.date_iso }}');">
+                                                +{{ day.appointment_count|add:"-3" }} more...
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Hover Tooltip Element -->
+<div id="brachyHoverTooltip" class="brachy-tooltip">
+    <div id="tt_patient" style="font-size: 13px; font-weight: 800; border-bottom: 1px solid #334155; padding-bottom: 4px; margin-bottom: 6px;"></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>MR No:</strong> <span id="tt_mr"></span> | <strong>RT:</strong> <span id="tt_rt"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Diagnosis:</strong> <span id="tt_dx"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Site:</strong> <span id="tt_site"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Applicator:</strong> <span id="tt_app"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Anaesthesia:</strong> <span id="tt_ana"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Scheduled:</strong> <span id="tt_date"></span> (<span id="tt_frac"></span>)</div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Status:</strong> <span id="tt_status"></span></div>
+    <div id="tt_remarks_row" style="font-size: 11px; margin-top: 4px; color: #94a3b8; font-style: italic;"></div>
+</div>
+
+<!-- Modal for All Appointments on a Day (+N more) -->
+<div id="dayApptsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 11000; justify-content: center; align-items: center;">
+    <div style="background: #ffffff; border-radius: 6px; width: 600px; max-width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+        <div style="background: #003366; color: #fff; padding: 12px 16px; font-weight: bold; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+            <span id="dayModalTitle">Scheduled Brachytherapy Appointments</span>
+            <button type="button" onclick="closeDayModal()" style="background: none; border: none; color: #fff; font-size: 18px; cursor: pointer;">&times;</button>
+        </div>
+        <div id="dayModalContent" style="padding: 16px;">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let gCurrentYear = {{ calendar.year }};
+    let gCurrentMonth = {{ calendar.month }};
+    let gCachedMonthData = {};
+
+    const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+    function navigateCalendarMonth(delta) {
+        let newMonth = gCurrentMonth + delta;
+        let newYear = gCurrentYear;
+        if (newMonth < 1) {
+            newMonth = 12;
+            newYear -= 1;
+        } else if (newMonth > 12) {
+            newMonth = 1;
+            newYear += 1;
+        }
+        loadCalendarMonth(newYear, newMonth);
+    }
+
+    function goToTodayMonth() {
+        const today = new Date();
+        loadCalendarMonth(today.getFullYear(), today.getMonth() + 1);
+    }
+
+    function jumpToMonthYear() {
+        const m = parseInt(document.getElementById('jumpMonthSelect').value);
+        const y = parseInt(document.getElementById('jumpYearSelect').value);
+        loadCalendarMonth(y, m);
+    }
+
+    function loadCalendarMonth(year, month) {
+        gCurrentYear = year;
+        gCurrentMonth = month;
+        document.getElementById('jumpMonthSelect').value = month;
+        document.getElementById('jumpYearSelect').value = year;
+        document.getElementById('plannerMonthYearHeading').textContent = `[${monthNames[month].toUpperCase()}] [${year}]`;
+
+        const cacheKey = `${year}_${month}`;
+        if (gCachedMonthData[cacheKey]) {
+            renderCalendarGrid(gCachedMonthData[cacheKey]);
+            return;
+        }
+
+        fetch(`{% url 'brachy_calendar_month_api' %}?year=${year}&month=${month}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.calendar) {
+                    gCachedMonthData[cacheKey] = data.calendar;
+                    renderCalendarGrid(data.calendar);
+                }
+            })
+            .catch(err => console.error("Error loading calendar month:", err));
+    }
+
+    function renderCalendarGrid(calData) {
+        const tbody = document.getElementById('calendarGridBody');
+        let html = '';
+
+        calData.weeks.forEach(week => {
+            html += '<tr>';
+            week.forEach(day => {
+                const otherMonthClass = day.is_current_month ? '' : 'other-month';
+                const todayClass = day.is_today ? 'is-today' : '';
+
+                html += `<td class="${otherMonthClass} ${todayClass}">
+                    <div class="date-box-header">
+                        <span class="day-number-bracket">[ ${day.day} ]</span>
+                        ${day.is_today ? '<span style="background: #3b82f6; color: #fff; font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 3px;">TODAY</span>' : ''}
+                    </div>
+                    <div class="day-appointments-list">`;
+
+                const apptsToShow = (day.appointments || []).slice(0, 3);
+                apptsToShow.forEach(appt => {
+                    html += `<a href="/patients/${appt.patient_id}/"
+                               class="appt-pill"
+                               style="background: ${appt.color}; color: ${appt.text_color};"
+                               onmouseenter="showApptTooltip(event, this)"
+                               onmouseleave="hideApptTooltip()"
+                               data-patient-name="${escapeHtml(appt.patient_name)}"
+                               data-age-sex="${escapeHtml(appt.age_sex)}"
+                               data-mr-no="${appt.mr_no}"
+                               data-rt-no="${escapeHtml(appt.rt_no)}"
+                               data-diagnosis="${escapeHtml(appt.diagnosis)}"
+                               data-site="${escapeHtml(appt.site)}"
+                               data-applicator="${escapeHtml(appt.applicator)}"
+                               data-anesthesia="${escapeHtml(appt.anesthesia)}"
+                               data-fraction="${appt.fraction}"
+                               data-date="${appt.date}"
+                               data-status="${appt.status}"
+                               data-remarks="${escapeHtml(appt.remarks)}">
+                               ${escapeHtml(appt.patient_name)} | MR${appt.mr_no} | ${escapeHtml(appt.diagnosis)}
+                            </a>`;
+                });
+
+                if (day.appointments && day.appointments.length > 3) {
+                    const extra = day.appointments.length - 3;
+                    html += `<div class="more-appts-pill" onclick="showDayAllApptsModal('${day.date_iso}');">
+                        +${extra} more...
+                    </div>`;
+                }
+
+                html += `</div></td>`;
+            });
+            html += '</tr>';
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    const tooltipElem = document.getElementById('brachyHoverTooltip');
+
+    function showApptTooltip(e, el) {
+        document.getElementById('tt_patient').textContent = el.dataset.patientName + " (" + el.dataset.ageSex + ")";
+        document.getElementById('tt_mr').textContent = el.dataset.mrNo;
+        document.getElementById('tt_rt').textContent = el.dataset.rtNo || '-';
+        document.getElementById('tt_dx').textContent = el.dataset.diagnosis || '-';
+        document.getElementById('tt_site').textContent = el.dataset.site || '-';
+        document.getElementById('tt_app').textContent = el.dataset.applicator;
+        document.getElementById('tt_ana').textContent = el.dataset.anesthesia;
+        document.getElementById('tt_date').textContent = el.dataset.date;
+        document.getElementById('tt_frac').textContent = 'Fraction ' + el.dataset.fraction;
+        document.getElementById('tt_status').textContent = el.dataset.status;
+
+        const remarksRow = document.getElementById('tt_remarks_row');
+        if (el.dataset.remarks) {
+            remarksRow.textContent = "Notes: " + el.dataset.remarks;
+            remarksRow.style.display = 'block';
+        } else {
+            remarksRow.style.display = 'none';
+        }
+
+        const rect = el.getBoundingClientRect();
+        tooltipElem.style.left = (window.scrollX + rect.left) + 'px';
+        tooltipElem.style.top = (window.scrollY + rect.bottom + 5) + 'px';
+        tooltipElem.style.display = 'block';
+    }
+
+    function hideApptTooltip() {
+        tooltipElem.style.display = 'none';
+    }
+
+    function showDayAllApptsModal(dateIso) {
+        const cacheKey = `${gCurrentYear}_${gCurrentMonth}`;
+        const cal = gCachedMonthData[cacheKey];
+        let dayObj = null;
+        if (cal) {
+            cal.weeks.forEach(w => {
+                w.forEach(d => {
+                    if (d.date_iso === dateIso) dayObj = d;
+                });
+            });
+        }
+        if (!dayObj || !dayObj.appointments) return;
+
+        document.getElementById('dayModalTitle').textContent = `Brachytherapy Schedule - ${dayObj.date_formatted} (${dayObj.appointments.length} patients)`;
+        let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+        dayObj.appointments.forEach(a => {
+            html += `<a href="/patients/${a.patient_id}/" style="text-decoration: none; color: inherit; display: block; border-left: 4px solid ${a.color}; background: #f8fafc; padding: 10px 14px; border-radius: 4px; border: 1px solid #e2e8f0; border-left-width: 4px;">
+                <div style="font-weight: bold; color: #003366; font-size: 13px;">${escapeHtml(a.patient_name)} (${escapeHtml(a.age_sex)})</div>
+                <div style="font-size: 11.5px; color: #475569; margin-top: 2px;">
+                    MR: <strong>${a.mr_no}</strong> | RT: <strong>${a.rt_no || '-'}</strong> | Fraction: <strong>${a.fraction}</strong>
+                </div>
+                <div style="font-size: 11.5px; color: #1e293b; margin-top: 4px;">
+                    Diagnosis: <strong>${escapeHtml(a.diagnosis)}</strong> | Site: <strong>${escapeHtml(a.site)}</strong>
+                </div>
+                <div style="font-size: 11.5px; color: #1e293b; margin-top: 2px;">
+                    Applicator: <span style="background: ${a.color}; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: bold; font-size: 10px;">${escapeHtml(a.applicator)}</span> | Anaesthesia: <strong>${escapeHtml(a.anesthesia)}</strong>
+                </div>
+                ${a.remarks ? `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 4px;">Notes: ${escapeHtml(a.remarks)}</div>` : ''}
+            </a>`;
+        });
+        html += '</div>';
+        document.getElementById('dayModalContent').innerHTML = html;
+        document.getElementById('dayApptsModal').style.display = 'flex';
+    }
+
+    function closeDayModal() {
+        document.getElementById('dayApptsModal').style.display = 'none';
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+</script>
+{% endblock %}

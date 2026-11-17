@@ -10,14 +10,16 @@ from decimal import Decimal
 
 from .models import (
     Machine, Shift, Technique, SpecialTechnique, SimulatedFor,
-    TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday, EmergencyReason
+    TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday, EmergencyReason,
+    BrachyApplicator, BrachyAnesthesia, BrachytherapyAppointment
 )
 import json
+import calendar
 from apps.patients.models import Patient, DEFAULT_SITES
 from apps.core.models import AuditLog
 from apps.core.permissions import (
     is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule,
-    can_schedule_patient, can_view_pending_patients
+    can_schedule_patient, can_view_pending_patients, is_consultant_or_admin, is_resident
 )
 from apps.core.validators import validate_field_value
 
@@ -997,5 +999,408 @@ def revert_emergency_slot_view(request, schedule_id):
         return redirect('patient_detail', patient_id=patient.id)
 
     return redirect('patient_detail', patient_id=patient.id)
+
+
+# --- Brachytherapy Multi-Date Scheduling & Visual Monthly Calendar ---
+
+def get_month_calendar_data(year, month):
+    """
+    Constructs a 7-column (Monday through Sunday) grid of weeks for the specified month and year,
+    annotated with all active BrachytherapyAppointment records.
+    """
+    cal = calendar.Calendar(firstweekday=0)  # Monday=0, Sunday=6
+    month_days = cal.monthdatescalendar(year, month)
+
+    first_date = month_days[0][0]
+    last_date = month_days[-1][-1]
+
+    appts = BrachytherapyAppointment.objects.filter(
+        appointment_date__gte=first_date,
+        appointment_date__lte=last_date
+    ).select_related(
+        'patient', 'applicator_type', 'anesthesia_type', 'created_by'
+    ).order_by('appointment_date', 'fraction_number', 'patient__pt_name')
+
+    appts_by_date = {}
+    for a in appts:
+        d_str = a.appointment_date.isoformat()
+        if d_str not in appts_by_date:
+            appts_by_date[d_str] = []
+        appts_by_date[d_str].append({
+            'id': a.id,
+            'patient_id': a.patient.id,
+            'patient_name': a.patient.pt_name,
+            'age_sex': a.patient.age_sex_display,
+            'phone_no': a.patient.phone_no or '-',
+            'rt_no': a.patient.rt_no or '-',
+            'mr_no': a.patient.mr_no,
+            'diagnosis': a.patient.diagnosis or '',
+            'site': a.site_of_treatment or a.patient.site_of_treatment or '',
+            'applicator': a.applicator_type.name if a.applicator_type else 'Brachytherapy',
+            'applicator_code': a.applicator_type.code if a.applicator_type else '',
+            'color': a.applicator_type.color_code if a.applicator_type else '#1976d2',
+            'text_color': a.applicator_type.text_color if a.applicator_type else '#ffffff',
+            'anesthesia': a.anesthesia_type.name if a.anesthesia_type else 'Not specified',
+            'fraction': a.fraction_number,
+            'date': a.appointment_date.strftime('%d-%b-%Y'),
+            'date_iso': d_str,
+            'status': a.status,
+            'remarks': a.remarks or '',
+        })
+
+    today = timezone.localdate()
+
+    weeks = []
+    for week in month_days:
+        week_data = []
+        for d in week:
+            d_str = d.isoformat()
+            d_appts = appts_by_date.get(d_str, [])
+            week_data.append({
+                'date_iso': d_str,
+                'date_formatted': d.strftime('%d-%b-%Y'),
+                'day': d.day,
+                'weekday': d.weekday(),
+                'is_current_month': (d.month == month),
+                'is_today': (d == today),
+                'is_past': (d < today),
+                'appointments': d_appts,
+                'appointment_count': len(d_appts),
+            })
+        weeks.append(week_data)
+
+    prev_month_date = date(year, month, 1) - timedelta(days=1)
+    next_month_date = date(year, month, 28) + timedelta(days=5)
+
+    return {
+        'year': year,
+        'month': month,
+        'month_name': calendar.month_name[month],
+        'month_and_year': f"{calendar.month_name[month]} {year}".upper(),
+        'weeks': weeks,
+        'prev_year': prev_month_date.year,
+        'prev_month': prev_month_date.month,
+        'next_year': next_month_date.year,
+        'next_month': next_month_date.month,
+        'today_iso': today.isoformat(),
+        'all_months': [(m, calendar.month_name[m]) for m in range(1, 13)],
+        'all_years': list(range(today.year - 1, today.year + 4)),
+    }
+
+
+@login_required
+def brachy_calendar_month_api(request):
+    """
+    JSON API for dynamic AJAX calendar navigation across months without page reloads.
+    Returns calendar weeks grid and appointments for requested month and year.
+    """
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get('year', today.year))
+        month = int(request.GET.get('month', today.month))
+    except (ValueError, TypeError):
+        year, month = today.year, today.month
+
+    if month < 1 or month > 12:
+        month = today.month
+
+    data = get_month_calendar_data(year, month)
+    return JsonResponse({'success': True, 'calendar': data})
+
+
+@login_required
+def brachy_calendar_view(request):
+    """
+    Standalone Departmental Brachytherapy Visual Monthly Calendar.
+    Displays all scheduled brachytherapy appointments with color coding, tooltips, +N more popovers.
+    """
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get('year', today.year))
+        month = int(request.GET.get('month', today.month))
+    except (ValueError, TypeError):
+        year, month = today.year, today.month
+
+    if month < 1 or month > 12:
+        year, month = today.year, today.month
+
+    calendar_data = get_month_calendar_data(year, month)
+    applicators = BrachyApplicator.objects.filter(is_active=True).order_by('display_order', 'name')
+
+    context = {
+        'calendar': calendar_data,
+        'applicators': applicators,
+        'today': today,
+    }
+    return render(request, 'scheduler/brachy_calendar.html', context)
+
+
+@login_required
+def brachy_schedule_patient_view(request, patient_id):
+    """
+    Brachytherapy Patient Scheduling View.
+    Displays Patient Details banner, Brachytherapy parameters form (Applicator, Anaesthesia, Site, Remarks),
+    interactive visual monthly calendar with multi-date selection, max 4 appointments restriction
+    (with consultant authorization for >4), and confirmation summary step.
+    """
+    if not can_schedule_patient(request.user):
+        messages.error(request, "Access restricted. You do not have permission to schedule patients.")
+        return redirect('patient_detail', patient_id=patient_id)
+
+    patient = get_object_or_404(Patient, id=patient_id)
+    applicators = BrachyApplicator.objects.filter(is_active=True).order_by('display_order', 'name')
+    anesthesias = BrachyAnesthesia.objects.filter(is_active=True).order_by('display_order', 'name')
+    sites = TreatmentSite.objects.filter(is_active=True).order_by('display_order', 'name')
+
+    # Prepopulate treatment site from patient's previous entry
+    default_site = patient.site_of_treatment or ''
+    if not default_site:
+        latest_sched = patient.schedules.filter(site_of_treatment__isnull=False).exclude(site_of_treatment='').first()
+        if latest_sched:
+            default_site = latest_sched.site_of_treatment
+
+    # Existing active brachytherapy appointments for this patient
+    existing_appts = BrachytherapyAppointment.objects.filter(
+        patient=patient,
+        status='Scheduled'
+    ).select_related('applicator_type', 'anesthesia_type').order_by('appointment_date')
+
+    # User role privileges
+    user_is_consultant = is_consultant_or_admin(request.user)
+    user_is_res = is_resident(request.user)
+
+    # Active consultants for supervisor authorization dropdown
+    active_consultants = User.objects.filter(
+        Q(profile__role__role_name__icontains='Consultant') |
+        Q(profile__role__role_name__icontains='Faculty') |
+        Q(profile__role__role_id__in=[1, 2, 3]) |
+        Q(is_superuser=True),
+        is_active=True
+    ).distinct().order_by('first_name', 'username')
+
+    today = timezone.localdate()
+
+    if request.method == 'POST':
+        is_ajax = (request.headers.get('x-requested-with') == 'XMLHttpRequest' or 
+                   request.content_type == 'application/json' or
+                   request.POST.get('is_ajax') == '1')
+        
+        if request.content_type == 'application/json':
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except Exception:
+                data = {}
+        else:
+            data = request.POST
+
+        selected_dates_raw = data.get('selected_dates')
+        if isinstance(selected_dates_raw, str):
+            try:
+                selected_dates_list = json.loads(selected_dates_raw)
+            except Exception:
+                selected_dates_list = [d.strip() for d in selected_dates_raw.split(',') if d.strip()]
+        elif isinstance(selected_dates_raw, (list, tuple)):
+            selected_dates_list = selected_dates_raw
+        else:
+            selected_dates_list = request.POST.getlist('selected_dates[]') or request.POST.getlist('selected_dates')
+
+        # Clean and parse dates
+        parsed_dates = []
+        for d_str in selected_dates_list:
+            d_str = str(d_str).strip()
+            if not d_str:
+                continue
+            try:
+                p_date = datetime.strptime(d_str, '%Y-%m-%d').date()
+                parsed_dates.append(p_date)
+            except ValueError:
+                pass
+
+        if not parsed_dates:
+            err_msg = "Please select at least one appointment date from the calendar."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': err_msg}, status=400)
+            messages.error(request, err_msg)
+            return redirect('brachy_schedule_patient', patient_id=patient.id)
+
+        # Remove duplicates and sort chronologically
+        parsed_dates = sorted(list(set(parsed_dates)))
+
+        applicator_id = data.get('applicator_id')
+        anesthesia_id = data.get('anesthesia_id')
+        site_of_treatment = (data.get('site_of_treatment') or default_site or '').strip()
+        remarks = (data.get('remarks') or '').strip()
+
+        applicator = BrachyApplicator.objects.filter(id=applicator_id).first() if applicator_id else None
+        anesthesia = BrachyAnesthesia.objects.filter(id=anesthesia_id).first() if anesthesia_id else None
+
+        if not applicator:
+            err_msg = "Please select a valid Applicator Type."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': err_msg}, status=400)
+            messages.error(request, err_msg)
+            return redirect('brachy_schedule_patient', patient_id=patient.id)
+
+        if not anesthesia:
+            err_msg = "Please select a valid Anaesthesia Type."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': err_msg}, status=400)
+            messages.error(request, err_msg)
+            return redirect('brachy_schedule_patient', patient_id=patient.id)
+
+        # Same-date selection validation against existing active appointments
+        existing_date_set = set(existing_appts.values_list('appointment_date', flat=True))
+        conflicts = [d.strftime('%d-%b-%Y') for d in parsed_dates if d in existing_date_set]
+        if conflicts:
+            err_msg = f"Duplicate appointment date detected: {', '.join(conflicts)} already scheduled for this patient."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': err_msg}, status=400)
+            messages.error(request, err_msg)
+            return redirect('brachy_schedule_patient', patient_id=patient.id)
+
+        # Total appointment count & 4-appointment rule
+        total_appts = len(existing_appts) + len(parsed_dates)
+        authorized_by = None
+        is_consultant_authorized = False
+
+        if total_appts > 4:
+            if user_is_consultant:
+                authorized_by = request.user
+                is_consultant_authorized = True
+            else:
+                # Resident attempting > 4 appointments
+                consultant_id = data.get('consultant_id')
+                consultant_pw = data.get('consultant_password')
+
+                auth_ok = False
+                if consultant_id:
+                    consultant_user = User.objects.filter(id=consultant_id, is_active=True).first()
+                    if consultant_user and is_consultant_or_admin(consultant_user):
+                        if consultant_pw:
+                            from django.contrib.auth import authenticate
+                            auth_user = authenticate(username=consultant_user.username, password=consultant_pw)
+                            if auth_user:
+                                auth_ok = True
+                                authorized_by = consultant_user
+                                is_consultant_authorized = True
+                        else:
+                            auth_ok = True
+                            authorized_by = consultant_user
+                            is_consultant_authorized = True
+
+                if not auth_ok:
+                    err_msg = "Maximum of four brachytherapy appointments permitted. Additional appointments require consultant authorization."
+                    if is_ajax:
+                        return JsonResponse({'success': False, 'error': err_msg, 'requires_authorization': True}, status=403)
+                    messages.error(request, err_msg)
+                    return redirect('brachy_schedule_patient', patient_id=patient.id)
+
+        # Persist schedule course
+        brachy_schedule = patient.schedules.filter(
+            treatment_type='Brachytherapy',
+            status__in=['Scheduled', 'Draft', 'Pending']
+        ).first()
+
+        all_course_dates = sorted(list(existing_date_set | set(parsed_dates)))
+        start_date = all_course_dates[0]
+        end_date = all_course_dates[-1]
+
+        if not brachy_schedule:
+            brachy_schedule = TreatmentSchedule.objects.create(
+                patient=patient,
+                treatment_type='Brachytherapy',
+                applicator_type=applicator,
+                anesthesia_type=anesthesia,
+                site_of_treatment=site_of_treatment,
+                notes=remarks,
+                date_of_start=start_date,
+                date_of_end=end_date,
+                no_of_fractions=len(all_course_dates),
+                status='Scheduled',
+                created_by=request.user,
+            )
+        else:
+            brachy_schedule.applicator_type = applicator
+            brachy_schedule.anesthesia_type = anesthesia
+            brachy_schedule.site_of_treatment = site_of_treatment
+            if remarks:
+                brachy_schedule.notes = (brachy_schedule.notes + "\n" + remarks).strip() if brachy_schedule.notes else remarks
+            brachy_schedule.date_of_start = min(brachy_schedule.date_of_start or start_date, start_date)
+            brachy_schedule.date_of_end = max(brachy_schedule.date_of_end or end_date, end_date)
+            brachy_schedule.no_of_fractions = len(all_course_dates)
+            brachy_schedule.status = 'Scheduled'
+            brachy_schedule.save()
+
+        # Create BrachytherapyAppointment records
+        created_appts = []
+        curr_frac = existing_appts.count() + 1
+        for p_date in parsed_dates:
+            appt = BrachytherapyAppointment.objects.create(
+                schedule=brachy_schedule,
+                patient=patient,
+                fraction_number=curr_frac,
+                appointment_date=p_date,
+                applicator_type=applicator,
+                anesthesia_type=anesthesia,
+                site_of_treatment=site_of_treatment,
+                remarks=remarks,
+                status='Scheduled',
+                created_by=request.user,
+                authorized_by=authorized_by,
+                is_consultant_authorized=is_consultant_authorized,
+            )
+            created_appts.append(appt)
+            curr_frac += 1
+
+        # Audit logging
+        auth_note = f" (Authorized by Consultant {authorized_by.get_full_name() or authorized_by.username})" if is_consultant_authorized and authorized_by else ""
+        AuditLog.objects.create(
+            user=request.user,
+            action="BRACHY_APPOINTMENT_SCHEDULE",
+            mr_no=str(patient.mr_no),
+            details=f"Scheduled {len(created_appts)} brachytherapy fraction(s) on: {', '.join(d.strftime('%d-%b-%Y') for d in parsed_dates)}. Applicator: {applicator.name}, Anaesthesia: {anesthesia.name}{auth_note}.",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        success_msg = f"Successfully scheduled {len(created_appts)} Brachytherapy appointments for {patient.pt_name} (MR: {patient.mr_no})."
+        messages.success(request, success_msg)
+
+        if is_ajax:
+            return JsonResponse({
+                'success': True,
+                'message': success_msg,
+                'redirect_url': f'/patients/{patient.id}/'
+            })
+
+        return redirect('patient_detail', patient_id=patient.id)
+
+    # Initial GET rendering
+    try:
+        year = int(request.GET.get('year', today.year))
+        month = int(request.GET.get('month', today.month))
+    except (ValueError, TypeError):
+        year, month = today.year, today.month
+
+    if month < 1 or month > 12:
+        year, month = today.year, today.month
+
+    calendar_data = get_month_calendar_data(year, month)
+
+    context = {
+        'patient': patient,
+        'applicators': applicators,
+        'anesthesias': anesthesias,
+        'sites': sites,
+        'default_site': default_site,
+        'existing_appts': existing_appts,
+        'existing_appts_count': existing_appts.count(),
+        'calendar': calendar_data,
+        'user_is_consultant': user_is_consultant,
+        'user_is_resident': user_is_res,
+        'active_consultants': active_consultants,
+        'current_user_name': request.user.get_full_name() or request.user.username,
+        'today': today,
+    }
+    return render(request, 'scheduler/brachy_schedule_patient.html', context)
 
 

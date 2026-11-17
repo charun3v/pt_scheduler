@@ -112,6 +112,45 @@ class TreatmentIntent(models.Model):
         return self.name
 
 
+class BrachyApplicator(models.Model):
+    """
+    Reference table for Brachytherapy Applicator Types.
+    Admin configurable via Reference Tables Manager with drag-and-drop ordering and custom colors.
+    """
+    name = models.CharField(max_length=100, unique=True, verbose_name="Applicator Type Name")
+    code = models.CharField(max_length=50, blank=True, null=True, verbose_name="Applicator Code")
+    color_code = models.CharField(max_length=20, default="#1e88e5", verbose_name="Calendar Color")
+    text_color = models.CharField(max_length=20, default="#ffffff", verbose_name="Text Color")
+    display_order = models.IntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        verbose_name = "Brachytherapy Applicator"
+        verbose_name_plural = "Brachytherapy Applicators"
+
+    def __str__(self):
+        return self.name
+
+
+class BrachyAnesthesia(models.Model):
+    """
+    Reference table for Brachytherapy Anaesthesia Types.
+    Admin configurable via Reference Tables Manager with drag-and-drop ordering.
+    """
+    name = models.CharField(max_length=100, unique=True, verbose_name="Anaesthesia Type Name")
+    display_order = models.IntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        verbose_name = "Brachytherapy Anaesthesia"
+        verbose_name_plural = "Brachytherapy Anaesthesia Options"
+
+    def __str__(self):
+        return self.name
+
+
 class MachineMapping(models.Model):
     """
     Dynamic Admin Mapping:
@@ -174,6 +213,8 @@ class TreatmentSchedule(models.Model):
     no_of_fractions = models.PositiveIntegerField(null=True, blank=True, verbose_name="Number of fractions")
     technique = models.ForeignKey(Technique, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Technique")
     special_technique = models.ForeignKey(SpecialTechnique, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Special Technique")
+    applicator_type = models.ForeignKey(BrachyApplicator, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Brachy Applicator Type")
+    anesthesia_type = models.ForeignKey(BrachyAnesthesia, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Brachy Anaesthesia Type")
     jr_resident = models.CharField(max_length=150, blank=True, null=True, verbose_name="Junior Resident")
     simulated_for = models.ForeignKey(SimulatedFor, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Simulated For")
     machine = models.ForeignKey(Machine, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Machine")
@@ -265,6 +306,62 @@ class TreatmentSchedule(models.Model):
         if self.shift:
             return self.shift.name
         return '-'
+
+
+class BrachytherapyAppointment(models.Model):
+    """
+    Individual Brachytherapy Application / Fraction Appointment.
+    Linked to patient and treatment course, displayed on the Visual Monthly Calendar.
+    """
+    STATUS_CHOICES = [
+        ('Scheduled', 'Scheduled'),
+        ('Completed', 'Completed'),
+        ('Cancelled', 'Cancelled'),
+    ]
+
+    schedule = models.ForeignKey(
+        TreatmentSchedule, on_delete=models.CASCADE, related_name='brachy_appointments',
+        null=True, blank=True, verbose_name="Treatment Schedule Course"
+    )
+    patient = models.ForeignKey(
+        'patients.Patient', on_delete=models.CASCADE, related_name='brachy_appointments',
+        verbose_name="Patient"
+    )
+    fraction_number = models.PositiveIntegerField(default=1, verbose_name="Fraction / Session Number")
+    appointment_date = models.DateField(db_index=True, verbose_name="Appointment Date")
+    applicator_type = models.ForeignKey(
+        BrachyApplicator, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='appointments', verbose_name="Applicator Type"
+    )
+    anesthesia_type = models.ForeignKey(
+        BrachyAnesthesia, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='appointments', verbose_name="Anaesthesia Details"
+    )
+    site_of_treatment = models.CharField(max_length=100, blank=True, null=True, verbose_name="Site of Treatment")
+    remarks = models.TextField(blank=True, null=True, verbose_name="Additional Remarks")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Scheduled', verbose_name="Appointment Status")
+
+    # Audit & Consultant Authorization
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='created_brachy_appointments')
+    authorized_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='authorized_brachy_appointments', verbose_name="Consultant Authorizer"
+    )
+    is_consultant_authorized = models.BooleanField(default=False, verbose_name="Authorized by Consultant (>4 fractions)")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['appointment_date', 'fraction_number']
+        indexes = [
+            models.Index(fields=['appointment_date']),
+            models.Index(fields=['patient', 'appointment_date']),
+        ]
+        verbose_name = "Brachytherapy Appointment"
+        verbose_name_plural = "Brachytherapy Appointments"
+
+    def __str__(self):
+        return f"{self.patient.pt_name} - {self.appointment_date} (Fr {self.fraction_number})"
 
 
 class Holiday(models.Model):

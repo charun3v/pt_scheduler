@@ -1,0 +1,1133 @@
+{% extends "base.html" %}
+
+{% block title %}Brachytherapy Scheduling - {{ patient.pt_name }} (MR: {{ patient.mr_no }}) - {{ APP_TITLE }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .brachy-card {
+        background: #ffffff;
+        border: 1px solid var(--ms-border);
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        margin-bottom: 16px;
+        overflow: hidden;
+    }
+    .brachy-header {
+        background: #003366;
+        color: #ffffff;
+        padding: 10px 16px;
+        font-weight: 700;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .brachy-body {
+        padding: 16px;
+    }
+
+    /* Planner Calendar Layout (Reference: Monthly Schedule Planner) */
+    .planner-container {
+        border: 2px solid #003366;
+        border-radius: 4px;
+        background: #ffffff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+    .planner-title-bar {
+        background: #ffffff;
+        border-bottom: 2px solid #003366;
+        padding: 14px 20px;
+        text-align: center;
+    }
+    .planner-main-title {
+        font-size: 16px;
+        font-weight: 900;
+        letter-spacing: 1.5px;
+        color: #003366;
+        text-transform: uppercase;
+        margin: 0 0 6px 0;
+    }
+    .planner-month-year {
+        font-size: 15px;
+        font-weight: 800;
+        color: #1e293b;
+        letter-spacing: 1px;
+    }
+
+    .calendar-grid {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }
+    .calendar-grid th {
+        background: #e2e8f0;
+        color: #0f172a;
+        font-size: 11.5px;
+        font-weight: 800;
+        text-transform: uppercase;
+        text-align: center;
+        padding: 10px 6px;
+        border: 1px solid #cbd5e1;
+        letter-spacing: 0.5px;
+    }
+    .calendar-grid td {
+        border: 1px solid #cbd5e1;
+        height: 110px;
+        min-height: 110px;
+        vertical-align: top;
+        padding: 5px;
+        position: relative;
+        background: #ffffff;
+        transition: background-color 0.15s, border-color 0.15s;
+    }
+    .calendar-grid td.other-month {
+        background: #f8fafc;
+        color: #94a3b8;
+    }
+    .calendar-grid td.is-today {
+        background: #eff6ff;
+        border: 2px solid #3b82f6 !important;
+    }
+    .calendar-grid td.is-past {
+        opacity: 0.85;
+    }
+
+    /* Date selection states */
+    .calendar-grid td.selectable-date {
+        cursor: pointer;
+    }
+    .calendar-grid td.selectable-date:hover {
+        background: #f0fdf4;
+    }
+    .calendar-grid td.is-selected {
+        background: #e0f2fe !important;
+        border: 3px solid #0078d4 !important;
+        box-shadow: inset 0 0 8px rgba(0, 120, 212, 0.2);
+    }
+    .date-box-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+    .day-number-bracket {
+        font-size: 11.5px;
+        font-weight: 800;
+        color: #003366;
+        background: #f1f5f9;
+        padding: 1px 6px;
+        border-radius: 3px;
+        border: 1px solid #cbd5e1;
+        user-select: none;
+    }
+    .is-selected .day-number-bracket {
+        background: #0078d4;
+        color: #ffffff;
+        border-color: #005a9e;
+    }
+    .selected-fraction-badge {
+        background: #107c41;
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 10px;
+    }
+
+    /* Appointment Pill (Single horizontal line per rule) */
+    .appt-pill {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+        padding: 2px 5px;
+        margin-bottom: 3px;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        line-height: 1.25;
+        border: 1px solid rgba(0,0,0,0.15);
+        position: relative;
+    }
+    .appt-pill:hover {
+        filter: brightness(0.92);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    /* More appointments indicator */
+    .more-appts-pill {
+        background: #e2e8f0;
+        color: #003366;
+        font-size: 9.5px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 3px;
+        text-align: center;
+        cursor: pointer;
+        display: block;
+        margin-top: 2px;
+        border: 1px dashed #94a3b8;
+    }
+    .more-appts-pill:hover {
+        background: #cbd5e1;
+    }
+
+    /* Tooltip Popover */
+    .brachy-tooltip {
+        position: absolute;
+        display: none;
+        z-index: 10000;
+        background: #002244;
+        color: #ffffff;
+        padding: 12px 14px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        line-height: 1.4;
+        width: 270px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        pointer-events: none;
+    }
+
+    /* Selected Date Chip */
+    .date-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #e0f2fe;
+        color: #0369a1;
+        border: 1px solid #7dd3fc;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .date-chip button {
+        background: none;
+        border: none;
+        color: #0369a1;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+    }
+    .date-chip button:hover {
+        color: #b91c1c;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;">
+
+    <!-- TOP NAVIGATION BAR / MODALITY TOGGLE -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display: flex; align-items: center; gap: 14px;">
+            <span style="font-size: 12px; font-weight: 800; color: #003366; text-transform: uppercase;">Scheduling Modality:</span>
+            <a href="{% url 'schedule_patient' patient.id %}" style="text-decoration: none; padding: 6px 14px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; font-weight: 600; color: #475569; background: #f8fafc; display: inline-flex; align-items: center; gap: 6px;">
+                <span>📡</span> Teletherapy (EBRT)
+            </a>
+            <span style="padding: 6px 14px; border: 2px solid #16a34a; border-radius: 4px; font-size: 12px; font-weight: 800; color: #166534; background: #dcfce7; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.08);">
+                <span>☢️</span> Brachytherapy (Active)
+            </span>
+        </div>
+        <div>
+            <a href="{% url 'patient_detail' patient.id %}" style="text-decoration: none; color: #475569; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                ← Back to Patient Record
+            </a>
+        </div>
+    </div>
+
+    <!-- PATIENT IDENTITY & REGISTRATION BANNER -->
+    <div class="brachy-card">
+        <div class="brachy-header">
+            <span>👤 Patient Registration Details (MR No. {{ patient.mr_no }})</span>
+            <span style="font-weight: normal; font-size: 11px;">Registered on {{ patient.created_at|date:'d-M-Y' }}</span>
+        </div>
+        <div class="brachy-body" style="background: #fafbfc;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; font-size: 12.5px;">
+                <div>
+                    <div style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase;">Patient Name</div>
+                    <div style="font-weight: 800; color: #003366; font-size: 15px; margin-top: 2px;">{{ patient.pt_name }}</div>
+                </div>
+                <div>
+                    <div style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase;">Age / Sex</div>
+                    <div style="font-weight: 700; color: #1e293b; margin-top: 2px;">{{ patient.age_sex_display }}</div>
+                </div>
+                <div>
+                    <div style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase;">Hospital MR No.</div>
+                    <div style="font-weight: 800; color: #003366; margin-top: 2px;">{{ patient.mr_no }}</div>
+                </div>
+                <div>
+                    <div style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase;">RT Number</div>
+                    <div style="font-weight: 700; color: #1e293b; margin-top: 2px;">{{ patient.rt_no|default:"-" }}</div>
+                </div>
+                <div>
+                    <div style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase;">Phone Number</div>
+                    <div style="font-weight: 700; color: #1e293b; margin-top: 2px;">{{ patient.phone_no|default:"-" }}</div>
+                </div>
+                <div>
+                    <div style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase;">Primary Consultant</div>
+                    <div style="font-weight: 700; color: #1e293b; margin-top: 2px;">{{ patient.primary_consultant_name }}</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 12.5px;">
+                <span style="color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; margin-right: 6px;">Diagnosis:</span>
+                <strong style="color: #0f172a;">{{ patient.diagnosis|default:"Not specified" }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN SCHEDULING INTERFACE (Calendar + Details Form) -->
+    <div id="schedulingMainPanel">
+
+        <!-- BRACHYTHERAPY CLINICAL PARAMETERS FORM -->
+        <div class="brachy-card">
+            <div class="brachy-header" style="background: #1e3a8a;">
+                <span>☢️ Brachytherapy Treatment Parameters</span>
+                <span style="font-weight: normal; font-size: 11px;">Configure applicator, anaesthesia, and treatment site</span>
+            </div>
+            <div class="brachy-body">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+                    
+                    <!-- Applicator Type Dropdown (Reference Lookup) -->
+                    <div>
+                        <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                            Applicator Type Planned <span style="color: #dc2626;">*</span>
+                        </label>
+                        <select id="form_applicator_id" class="access-select" style="width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                            <option value="">-- Select Applicator Type --</option>
+                            {% for app in applicators %}
+                                <option value="{{ app.id }}" data-color="{{ app.color_code }}" data-code="{{ app.code|default:'' }}">
+                                    {{ app.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 3px;">Configurable from Reference Lookup Tables (Admin).</div>
+                    </div>
+
+                    <!-- Anaesthesia Type Dropdown (Reference Lookup) -->
+                    <div>
+                        <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                            Anaesthesia Details <span style="color: #dc2626;">*</span>
+                        </label>
+                        <select id="form_anesthesia_id" class="access-select" style="width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                            <option value="">-- Select Anaesthesia Type --</option>
+                            {% for ana in anesthesias %}
+                                <option value="{{ ana.id }}">{{ ana.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 3px;">Procedural anaesthesia protocol.</div>
+                    </div>
+
+                    <!-- Site of Treatment (Prepopulated from previous entry, Editable) -->
+                    <div>
+                        <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                            Site of Treatment <span style="color: #dc2626;">*</span>
+                        </label>
+                        <input type="text" id="form_site_of_treatment" list="brachy_sites_list"
+                               value="{{ default_site }}"
+                               placeholder="e.g. Cervix, Uterus, Vault, Breast, Esophagus..."
+                               style="width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+                        <datalist id="brachy_sites_list">
+                            {% for s in sites %}
+                                <option value="{{ s.name }}">
+                            {% endfor %}
+                            <option value="Cervix">
+                            <option value="Vault">
+                            <option value="Uterus">
+                            <option value="Esophagus">
+                            <option value="Breast">
+                            <option value="Head and Neck">
+                            <option value="Prostate">
+                        </datalist>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 3px;">Prepopulated from patient record; fully editable.</div>
+                    </div>
+
+                </div>
+
+                <div style="margin-top: 14px;">
+                    <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                        Additional Remarks / Theater Instructions
+                    </label>
+                    <input type="text" id="form_remarks"
+                           placeholder="Special catheter sizes, premedication, applicator packaging, source loading notes..."
+                           style="width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
+                </div>
+            </div>
+        </div>
+
+        <!-- VISUAL MONTHLY CALENDAR (Reference Image Layout) -->
+        <div class="planner-container">
+            
+            <!-- Planner Header & Title Bar -->
+            <div class="planner-title-bar">
+                <div class="planner-main-title">MONTHLY SCHEDULE PLANNER</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 6px;">
+                    
+                    <!-- Month Navigation Controls -->
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button type="button" onclick="navigateCalendarMonth(-1)" class="btn" style="background: #f1f5f9; color: #003366; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                            ◀ Prev Month
+                        </button>
+                        <button type="button" onclick="goToTodayMonth()" class="btn" style="background: #003366; color: #ffffff; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                            Today
+                        </button>
+                        <button type="button" onclick="navigateCalendarMonth(1)" class="btn" style="background: #f1f5f9; color: #003366; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                            Next Month ▶
+                        </button>
+                    </div>
+
+                    <!-- Heading Month & Year -->
+                    <div class="planner-month-year" id="plannerMonthYearHeading">
+                        [{{ calendar.month_name|upper }}] [{{ calendar.year }}]
+                    </div>
+
+                    <!-- Quick Jump Dropdowns -->
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <select id="jumpMonthSelect" onchange="jumpToMonthYear()" style="padding: 5px 8px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: 600;">
+                            {% for m_num, m_name in calendar.all_months %}
+                                <option value="{{ m_num }}" {% if m_num == calendar.month %}selected{% endif %}>{{ m_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <select id="jumpYearSelect" onchange="jumpToMonthYear()" style="padding: 5px 8px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: 600;">
+                            {% for y in calendar.all_years %}
+                                <option value="{{ y }}" {% if y == calendar.year %}selected{% endif %}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Applicator Colour Legend Bar -->
+            <div style="background: #f8fafc; border-bottom: 1px solid #cbd5e1; padding: 8px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 11px;">
+                <span style="font-weight: 800; color: #003366; text-transform: uppercase; letter-spacing: 0.5px;">Colour Legend:</span>
+                {% for app in applicators %}
+                    <span style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: #334155;">
+                        <span style="display: inline-block; width: 12px; height: 12px; background: {{ app.color_code }}; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2);"></span>
+                        {{ app.name }}
+                    </span>
+                {% endfor %}
+            </div>
+
+            <!-- Calendar Table Grid (7 Columns: Monday through Sunday) -->
+            <div style="overflow-x: auto;">
+                <table class="calendar-grid">
+                    <thead>
+                        <tr>
+                            <th style="width: 14.28%;">MON</th>
+                            <th style="width: 14.28%;">TUE</th>
+                            <th style="width: 14.28%;">WED</th>
+                            <th style="width: 14.28%;">THUR</th>
+                            <th style="width: 14.28%;">FRI</th>
+                            <th style="width: 14.28%;">SAT</th>
+                            <th style="width: 14.28%;">SUN</th>
+                        </tr>
+                    </thead>
+                    <tbody id="calendarGridBody">
+                        {% for week in calendar.weeks %}
+                            <tr>
+                                {% for day in week %}
+                                    <td class="selectable-date {% if not day.is_current_month %}other-month{% endif %} {% if day.is_today %}is-today{% endif %} {% if day.is_past %}is-past{% endif %}"
+                                        data-date="{{ day.date_iso }}"
+                                        onclick="handleDateCellClick('{{ day.date_iso }}')">
+                                        
+                                        <!-- Header of cell with [ Day ] bracket matching reference sketch -->
+                                        <div class="date-box-header">
+                                            <span class="day-number-bracket">[ {{ day.day }} ]</span>
+                                            <span class="selected-fraction-badge" id="badge_{{ day.date_iso }}" style="display: none;"></span>
+                                        </div>
+
+                                        <!-- Scheduled Appointments on this Day -->
+                                        <div class="day-appointments-list" id="appts_{{ day.date_iso }}">
+                                            {% for appt in day.appointments|slice:":3" %}
+                                                <div class="appt-pill"
+                                                     style="background: {{ appt.color }}; color: {{ appt.text_color }};"
+                                                     onmouseenter="showApptTooltip(event, this)"
+                                                     onmouseleave="hideApptTooltip()"
+                                                     onclick="event.stopPropagation(); showApptModal(this);"
+                                                     data-patient-name="{{ appt.patient_name }}"
+                                                     data-age-sex="{{ appt.age_sex }}"
+                                                     data-mr-no="{{ appt.mr_no }}"
+                                                     data-rt-no="{{ appt.rt_no }}"
+                                                     data-diagnosis="{{ appt.diagnosis }}"
+                                                     data-site="{{ appt.site }}"
+                                                     data-applicator="{{ appt.applicator }}"
+                                                     data-anesthesia="{{ appt.anesthesia }}"
+                                                     data-fraction="{{ appt.fraction }}"
+                                                     data-date="{{ appt.date }}"
+                                                     data-status="{{ appt.status }}"
+                                                     data-remarks="{{ appt.remarks }}">
+                                                    {{ appt.patient_name }} | MR{{ appt.mr_no }} | {{ appt.diagnosis }}
+                                                </div>
+                                            {% endfor %}
+
+                                            {% if day.appointment_count > 3 %}
+                                                <div class="more-appts-pill" onclick="event.stopPropagation(); showDayAllApptsModal('{{ day.date_iso }}');">
+                                                    +{{ day.appointment_count|add:"-3" }} more...
+                                                </div>
+                                            {% endif %}
+                                        </div>
+
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Selected Dates Strip Below Calendar -->
+            <div style="background: #ffffff; border-top: 2px solid #003366; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span style="font-weight: 800; font-size: 13px; color: #003366;">
+                        Selected Appointments (<span id="selectedCountDisplay">0</span>):
+                    </span>
+                    <div id="selectedChipsContainer" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <span style="color: #94a3b8; font-size: 12px; font-style: italic;">No dates selected. Click on dates in the calendar to schedule fractions.</span>
+                    </div>
+                </div>
+
+                <div style="font-size: 12px;">
+                    <span id="roleLimitNotice" style="background: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 4px; border: 1px solid #cbd5e1; font-weight: 600;">
+                        {% if user_is_consultant %}
+                            🩺 Consultant Mode: Standard 4 sessions, clinical override for >4 fractions.
+                        {% else %}
+                            👨‍⚕️ Resident Mode: Maximum 4 sessions per course. Additional sessions require consultant authorization.
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- CONSULTANT AUTHORIZATION CARD (Appears when Resident exceeds 4 appointments) -->
+        <div id="consultantAuthCard" style="display: none; background: #fffbeb; border: 2px solid #f59e0b; border-radius: 6px; padding: 16px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <span style="font-size: 20px;">⚠️</span>
+                <h4 style="margin: 0; color: #b45309; font-size: 14px; font-weight: 800;">
+                    Consultant Authorization Required (>4 Brachytherapy Appointments)
+                </h4>
+            </div>
+            <p style="margin: 0 0 12px 0; font-size: 12.5px; color: #92400e; line-height: 1.4;">
+                Maximum of four brachytherapy appointments permitted for Residents. To schedule more than 4 appointments for this treatment course, please select the supervising Consultant authorizer.
+            </p>
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; max-width: 600px;">
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: bold; color: #78350f; margin-bottom: 3px;">Supervising Consultant Authorizer *</label>
+                    <select id="consultant_id" class="access-select" style="width: 100%; padding: 6px 8px; font-size: 12px; border: 1px solid #fcd34d; border-radius: 4px; background: #fff;">
+                        <option value="">-- Select Authorizing Consultant --</option>
+                        {% for c in active_consultants %}
+                            <option value="{{ c.id }}">{{ c.get_full_name|default:c.username }} ({{ c.profile.role.role_name|default:"Consultant" }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: bold; color: #78350f; margin-bottom: 3px;">Consultant Password / PIN (Optional)</label>
+                    <input type="password" id="consultant_password" placeholder="Verify password..." style="width: 100%; padding: 6px 8px; font-size: 12px; border: 1px solid #fcd34d; border-radius: 4px; box-sizing: border-box;">
+                </div>
+            </div>
+        </div>
+
+        <!-- ACTION BUTTONS BELOW CALENDAR -->
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; margin-bottom: 24px;">
+            <a href="{% url 'patient_detail' patient.id %}" class="btn" style="background: #ffffff; color: #475569; border: 1px solid #cbd5e1; padding: 10px 18px; border-radius: 4px; font-size: 13px; font-weight: 600; text-decoration: none;">
+                Cancel
+            </a>
+            <button type="button" onclick="clearSelectedDates()" class="btn" style="background: #f1f5f9; color: #b91c1c; border: 1px solid #cbd5e1; padding: 10px 18px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                Clear Selection
+            </button>
+            <button type="button" onclick="goToConfirmationScreen()" class="btn" style="background: #003366; color: #ffffff; border: none; padding: 10px 26px; border-radius: 4px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
+                Done (Review Schedule) →
+            </button>
+        </div>
+
+    </div>
+
+    <!-- CONFIRMATION SUMMARY SCREEN (Appears when Done is clicked) -->
+    <div id="confirmationScreen" style="display: none; background: #ffffff; border: 2px solid #003366; border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; margin-bottom: 24px;">
+        <div style="background: #003366; color: #ffffff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                <span>📋</span> Brachytherapy Appointment Confirmation & Summary
+            </div>
+            <span style="font-size: 11px; background: #e0f2fe; color: #003366; padding: 2px 8px; border-radius: 4px; font-weight: bold;">
+                Review Step
+            </span>
+        </div>
+
+        <div style="padding: 20px;">
+            <!-- Clinical Details Summary Box -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 16px; margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; font-size: 13px;">
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">PATIENT NAME</span>
+                        <strong style="color: #003366; font-size: 14px;">{{ patient.pt_name }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">HOSPITAL MR NO.</span>
+                        <strong style="color: #003366;">{{ patient.mr_no }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">DIAGNOSIS</span>
+                        <strong>{{ patient.diagnosis|default:"-" }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">SITE OF TREATMENT</span>
+                        <strong id="summary_site">-</strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">APPLICATOR TYPE</span>
+                        <strong id="summary_applicator" style="color: #0078d4;">-</strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">ANAESTHESIA TYPE</span>
+                        <strong id="summary_anesthesia">-</strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">TOTAL APPOINTMENTS</span>
+                        <strong id="summary_total_count" style="color: #166534; font-size: 14px;">-</strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">SUPERVISING AUTHORIZER</span>
+                        <span id="summary_authorizer" style="font-weight: 600;">Standard Authorization</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 12.5px;">
+                    <span style="color: #64748b; font-weight: 600; font-size: 11px;">REMARKS: </span>
+                    <span id="summary_remarks" style="font-style: italic; color: #475569;">None</span>
+                </div>
+            </div>
+
+            <!-- Chronologically Sorted Fractions Table -->
+            <h4 style="margin: 0 0 10px 0; color: #003366; font-size: 14px; font-weight: 800;">
+                📅 Chronologically Sorted Treatment Fractions
+            </h4>
+            <table class="access-table" style="width: 100%; margin-bottom: 24px;">
+                <thead>
+                    <tr style="background: #003366; color: #ffffff;">
+                        <th style="width: 120px; text-align: center;">Fraction</th>
+                        <th style="width: 180px; text-align: center;">Scheduled Date</th>
+                        <th style="width: 140px; text-align: center;">Day of Week</th>
+                        <th>Applicator / Session Details</th>
+                        <th style="width: 120px; text-align: center;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="summaryTableBody">
+                    <!-- Populated dynamically via JavaScript -->
+                </tbody>
+            </table>
+
+            <!-- Confirmation Action Buttons -->
+            <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+                <button type="button" onclick="backToCalendar()" class="btn" style="background: #f1f5f9; color: #003366; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                    ← Back to Calendar
+                </button>
+                <a href="{% url 'patient_detail' patient.id %}" class="btn" style="background: #ffffff; color: #b91c1c; border: 1px solid #cbd5e1; padding: 10px 18px; border-radius: 4px; font-size: 13px; font-weight: 600; text-decoration: none;">
+                    Cancel
+                </a>
+                <button type="button" id="confirmScheduleSubmitBtn" onclick="submitFinalBrachySchedule()" class="btn" style="background: #16a34a; color: #ffffff; border: none; padding: 10px 28px; border-radius: 4px; font-size: 14px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.15);">
+                    💾 Confirm & Book Brachytherapy Schedule
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Hover Tooltip Element -->
+<div id="brachyHoverTooltip" class="brachy-tooltip">
+    <div id="tt_patient" style="font-size: 13px; font-weight: 800; border-bottom: 1px solid #334155; padding-bottom: 4px; margin-bottom: 6px;"></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>MR No:</strong> <span id="tt_mr"></span> | <strong>RT:</strong> <span id="tt_rt"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Diagnosis:</strong> <span id="tt_dx"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Site:</strong> <span id="tt_site"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Applicator:</strong> <span id="tt_app"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Anaesthesia:</strong> <span id="tt_ana"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Scheduled:</strong> <span id="tt_date"></span> (<span id="tt_frac"></span>)</div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Status:</strong> <span id="tt_status"></span></div>
+    <div id="tt_remarks_row" style="font-size: 11px; margin-top: 4px; color: #94a3b8; font-style: italic;"></div>
+</div>
+
+<!-- Modal for All Appointments on a Day (+N more) -->
+<div id="dayApptsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 11000; justify-content: center; align-items: center;">
+    <div style="background: #ffffff; border-radius: 6px; width: 600px; max-width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+        <div style="background: #003366; color: #fff; padding: 12px 16px; font-weight: bold; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+            <span id="dayModalTitle">Scheduled Brachytherapy Appointments</span>
+            <button type="button" onclick="closeDayModal()" style="background: none; border: none; color: #fff; font-size: 18px; cursor: pointer;">&times;</button>
+        </div>
+        <div id="dayModalContent" style="padding: 16px;">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // State management for multi-date selection and calendar navigation
+    let gCurrentYear = {{ calendar.year }};
+    let gCurrentMonth = {{ calendar.month }};
+    let gSelectedDates = new Set(); // Stores ISO date strings: 'YYYY-MM-DD'
+    const gUserIsConsultant = {{ user_is_consultant|yesno:"true,false" }};
+    const gUserIsResident = {{ user_is_resident|yesno:"true,false" }};
+    const gExistingApptsCount = {{ existing_appts_count|default:0 }};
+    const gPatientId = {{ patient.id }};
+    let gCachedMonthData = {}; // Cache for monthly calendar API responses
+
+    const monthNames = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+    // Date Cell Click Handler (Multi-Date Selection)
+    function handleDateCellClick(dateIso) {
+        if (!dateIso) return;
+
+        if (gSelectedDates.has(dateIso)) {
+            // Deselect
+            gSelectedDates.delete(dateIso);
+        } else {
+            // Check resident limit (Max 4 appointments per course)
+            const projectedCount = gExistingApptsCount + gSelectedDates.size + 1;
+            if (gUserIsResident && projectedCount > 4) {
+                // Check if consultant authorization card is visible
+                const consultantSelect = document.getElementById('consultant_id');
+                if (!consultantSelect || !consultantSelect.value) {
+                    document.getElementById('consultantAuthCard').style.display = 'block';
+                    alert("Maximum of four brachytherapy appointments permitted. Additional appointments require consultant authorization.");
+                }
+            }
+            gSelectedDates.add(dateIso);
+        }
+
+        refreshSelectedDateHighlights();
+        updateSelectedChips();
+    }
+
+    // Refresh UI highlights on the calendar grid based on gSelectedDates
+    function refreshSelectedDateHighlights() {
+        const sortedSelected = Array.from(gSelectedDates).sort();
+        const dateToIndex = {};
+        sortedSelected.forEach((d, idx) => {
+            dateToIndex[d] = idx + 1;
+        });
+
+        document.querySelectorAll('td.selectable-date').forEach(td => {
+            const dateIso = td.getAttribute('data-date');
+            const badge = document.getElementById('badge_' + dateIso);
+            if (gSelectedDates.has(dateIso)) {
+                td.classList.add('is-selected');
+                if (badge) {
+                    badge.style.display = 'inline-block';
+                    badge.textContent = 'Fr ' + (gExistingApptsCount + dateToIndex[dateIso]);
+                }
+            } else {
+                td.classList.remove('is-selected');
+                if (badge) {
+                    badge.style.display = 'none';
+                }
+            }
+        });
+
+        // Show/hide consultant auth card
+        const total = gExistingApptsCount + gSelectedDates.size;
+        const authCard = document.getElementById('consultantAuthCard');
+        if (gUserIsResident && total > 4) {
+            authCard.style.display = 'block';
+        } else if (!gUserIsResident || total <= 4) {
+            authCard.style.display = 'none';
+        }
+    }
+
+    // Update the chips strip below the calendar
+    function updateSelectedChips() {
+        const countDisplay = document.getElementById('selectedCountDisplay');
+        const container = document.getElementById('selectedChipsContainer');
+        countDisplay.textContent = gSelectedDates.size;
+
+        if (gSelectedDates.size === 0) {
+            container.innerHTML = '<span style="color: #94a3b8; font-size: 12px; font-style: italic;">No dates selected. Click on dates in the calendar to schedule fractions.</span>';
+            return;
+        }
+
+        const sortedDates = Array.from(gSelectedDates).sort();
+        let html = '';
+        sortedDates.forEach((dStr, idx) => {
+            const parts = dStr.split('-');
+            const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            const dFormatted = ("0" + dObj.getDate()).slice(-2) + "-" + monthNames[dObj.getMonth() + 1].slice(0, 3) + "-" + dObj.getFullYear();
+            const frNum = gExistingApptsCount + idx + 1;
+
+            html += `<span class="date-chip">
+                <span>Fr ${frNum}: ${dFormatted}</span>
+                <button type="button" onclick="event.stopPropagation(); removeSelectedDate('${dStr}')" title="Remove fraction">&times;</button>
+            </span>`;
+        });
+        container.innerHTML = html;
+    }
+
+    function removeSelectedDate(dateIso) {
+        gSelectedDates.delete(dateIso);
+        refreshSelectedDateHighlights();
+        updateSelectedChips();
+    }
+
+    function clearSelectedDates() {
+        if (gSelectedDates.size === 0) return;
+        if (confirm("Clear all selected appointment dates?")) {
+            gSelectedDates.clear();
+            refreshSelectedDateHighlights();
+            updateSelectedChips();
+        }
+    }
+
+    // Dynamic AJAX Month Navigation
+    function navigateCalendarMonth(delta) {
+        let newMonth = gCurrentMonth + delta;
+        let newYear = gCurrentYear;
+        if (newMonth < 1) {
+            newMonth = 12;
+            newYear -= 1;
+        } else if (newMonth > 12) {
+            newMonth = 1;
+            newYear += 1;
+        }
+        loadCalendarMonth(newYear, newMonth);
+    }
+
+    function goToTodayMonth() {
+        const today = new Date();
+        loadCalendarMonth(today.getFullYear(), today.getMonth() + 1);
+    }
+
+    function jumpToMonthYear() {
+        const m = parseInt(document.getElementById('jumpMonthSelect').value);
+        const y = parseInt(document.getElementById('jumpYearSelect').value);
+        loadCalendarMonth(y, m);
+    }
+
+    function loadCalendarMonth(year, month) {
+        gCurrentYear = year;
+        gCurrentMonth = month;
+        document.getElementById('jumpMonthSelect').value = month;
+        document.getElementById('jumpYearSelect').value = year;
+        document.getElementById('plannerMonthYearHeading').textContent = `[${monthNames[month].toUpperCase()}] [${year}]`;
+
+        const cacheKey = `${year}_${month}`;
+        if (gCachedMonthData[cacheKey]) {
+            renderCalendarGrid(gCachedMonthData[cacheKey]);
+            return;
+        }
+
+        fetch(`{% url 'brachy_calendar_month_api' %}?year=${year}&month=${month}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.calendar) {
+                    gCachedMonthData[cacheKey] = data.calendar;
+                    renderCalendarGrid(data.calendar);
+                }
+            })
+            .catch(err => console.error("Error loading calendar month:", err));
+    }
+
+    function renderCalendarGrid(calData) {
+        const tbody = document.getElementById('calendarGridBody');
+        let html = '';
+
+        calData.weeks.forEach(week => {
+            html += '<tr>';
+            week.forEach(day => {
+                const otherMonthClass = day.is_current_month ? '' : 'other-month';
+                const todayClass = day.is_today ? 'is-today' : '';
+                const pastClass = day.is_past ? 'is-past' : '';
+
+                html += `<td class="selectable-date ${otherMonthClass} ${todayClass} ${pastClass}"
+                             data-date="${day.date_iso}"
+                             onclick="handleDateCellClick('${day.date_iso}')">
+                    <div class="date-box-header">
+                        <span class="day-number-bracket">[ ${day.day} ]</span>
+                        <span class="selected-fraction-badge" id="badge_${day.date_iso}" style="display: none;"></span>
+                    </div>
+                    <div class="day-appointments-list" id="appts_${day.date_iso}">`;
+
+                const apptsToShow = (day.appointments || []).slice(0, 3);
+                apptsToShow.forEach(appt => {
+                    html += `<div class="appt-pill"
+                                  style="background: ${appt.color}; color: ${appt.text_color};"
+                                  onmouseenter="showApptTooltip(event, this)"
+                                  onmouseleave="hideApptTooltip()"
+                                  onclick="event.stopPropagation(); showApptModal(this);"
+                                  data-patient-name="${escapeHtml(appt.patient_name)}"
+                                  data-age-sex="${escapeHtml(appt.age_sex)}"
+                                  data-mr-no="${appt.mr_no}"
+                                  data-rt-no="${escapeHtml(appt.rt_no)}"
+                                  data-diagnosis="${escapeHtml(appt.diagnosis)}"
+                                  data-site="${escapeHtml(appt.site)}"
+                                  data-applicator="${escapeHtml(appt.applicator)}"
+                                  data-anesthesia="${escapeHtml(appt.anesthesia)}"
+                                  data-fraction="${appt.fraction}"
+                                  data-date="${appt.date}"
+                                  data-status="${appt.status}"
+                                  data-remarks="${escapeHtml(appt.remarks)}">
+                                  ${escapeHtml(appt.patient_name)} | MR${appt.mr_no} | ${escapeHtml(appt.diagnosis)}
+                             </div>`;
+                });
+
+                if (day.appointments && day.appointments.length > 3) {
+                    const extra = day.appointments.length - 3;
+                    html += `<div class="more-appts-pill" onclick="event.stopPropagation(); showDayAllApptsModal('${day.date_iso}');">
+                        +${extra} more...
+                    </div>`;
+                }
+
+                html += `</div></td>`;
+            });
+            html += '</tr>';
+        });
+
+        tbody.innerHTML = html;
+        refreshSelectedDateHighlights();
+    }
+
+    // Tooltip display
+    const tooltipElem = document.getElementById('brachyHoverTooltip');
+
+    function showApptTooltip(e, el) {
+        document.getElementById('tt_patient').textContent = el.dataset.patientName + " (" + el.dataset.ageSex + ")";
+        document.getElementById('tt_mr').textContent = el.dataset.mrNo;
+        document.getElementById('tt_rt').textContent = el.dataset.rtNo || '-';
+        document.getElementById('tt_dx').textContent = el.dataset.diagnosis || '-';
+        document.getElementById('tt_site').textContent = el.dataset.site || '-';
+        document.getElementById('tt_app').textContent = el.dataset.applicator;
+        document.getElementById('tt_ana').textContent = el.dataset.anesthesia;
+        document.getElementById('tt_date').textContent = el.dataset.date;
+        document.getElementById('tt_frac').textContent = 'Fraction ' + el.dataset.fraction;
+        document.getElementById('tt_status').textContent = el.dataset.status;
+
+        const remarksRow = document.getElementById('tt_remarks_row');
+        if (el.dataset.remarks) {
+            remarksRow.textContent = "Notes: " + el.dataset.remarks;
+            remarksRow.style.display = 'block';
+        } else {
+            remarksRow.style.display = 'none';
+        }
+
+        const rect = el.getBoundingClientRect();
+        tooltipElem.style.left = (window.scrollX + rect.left) + 'px';
+        tooltipElem.style.top = (window.scrollY + rect.bottom + 5) + 'px';
+        tooltipElem.style.display = 'block';
+    }
+
+    function hideApptTooltip() {
+        tooltipElem.style.display = 'none';
+    }
+
+    function showApptModal(el) {
+        showApptTooltip({ clientX: 0, clientY: 0 }, el);
+    }
+
+    function showDayAllApptsModal(dateIso) {
+        const cacheKey = `${gCurrentYear}_${gCurrentMonth}`;
+        const cal = gCachedMonthData[cacheKey];
+        let dayObj = null;
+        if (cal) {
+            cal.weeks.forEach(w => {
+                w.forEach(d => {
+                    if (d.date_iso === dateIso) dayObj = d;
+                });
+            });
+        }
+        if (!dayObj || !dayObj.appointments) return;
+
+        document.getElementById('dayModalTitle').textContent = `Brachytherapy Schedule - ${dayObj.date_formatted} (${dayObj.appointments.length} patients)`;
+        let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+        dayObj.appointments.forEach(a => {
+            html += `<div style="border-left: 4px solid ${a.color}; background: #f8fafc; padding: 10px 14px; border-radius: 4px; border: 1px solid #e2e8f0; border-left-width: 4px;">
+                <div style="font-weight: bold; color: #003366; font-size: 13px;">${escapeHtml(a.patient_name)} (${escapeHtml(a.age_sex)})</div>
+                <div style="font-size: 11.5px; color: #475569; margin-top: 2px;">
+                    MR: <strong>${a.mr_no}</strong> | RT: <strong>${a.rt_no || '-'}</strong> | Fraction: <strong>${a.fraction}</strong>
+                </div>
+                <div style="font-size: 11.5px; color: #1e293b; margin-top: 4px;">
+                    Diagnosis: <strong>${escapeHtml(a.diagnosis)}</strong> | Site: <strong>${escapeHtml(a.site)}</strong>
+                </div>
+                <div style="font-size: 11.5px; color: #1e293b; margin-top: 2px;">
+                    Applicator: <span style="background: ${a.color}; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: bold; font-size: 10px;">${escapeHtml(a.applicator)}</span> | Anaesthesia: <strong>${escapeHtml(a.anesthesia)}</strong>
+                </div>
+                ${a.remarks ? `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 4px;">Notes: ${escapeHtml(a.remarks)}</div>` : ''}
+            </div>`;
+        });
+        html += '</div>';
+        document.getElementById('dayModalContent').innerHTML = html;
+        document.getElementById('dayApptsModal').style.display = 'flex';
+    }
+
+    function closeDayModal() {
+        document.getElementById('dayApptsModal').style.display = 'none';
+    }
+
+    // Confirmation Screen Workflow (Done Button)
+    function goToConfirmationScreen() {
+        if (gSelectedDates.size === 0) {
+            alert("Please select at least one appointment date from the visual calendar.");
+            return;
+        }
+
+        const applicatorSelect = document.getElementById('form_applicator_id');
+        const anesthesiaSelect = document.getElementById('form_anesthesia_id');
+        const siteInput = document.getElementById('form_site_of_treatment');
+        const remarksInput = document.getElementById('form_remarks');
+
+        if (!applicatorSelect.value) {
+            alert("Applicator Type Planned is mandatory.");
+            applicatorSelect.focus();
+            return;
+        }
+
+        if (!anesthesiaSelect.value) {
+            alert("Anaesthesia Details are mandatory.");
+            anesthesiaSelect.focus();
+            return;
+        }
+
+        if (!siteInput.value.trim()) {
+            alert("Site of Treatment is mandatory.");
+            siteInput.focus();
+            return;
+        }
+
+        // Validate max 4 appointments rule
+        const total = gExistingApptsCount + gSelectedDates.size;
+        let authorizerText = "Standard Authorization";
+        if (total > 4) {
+            if (gUserIsConsultant) {
+                authorizerText = "{{ current_user_name|default:'Consultant' }} (Consultant Override)";
+            } else {
+                const consultantSelect = document.getElementById('consultant_id');
+                if (!consultantSelect || !consultantSelect.value) {
+                    alert("Maximum of four brachytherapy appointments permitted. Additional appointments require consultant authorization.");
+                    document.getElementById('consultantAuthCard').style.display = 'block';
+                    consultantSelect.focus();
+                    return;
+                }
+                authorizerText = consultantSelect.options[consultantSelect.selectedIndex].text;
+            }
+        }
+
+        // Fill Confirmation Summary fields
+        document.getElementById('summary_site').textContent = siteInput.value.trim();
+        document.getElementById('summary_applicator').textContent = applicatorSelect.options[applicatorSelect.selectedIndex].text;
+        document.getElementById('summary_anesthesia').textContent = anesthesiaSelect.options[anesthesiaSelect.selectedIndex].text;
+        document.getElementById('summary_total_count').textContent = `${total} fraction${total > 1 ? 's' : ''} (${gExistingApptsCount} existing + ${gSelectedDates.size} new)`;
+        document.getElementById('summary_authorizer').textContent = authorizerText;
+        document.getElementById('summary_remarks').textContent = remarksInput.value.trim() || 'None';
+
+        // Populate chronologically sorted table
+        const tbody = document.getElementById('summaryTableBody');
+        let html = '';
+
+        // Existing appointments if any
+        {% for ea in existing_appts %}
+            html += `<tr style="background: #f8fafc; color: #64748b;">
+                <td style="text-align: center; font-weight: bold;">Fraction {{ ea.fraction_number }}</td>
+                <td style="text-align: center; font-weight: bold;">{{ ea.appointment_date|date:'d/m/Y' }}</td>
+                <td style="text-align: center;">{{ ea.appointment_date|date:'l' }}</td>
+                <td>{{ ea.applicator_type.name|default:"Brachytherapy" }} (Already Scheduled)</td>
+                <td style="text-align: center;"><span style="color: #107c41; font-weight: bold;">✓ Booked</span></td>
+            </tr>`;
+        {% endfor %}
+
+        // Newly selected dates sorted chronologically
+        const sortedDates = Array.from(gSelectedDates).sort();
+        sortedDates.forEach((dStr, idx) => {
+            const parts = dStr.split('-');
+            const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            const dFormatted = ("0" + dObj.getDate()).slice(-2) + "/" + ("0" + (dObj.getMonth() + 1)).slice(-2) + "/" + dObj.getFullYear();
+            const dayOfWeek = dayNames[dObj.getDay()];
+            const fracNum = gExistingApptsCount + idx + 1;
+
+            html += `<tr style="background: #ffffff;">
+                <td style="text-align: center; font-weight: bold; color: #003366;">Fraction ${fracNum}</td>
+                <td style="text-align: center; font-weight: 800; color: #003366;">${dFormatted}</td>
+                <td style="text-align: center; font-weight: 600;">${dayOfWeek}</td>
+                <td>${escapeHtml(applicatorSelect.options[applicatorSelect.selectedIndex].text)} (New Booking)</td>
+                <td style="text-align: center;"><span style="background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 11px;">Pending</span></td>
+            </tr>`;
+        });
+
+        tbody.innerHTML = html;
+
+        // Switch to Confirmation Screen
+        document.getElementById('schedulingMainPanel').style.display = 'none';
+        document.getElementById('confirmationScreen').style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Back to Calendar (Preserves all selections)
+    function backToCalendar() {
+        document.getElementById('confirmationScreen').style.display = 'none';
+        document.getElementById('schedulingMainPanel').style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Submit Final Schedule to Backend
+    function submitFinalBrachySchedule() {
+        const btn = document.getElementById('confirmScheduleSubmitBtn');
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Booking Appointments...';
+
+        const payload = {
+            selected_dates: Array.from(gSelectedDates).sort(),
+            applicator_id: document.getElementById('form_applicator_id').value,
+            anesthesia_id: document.getElementById('form_anesthesia_id').value,
+            site_of_treatment: document.getElementById('form_site_of_treatment').value.trim(),
+            remarks: document.getElementById('form_remarks').value.trim(),
+            consultant_id: document.getElementById('consultant_id') ? document.getElementById('consultant_id').value : '',
+            consultant_password: document.getElementById('consultant_password') ? document.getElementById('consultant_password').value : '',
+        };
+
+        fetch("{% url 'brachy_schedule_patient' patient.id %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message || "Brachytherapy appointments scheduled successfully!");
+                window.location.href = data.redirect_url || "{% url 'patient_detail' patient.id %}";
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '💾 Confirm & Book Brachytherapy Schedule';
+                alert("Error: " + (data.error || "Failed to save schedule."));
+                if (data.requires_authorization) {
+                    backToCalendar();
+                    document.getElementById('consultantAuthCard').style.display = 'block';
+                    document.getElementById('consultant_id')?.focus();
+                }
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '💾 Confirm & Book Brachytherapy Schedule';
+            console.error("Submission error:", err);
+            alert("Network or server error while booking appointments.");
+        });
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+</script>
+{% endblock %}

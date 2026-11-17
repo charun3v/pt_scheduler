@@ -4,6 +4,9 @@ from apps.reports import views as report_views
 
 urlpatterns = [
     path('patient/<int:patient_id>/', views.schedule_patient_view, name='schedule_patient'),
+    path('patient/<int:patient_id>/brachytherapy/', views.brachy_schedule_patient_view, name='brachy_schedule_patient'),
+    path('brachytherapy/calendar/', views.brachy_calendar_view, name='brachy_calendar'),
+    path('brachytherapy/api/month/', views.brachy_calendar_month_api, name='brachy_calendar_month_api'),
     path('schedule/<int:schedule_id>/delete/', views.schedule_delete_view, name='schedule_delete'),
     path('course/<int:schedule_id>/tag/', views.tag_treatment_course_view, name='tag_treatment_course'),
     path('course/<int:schedule_id>/emergency-slot/', views.emergency_slot_view, name='emergency_slot_view'),

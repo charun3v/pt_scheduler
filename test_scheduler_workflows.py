@@ -19,7 +19,8 @@ from apps.core.models import Role, UserProfile, Consultant, FieldValidationConfi
 from apps.core.validators import get_or_create_field_config, validate_field_value
 from apps.patients.models import Patient
 from apps.scheduler.models import (
-    Machine, Shift, Technique, SpecialTechnique, TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday
+    Machine, Shift, Technique, SpecialTechnique, TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday,
+    BrachyApplicator, BrachyAnesthesia, BrachytherapyAppointment
 )
 from apps.core.permissions import (
     can_edit_locked_identity,
@@ -2750,6 +2751,197 @@ def run_tests():
         assert list(SpecialTechnique.objects.all().order_by('display_order', 'id').values_list('id', flat=True)) == orig_sp_ids
 
     print("✓ Test 31 Passed: Dynamic drag-and-drop reordering, sequential display_order updates, and access controls verified across all reference lookups.")
+
+    # --- Test 32: Brachytherapy Scheduler & Visual Monthly Calendar ---
+    print("\n--- Test 32: Brachytherapy Scheduler & Visual Monthly Calendar ---")
+    # 1. Reference lookups verification
+    assert BrachyApplicator.objects.count() >= 5
+    assert BrachyAnesthesia.objects.count() >= 4
+    app_ic = BrachyApplicator.objects.filter(name__icontains='Intracavitary').first()
+    ana_spinal = BrachyAnesthesia.objects.filter(name__icontains='Spinal').first()
+    assert app_ic is not None
+    assert ana_spinal is not None
+
+    # Admin access to reference lookups
+    c.force_login(admin_user)
+    resp_app_lookup = c.get('/lookups/brachy_applicator/')
+    assert resp_app_lookup.status_code == 200
+    assert 'Brachytherapy Applicators' in resp_app_lookup.content.decode('utf-8')
+
+    resp_ana_lookup = c.get('/lookups/brachy_anesthesia/')
+    assert resp_ana_lookup.status_code == 200
+    assert 'Brachytherapy Anaesthesia' in resp_ana_lookup.content.decode('utf-8')
+
+    # 2. Patient registration & Brachytherapy Screen
+    test_brachy_mr = 9999120
+    Patient.objects.filter(mr_no=test_brachy_mr).delete()
+    cons_1 = Consultant.objects.filter(is_active=True).first()
+    brachy_pt = Patient.objects.create(
+        mr_no=test_brachy_mr,
+        pt_name='LAKSHMI DEVI',
+        age=52,
+        sex='F',
+        diagnosis='Ca Cervix Stage IIB',
+        site_of_treatment='Cervix',
+        rt_no='RT-BRACHY-01',
+        phone_no='9888877777',
+        primary_consultant=cons_1,
+        created_by=admin_user
+    )
+
+    # Teletherapy view provides link/transition to Brachytherapy
+    resp_tele = c.get(f'/scheduler/patient/{brachy_pt.id}/')
+    assert resp_tele.status_code == 200
+    assert 'Open Brachytherapy Scheduler &amp; Visual Calendar' in resp_tele.content.decode('utf-8') or 'Open Brachytherapy Scheduler & Visual Calendar' in resp_tele.content.decode('utf-8')
+
+    # Brachytherapy details & scheduling screen
+    resp_brachy_screen = c.get(f'/scheduler/patient/{brachy_pt.id}/brachytherapy/')
+    assert resp_brachy_screen.status_code == 200
+    screen_html = resp_brachy_screen.content.decode('utf-8')
+    assert 'LAKSHMI DEVI' in screen_html
+    assert '9999120' in screen_html
+    assert 'Ca Cervix Stage IIB' in screen_html
+    assert 'RT-BRACHY-01' in screen_html
+    assert '9888877777' in screen_html
+    assert 'Applicator Type Planned' in screen_html
+    assert 'Anaesthesia Details' in screen_html
+    assert 'MONTHLY SCHEDULE PLANNER' in screen_html
+    assert 'MON' in screen_html and 'SUN' in screen_html
+
+    # 3. Multiple-Date Selection & 4-Appointment Restriction for Residents
+    # Resident user login
+    c.force_login(res_user)
+
+    # Attempt to schedule 5 appointments directly as Resident -> Blocked (400 or 403)
+    five_dates = ['2026-11-18', '2026-11-20', '2026-11-24', '2026-11-27', '2026-12-01']
+    resp_blocked = c.post(
+        f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
+        json.dumps({
+            'selected_dates': five_dates,
+            'applicator_id': app_ic.id,
+            'anesthesia_id': ana_spinal.id,
+            'site_of_treatment': 'Cervix',
+            'remarks': 'Test resident 5 dates',
+        }),
+        content_type='application/json'
+    )
+    assert resp_blocked.status_code in [400, 403]
+    blocked_json = resp_blocked.json()
+    assert blocked_json['success'] is False
+    assert 'Maximum of four brachytherapy appointments permitted' in blocked_json['error']
+
+    # Resident schedules 3 dates -> Allowed!
+    three_dates_unordered = ['2026-11-27', '2026-11-20', '2026-11-24']
+    resp_allowed = c.post(
+        f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
+        json.dumps({
+            'selected_dates': three_dates_unordered,
+            'applicator_id': app_ic.id,
+            'anesthesia_id': ana_spinal.id,
+            'site_of_treatment': 'Cervix',
+            'remarks': 'First three fractions',
+        }),
+        content_type='application/json'
+    )
+    assert resp_allowed.status_code == 200
+    assert resp_allowed.json()['success'] is True
+
+    # Verify appointments in DB sorted chronologically
+    appts_created = list(BrachytherapyAppointment.objects.filter(patient=brachy_pt).order_by('fraction_number'))
+    assert len(appts_created) == 3
+    assert appts_created[0].fraction_number == 1
+    assert appts_created[0].appointment_date == date(2026, 11, 20)
+    assert appts_created[1].fraction_number == 2
+    assert appts_created[1].appointment_date == date(2026, 11, 24)
+    assert appts_created[2].fraction_number == 3
+    assert appts_created[2].appointment_date == date(2026, 11, 27)
+
+    # Verify TreatmentSchedule course
+    brachy_sched = TreatmentSchedule.objects.get(patient=brachy_pt, treatment_type='Brachytherapy')
+    assert brachy_sched.date_of_start == date(2026, 11, 20)
+    assert brachy_sched.date_of_end == date(2026, 11, 27)
+    assert brachy_sched.no_of_fractions == 3
+
+    # Resident attempts to add 2 more dates (3 existing + 2 = 5 total) without authorization -> Blocked
+    two_dates = ['2026-12-01', '2026-12-04']
+    resp_blocked_more = c.post(
+        f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
+        json.dumps({
+            'selected_dates': two_dates,
+            'applicator_id': app_ic.id,
+            'anesthesia_id': ana_spinal.id,
+            'site_of_treatment': 'Cervix',
+        }),
+        content_type='application/json'
+    )
+    assert resp_blocked_more.status_code in [400, 403]
+    assert 'Maximum of four brachytherapy appointments permitted' in resp_blocked_more.json()['error']
+
+    # Resident adds 2 more dates WITH consultant supervisor authorization -> Approved!
+    resp_auth = c.post(
+        f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
+        json.dumps({
+            'selected_dates': two_dates,
+            'applicator_id': app_ic.id,
+            'anesthesia_id': ana_spinal.id,
+            'site_of_treatment': 'Cervix',
+            'consultant_id': admin_user.id,
+            'remarks': 'Clinically authorized extension to 5 fractions',
+        }),
+        content_type='application/json'
+    )
+    assert resp_auth.status_code == 200
+    assert resp_auth.json()['success'] is True
+    all_appts = list(BrachytherapyAppointment.objects.filter(patient=brachy_pt).order_by('fraction_number'))
+    assert len(all_appts) == 5
+    assert all_appts[3].fraction_number == 4
+    assert all_appts[3].is_consultant_authorized is True
+    assert all_appts[3].authorized_by == admin_user
+    assert all_appts[4].fraction_number == 5
+
+    # 4. Duplicate date validation
+    resp_dup = c.post(
+        f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
+        json.dumps({
+            'selected_dates': ['2026-11-20'],  # already scheduled!
+            'applicator_id': app_ic.id,
+            'anesthesia_id': ana_spinal.id,
+            'site_of_treatment': 'Cervix',
+        }),
+        content_type='application/json'
+    )
+    assert resp_dup.status_code == 400
+    assert 'Duplicate appointment date detected' in resp_dup.json()['error']
+
+    # 5. Visual Monthly Calendar API & Standalone Calendar View
+    c.force_login(admin_user)
+    resp_cal_api = c.get('/scheduler/brachytherapy/api/month/?year=2026&month=11')
+    assert resp_cal_api.status_code == 200
+    cal_json = resp_cal_api.json()
+    assert cal_json['success'] is True
+    assert cal_json['calendar']['year'] == 2026
+    assert cal_json['calendar']['month'] == 11
+    # Check that Lakshmi is in the appointments
+    found_in_cal = False
+    for week in cal_json['calendar']['weeks']:
+        for d in week:
+            for a in d.get('appointments', []):
+                if a['mr_no'] == test_brachy_mr:
+                    found_in_cal = True
+                    assert 'Lakshmi' in a['patient_name'] or 'LAKSHMI' in a['patient_name']
+                    assert a['color'] == app_ic.color_code
+    assert found_in_cal, "Scheduled patient appointments must appear in monthly calendar data"
+
+    # Standalone calendar view
+    resp_stand = c.get('/scheduler/brachytherapy/calendar/')
+    assert resp_stand.status_code == 200
+    stand_html = resp_stand.content.decode('utf-8')
+    assert 'Departmental Brachytherapy Schedule Planner' in stand_html
+    assert 'LAKSHMI DEVI' in stand_html
+
+    # Clean up test records
+    brachy_pt.delete()
+    print("✓ Test 32 Passed: Brachytherapy multi-fraction scheduling, visual monthly planner, 4-appointment restriction, consultant authorization, and calendar API fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

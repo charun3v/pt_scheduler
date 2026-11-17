@@ -72,6 +72,7 @@
         <a href="{% url 'pending_starts_report' %}" class="action-ribbon-btn">📋 Start Dates Pending</a>
         {% endif %}
         <a href="{% url 'machine_daily_list' %}" class="action-ribbon-btn">⚡ Machine Schedules</a>
+        <a href="{% url 'brachy_calendar' %}" class="action-ribbon-btn" style="background: #eef2ff; color: #3730a3; border-color: #c7d2fe; font-weight: bold;">☢️ Brachy Calendar</a>
         {% if IS_ADMIN_ONLY %}
         <a href="{% url 'consultant_stats' %}" class="action-ribbon-btn">📊 Consultant Stats</a>
         <a href="{% url 'unit_stats' %}" class="action-ribbon-btn">🏥 Unit Stats</a>
