@@ -42,6 +42,30 @@
         max-width: 90%;
         box-shadow: 0 4px 15px rgba(0,0,0,0.25);
     }
+    .sortable-row {
+        cursor: grab;
+        transition: background-color 0.15s ease;
+    }
+    .sortable-row:active {
+        cursor: grabbing;
+    }
+    .sortable-row.is-dragging {
+        opacity: 0.45;
+        background: #e0f2fe !important;
+        outline: 2px dashed #003366;
+    }
+    .sortable-row.drag-over-top {
+        border-top: 3px solid #0078d4 !important;
+    }
+    .sortable-row.drag-over-bottom {
+        border-bottom: 3px solid #0078d4 !important;
+    }
+    .drag-handle {
+        cursor: grab;
+    }
+    .drag-handle:active {
+        cursor: grabbing;
+    }
 </style>
 {% endblock %}
 
@@ -175,19 +199,25 @@
                 </fieldset>
 
                 <!-- Existing Options Table -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-weight: bold; font-size: 12px; color: #003366;">
-                        Current Options in Database ({{ items|length }} total):
-                    </span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: bold; font-size: 12px; color: #003366;">
+                            Current Options in Database ({{ items|length }} total):
+                        </span>
+                        <span style="font-size: 11px; background: #e0f2fe; color: #0284c7; padding: 2px 8px; border-radius: 10px; border: 1px solid #bae6fd; display: inline-flex; align-items: center; gap: 4px;" title="Click and drag any row to dynamically reorder entries">
+                            <span>↕️</span> Click & drag rows to reorder
+                        </span>
+                        <span id="reorderStatus" style="display: none; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: bold;"></span>
+                    </div>
                     <span style="font-size: 11px; color: #666;">
                         Options marked active appear immediately in clinical & scheduling dropdowns.
                     </span>
                 </div>
 
-                <table class="access-table">
+                <table class="access-table" id="lookupSortableTable">
                     <thead>
                         <tr>
-                            <th style="width: 55px; text-align: center;">Order</th>
+                            <th style="width: 70px; text-align: center;" title="Order in dropdowns (Click and drag to reorder)">Order ↕</th>
                             <th>{{ cfg.name_label }}</th>
                             {% if cfg.secondary_field %}
                                 <th style="width: 120px;">{{ cfg.secondary_label }}</th>
@@ -200,10 +230,16 @@
                             <th style="width: 160px; text-align: center;">Actions</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="lookupTableBody">
                         {% for item in items %}
-                            <tr {% if item.is_default %}style="background: #f1f8e9;"{% elif not item.is_active %}style="background: #fdf2f2; opacity: 0.85;"{% endif %}>
-                                <td style="text-align: center; font-weight: bold;">{{ item.display_order }}</td>
+                            <tr data-pk="{{ item.pk }}"
+                                class="sortable-row"
+                                draggable="true"
+                                {% if item.is_default %}style="background: #f1f8e9;"{% elif not item.is_active %}style="background: #fdf2f2; opacity: 0.85;"{% endif %}>
+                                <td class="drag-handle" style="text-align: center; font-weight: bold; cursor: grab; user-select: none; white-space: nowrap;" title="Click and drag to reorder">
+                                    <span style="color: #94a3b8; font-size: 13px; margin-right: 4px; pointer-events: none;">⋮⋮</span>
+                                    <span class="order-badge" style="background: #f1f5f9; color: #003366; padding: 2px 6px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 11px; display: inline-block; min-width: 18px; text-align: center;">{{ item.display_order }}</span>
+                                </td>
                                 <td>
                                     <strong>{{ item.name }}</strong>
                                 </td>
@@ -365,6 +401,140 @@
         if (e.target === this) {
             closeEditModal();
         }
+    });
+
+    // Dynamic Click-and-Drag Table Row Reordering
+    document.addEventListener('DOMContentLoaded', function() {
+        const tbody = document.getElementById('lookupTableBody');
+        if (!tbody) return;
+
+        const reorderStatus = document.getElementById('reorderStatus');
+        let draggedRow = null;
+
+        function updateOrderNumbers() {
+            const currentRows = tbody.querySelectorAll('tr.sortable-row');
+            currentRows.forEach((row, index) => {
+                const badge = row.querySelector('.order-badge');
+                if (badge) {
+                    badge.textContent = index + 1;
+                }
+            });
+        }
+
+        function clearDragIndicators() {
+            tbody.querySelectorAll('tr.sortable-row').forEach(r => {
+                r.classList.remove('drag-over-top', 'drag-over-bottom');
+            });
+        }
+
+        function saveNewOrder() {
+            const currentRows = Array.from(tbody.querySelectorAll('tr.sortable-row'));
+            const itemIds = currentRows.map(r => r.getAttribute('data-pk')).filter(Boolean);
+            if (!itemIds.length) return;
+
+            if (reorderStatus) {
+                reorderStatus.style.display = 'inline-block';
+                reorderStatus.style.background = '#e0f2fe';
+                reorderStatus.style.color = '#0369a1';
+                reorderStatus.style.border = '1px solid #bae6fd';
+                reorderStatus.innerHTML = '⏳ Saving order...';
+            }
+
+            fetch("{% url 'lookup_reorder' category %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ item_ids: itemIds })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('HTTP status ' + response.status);
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    if (reorderStatus) {
+                        reorderStatus.style.background = '#dcfce7';
+                        reorderStatus.style.color = '#166534';
+                        reorderStatus.style.border = '1px solid #bbf7d0';
+                        reorderStatus.innerHTML = '✓ Order saved dynamically!';
+                        setTimeout(() => {
+                            reorderStatus.style.display = 'none';
+                        }, 2500);
+                    }
+                } else {
+                    throw new Error(data.error || 'Server rejected reordering');
+                }
+            })
+            .catch(err => {
+                if (reorderStatus) {
+                    reorderStatus.style.background = '#fee2e2';
+                    reorderStatus.style.color = '#991b1b';
+                    reorderStatus.style.border = '1px solid #fecaca';
+                    reorderStatus.innerHTML = '⚠️ Failed to save order';
+                }
+                console.error('Reorder error:', err);
+            });
+        }
+
+        function setupRowEvents(row) {
+            row.addEventListener('dragstart', function(e) {
+                if (e.target.closest('button, a, input, select')) {
+                    e.preventDefault();
+                    return false;
+                }
+                draggedRow = this;
+                this.classList.add('is-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', this.dataset.pk || '');
+            });
+
+            row.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (!draggedRow || draggedRow === this) return;
+
+                const rect = this.getBoundingClientRect();
+                const offset = e.clientY - rect.top;
+                const isUpper = offset < (rect.height / 2);
+
+                this.classList.toggle('drag-over-top', isUpper);
+                this.classList.toggle('drag-over-bottom', !isUpper);
+            });
+
+            row.addEventListener('dragleave', function() {
+                this.classList.remove('drag-over-top', 'drag-over-bottom');
+            });
+
+            row.addEventListener('drop', function(e) {
+                e.preventDefault();
+                clearDragIndicators();
+
+                if (!draggedRow || draggedRow === this) return;
+
+                const rect = this.getBoundingClientRect();
+                const offset = e.clientY - rect.top;
+                const isUpper = offset < (rect.height / 2);
+
+                if (isUpper) {
+                    tbody.insertBefore(draggedRow, this);
+                } else {
+                    tbody.insertBefore(draggedRow, this.nextSibling);
+                }
+
+                updateOrderNumbers();
+                saveNewOrder();
+            });
+
+            row.addEventListener('dragend', function() {
+                this.classList.remove('is-dragging');
+                clearDragIndicators();
+                draggedRow = null;
+            });
+        }
+
+        tbody.querySelectorAll('tr.sortable-row').forEach(setupRowEvents);
     });
 </script>
 {% endblock %}

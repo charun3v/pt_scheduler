@@ -24,5 +24,6 @@ urlpatterns = [
     path('lookups/<str:category>/toggle/<int:item_id>/', views.lookup_toggle_active_view, name='lookup_toggle_active'),
     path('lookups/<str:category>/default/<int:item_id>/', views.lookup_set_default_view, name='lookup_set_default'),
     path('lookups/<str:category>/quick-default/', views.lookup_quick_default_view, name='lookup_quick_default'),
+    path('lookups/<str:category>/reorder/', views.lookup_reorder_view, name='lookup_reorder'),
     path('lookups/<str:category>/clear-default/', views.lookup_clear_default_view, name='lookup_clear_default'),
 ]

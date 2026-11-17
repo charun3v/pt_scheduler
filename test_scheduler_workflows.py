@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import django
 
@@ -2669,6 +2670,86 @@ def run_tests():
     # Clean up test role
     auditor_role.delete()
     print("✓ Test 30 Passed: Role & Access Rights Management dashboard, granular permissions editing, queue view guards, and Admin safety locks verified.")
+
+    # --- Test 31: Dynamic Drag-and-Drop Reordering for Reference Lookups ---
+    print("\n--- Test 31: Dynamic Drag-and-Drop Reordering for Reference Lookups ---")
+    # 1. UI elements verification on /lookups/machine/
+    c.force_login(admin_user)
+    resp_lm = c.get('/lookups/machine/')
+    assert resp_lm.status_code == 200
+    lm_html = resp_lm.content.decode('utf-8')
+    assert 'id="lookupSortableTable"' in lm_html
+    assert 'class="sortable-row"' in lm_html
+    assert 'draggable="true"' in lm_html
+    assert 'class="drag-handle"' in lm_html
+    assert 'Click &amp; drag rows to reorder' in lm_html or 'Click & drag rows to reorder' in lm_html
+    assert 'reorderStatus' in lm_html
+
+    # 2. Permissions boundary: SubAdmin and other users are blocked from reordering
+    c.force_login(subadmin_user)
+    resp_reorder_sub = c.post('/lookups/machine/reorder/', json.dumps({'item_ids': [1, 2]}), content_type='application/json')
+    assert resp_reorder_sub.status_code == 403
+
+    c.force_login(res_user)
+    resp_reorder_res = c.post('/lookups/machine/reorder/', json.dumps({'item_ids': [1, 2]}), content_type='application/json')
+    assert resp_reorder_res.status_code == 403
+
+    # 3. Dynamic Reordering: Radiotherapy Machines (tblMachine)
+    c.force_login(admin_user)
+    machs = list(Machine.objects.all().order_by('display_order', 'id'))
+    assert len(machs) >= 4
+    orig_mach_ids = [m.id for m in machs]
+
+    # Reverse machine order
+    reversed_mach_ids = list(reversed(orig_mach_ids))
+    resp_reorder_mach = c.post(
+        '/lookups/machine/reorder/',
+        json.dumps({'item_ids': reversed_mach_ids}),
+        content_type='application/json'
+    )
+    assert resp_reorder_mach.status_code == 200
+    mach_json = resp_reorder_mach.json()
+    assert mach_json['success'] is True
+    assert mach_json['count'] == len(reversed_mach_ids)
+
+    # Verify in DB: the machines now have display_order 1, 2, 3, ... in the reversed order
+    new_mach_order = list(Machine.objects.all().order_by('display_order', 'id').values_list('id', flat=True))
+    assert new_mach_order == reversed_mach_ids, f"Expected {reversed_mach_ids}, got {new_mach_order}"
+
+    # Restore original machine order
+    c.post(
+        '/lookups/machine/reorder/',
+        json.dumps({'item_ids': orig_mach_ids}),
+        content_type='application/json'
+    )
+    restored_mach_order = list(Machine.objects.all().order_by('display_order', 'id').values_list('id', flat=True))
+    assert restored_mach_order == orig_mach_ids
+
+    # 4. Dynamic Reordering: Machine Working Shifts (tblShift)
+    shifts = list(Shift.objects.all().order_by('display_order', 'id'))
+    orig_shift_ids = [s.id for s in shifts]
+    if len(orig_shift_ids) >= 2:
+        rev_shift_ids = list(reversed(orig_shift_ids))
+        resp_s = c.post('/lookups/shift/reorder/', json.dumps({'item_ids': rev_shift_ids}), content_type='application/json')
+        assert resp_s.status_code == 200
+        assert list(Shift.objects.all().order_by('display_order', 'id').values_list('id', flat=True)) == rev_shift_ids
+        # Restore
+        c.post('/lookups/shift/reorder/', json.dumps({'item_ids': orig_shift_ids}), content_type='application/json')
+        assert list(Shift.objects.all().order_by('display_order', 'id').values_list('id', flat=True)) == orig_shift_ids
+
+    # 5. Dynamic Reordering: Special Techniques (tblSpecialTechnique)
+    sp_techs = list(SpecialTechnique.objects.all().order_by('display_order', 'id'))
+    orig_sp_ids = [sp.id for sp in sp_techs]
+    if len(orig_sp_ids) >= 2:
+        rev_sp_ids = list(reversed(orig_sp_ids))
+        resp_sp = c.post('/lookups/special_technique/reorder/', json.dumps({'item_ids': rev_sp_ids}), content_type='application/json')
+        assert resp_sp.status_code == 200
+        assert list(SpecialTechnique.objects.all().order_by('display_order', 'id').values_list('id', flat=True)) == rev_sp_ids
+        # Restore
+        c.post('/lookups/special_technique/reorder/', json.dumps({'item_ids': orig_sp_ids}), content_type='application/json')
+        assert list(SpecialTechnique.objects.all().order_by('display_order', 'id').values_list('id', flat=True)) == orig_sp_ids
+
+    print("✓ Test 31 Passed: Dynamic drag-and-drop reordering, sequential display_order updates, and access controls verified across all reference lookups.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

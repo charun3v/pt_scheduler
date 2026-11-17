@@ -1,4 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
+from django.http import JsonResponse
+import json
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
@@ -951,6 +953,72 @@ def lookup_quick_default_view(request, category):
             messages.info(request, f"Default option cleared for {cfg['title']}.")
 
     return redirect('lookup_manager', category=category)
+
+
+@login_required
+def lookup_reorder_view(request, category):
+    """
+    Dynamically reorders options in the specified lookup category via drag-and-drop.
+    Updates display_order for all provided item IDs sequentially.
+    """
+    if not can_manage_lookups(request.user):
+        return JsonResponse({'success': False, 'error': "Access denied. Administrator privileges required."}, status=403)
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': "POST method required."}, status=405)
+
+    model, cfg = get_lookup_model(category)
+    if not model or not cfg:
+        return JsonResponse({'success': False, 'error': f"Invalid lookup category '{category}'."}, status=400)
+
+    try:
+        if request.body:
+            try:
+                data = json.loads(request.body.decode('utf-8'))
+            except (ValueError, UnicodeDecodeError):
+                data = {}
+        else:
+            data = {}
+        order_list = data.get('item_ids') or request.POST.getlist('item_ids[]') or request.POST.getlist('item_ids')
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f"Invalid request payload: {str(e)}"}, status=400)
+
+    if not order_list:
+        return JsonResponse({'success': False, 'error': "No item IDs provided for reordering."}, status=400)
+
+    pk_field = cfg['pk']
+    updated_count = 0
+
+    for index, raw_id in enumerate(order_list):
+        try:
+            item_pk = int(raw_id)
+        except (ValueError, TypeError):
+            continue
+
+        try:
+            item = model.objects.get(**{pk_field: item_pk})
+            new_order = index + 1
+            if getattr(item, 'display_order', None) != new_order:
+                item.display_order = new_order
+                item.save(update_fields=['display_order'])
+                updated_count += 1
+        except model.DoesNotExist:
+            continue
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="LOOKUP_REORDER",
+        details=f"Dynamically reordered {len(order_list)} options in {cfg['title']} via drag-and-drop.",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': f"Order for {cfg['title']} updated successfully.",
+        'category': category,
+        'count': len(order_list),
+        'updated_count': updated_count
+    })
 
 
 # --- Configurable Field Validation Management (Admin Only) ---
