@@ -45,7 +45,7 @@ def schedule_patient_view(request, patient_id):
     if not can_schedule_patient(request.user):
         messages.error(request, "Access restricted. You do not have permission to schedule patients.")
         return redirect('patient_detail', patient_id=patient.id)
-    machines = Machine.objects.filter(is_active=True).order_by('display_order', 'name')
+    machines = Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').order_by('display_order', 'name')
     shifts = Shift.objects.filter(is_active=True).order_by('display_order', 'name')
     techniques = Technique.objects.filter(is_active=True).order_by('display_order', 'name')
     special_techniques = SpecialTechnique.objects.filter(is_active=True).order_by('display_order', 'name')
@@ -559,7 +559,7 @@ def get_mapped_machines_slots_api(request):
     spec_tech_obj = SpecialTechnique.objects.filter(id=spec_tech_id, is_active=True).first() if spec_tech_id else None
 
     holiday_dates = set(Holiday.objects.values_list('date', flat=True))
-    machines = Machine.objects.filter(is_active=True).order_by('display_order', 'name')
+    machines = Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').order_by('display_order', 'name')
     results = []
 
     for mach in machines:
@@ -633,12 +633,14 @@ def machine_mappings_view(request):
     Admin & SubAdmin Dynamic Mapping Manager:
     Configure which Shifts, Techniques, Special Techniques, and Sites apply to each Machine,
     along with Option A daily start quota.
+    Exclusively for Teletherapy machines (Brachytherapy does not use shifts or techniques).
     """
     if not can_manage_mappings(request.user):
         messages.error(request, "Access restricted to Administrators / SubAdmins.")
         return redirect('dashboard')
 
-    mappings = MachineMapping.objects.select_related('machine')\
+    mappings = MachineMapping.objects.filter(machine__treatment_mode='Teletherapy')\
+        .select_related('machine')\
         .prefetch_related('allowed_shifts', 'allowed_techniques', 'allowed_special_techniques')\
         .order_by('machine__display_order')
 
@@ -655,6 +657,10 @@ def edit_machine_mapping_view(request, mapping_id):
         return redirect('dashboard')
 
     mapping = get_object_or_404(MachineMapping, id=mapping_id)
+    if mapping.machine.treatment_mode != 'Teletherapy':
+        messages.warning(request, "Dynamic Machine Mappings are exclusively for Teletherapy equipment. Brachytherapy machines do not use shifts, techniques, or special techniques.")
+        return redirect('machine_mappings')
+
     all_shifts = Shift.objects.all().order_by('display_order')
     all_techs = Technique.objects.all().order_by('display_order')
     all_special_techs = SpecialTechnique.objects.all().order_by('display_order')
@@ -1244,7 +1250,7 @@ def get_month_calendar_data(year, month):
         appointment_date__gte=first_date,
         appointment_date__lte=last_date
     ).select_related(
-        'patient', 'applicator_type', 'anesthesia_type', 'created_by'
+        'patient', 'applicator_type', 'anesthesia_type', 'created_by', 'schedule__machine'
     ).order_by('appointment_date', 'fraction_number', 'patient__pt_name')
 
     appts_by_date = {}
@@ -1262,6 +1268,8 @@ def get_month_calendar_data(year, month):
             'mr_no': a.patient.mr_no,
             'diagnosis': a.patient.diagnosis or '',
             'site': a.site_of_treatment or a.patient.site_of_treatment or '',
+            'machine': a.schedule.machine.name if (a.schedule and a.schedule.machine) else (a.schedule.machine_display if a.schedule else ''),
+            'machine_code': a.schedule.machine.code if (a.schedule and a.schedule.machine) else '',
             'applicator': a.applicator_type.name if a.applicator_type else 'Brachytherapy',
             'applicator_code': a.applicator_type.code if a.applicator_type else '',
             'color': a.applicator_type.color_code if a.applicator_type else '#1976d2',
@@ -1383,6 +1391,7 @@ def brachy_schedule_patient_view(request, patient_id):
     applicators = BrachyApplicator.objects.filter(is_active=True).order_by('display_order', 'name')
     anesthesias = BrachyAnesthesia.objects.filter(is_active=True).order_by('display_order', 'name')
     sites = TreatmentSite.objects.filter(is_active=True).order_by('display_order', 'name')
+    brachy_machines = Machine.objects.filter(is_active=True, treatment_mode='Brachytherapy').order_by('display_order', 'name')
     # Prepopulate treatment site from patient's previous entry
     default_site = patient.site_of_treatment or ''
     if not default_site:
@@ -1529,6 +1538,14 @@ def brachy_schedule_patient_view(request, patient_id):
                     messages.error(request, err_msg)
                     return redirect('brachy_schedule_patient', patient_id=patient.id)
 
+        # Selected Brachytherapy Machine
+        machine_id = data.get('machine_id')
+        machine_obj = None
+        if machine_id:
+            machine_obj = Machine.objects.filter(id=machine_id, treatment_mode='Brachytherapy', is_active=True).first()
+        elif brachy_machines.exists():
+            machine_obj = brachy_machines.first()
+
         # Persist schedule course
         brachy_schedule = patient.schedules.filter(
             treatment_type='Brachytherapy',
@@ -1543,6 +1560,7 @@ def brachy_schedule_patient_view(request, patient_id):
             brachy_schedule = TreatmentSchedule.objects.create(
                 patient=patient,
                 treatment_type='Brachytherapy',
+                machine=machine_obj,
                 applicator_type=applicator,
                 anesthesia_type=anesthesia,
                 site_of_treatment=site_of_treatment,
@@ -1554,6 +1572,8 @@ def brachy_schedule_patient_view(request, patient_id):
                 created_by=request.user,
             )
         else:
+            if machine_obj:
+                brachy_schedule.machine = machine_obj
             brachy_schedule.applicator_type = applicator
             brachy_schedule.anesthesia_type = anesthesia
             brachy_schedule.site_of_treatment = site_of_treatment
@@ -1620,8 +1640,16 @@ def brachy_schedule_patient_view(request, patient_id):
 
     calendar_data = get_month_calendar_data(year, month)
 
+    selected_machine_id = None
+    if existing_brachy and existing_brachy.machine_id:
+        selected_machine_id = existing_brachy.machine_id
+    elif brachy_machines.exists():
+        selected_machine_id = brachy_machines.first().id
+
     context = {
         'patient': patient,
+        'brachy_machines': brachy_machines,
+        'selected_machine_id': selected_machine_id,
         'applicators': applicators,
         'anesthesias': anesthesias,
         'sites': sites,

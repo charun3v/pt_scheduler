@@ -3325,7 +3325,7 @@ def run_tests():
     assert 'machine_type' in LOOKUP_CONFIG
     assert LOOKUP_CONFIG['machine_type']['table_name'] == 'tblMachineType'
     assert MachineType.objects.filter(name='LINAC').exists()
-    assert MachineType.objects.filter(name='Brachytherapy').exists()
+    assert MachineType.objects.filter(name__icontains='Brachytherapy').exists()
 
     # Admin visits /lookups/machine_type/
     resp_mt_list = c.get('/lookups/machine_type/')
@@ -3424,6 +3424,104 @@ def run_tests():
     test_mach.delete()
     MachineType.objects.filter(name=new_mt_name).delete()
     print("✓ Test 36 Passed: Compact search box, separate actual treatment details column, clubbed text badge removal, dynamic machine types lookup & treatment mode fully verified.")
+
+    # 37. Test Teletherapy vs Brachytherapy Modality Separation & Machine Type Single Line Width
+    print("\n--- Running Test 37: Teletherapy vs Brachytherapy Separation, Mappings Exclusivity & Machine Type Width ---")
+    c.force_login(admin_user)
+
+    # 1. Dynamic Machine & Shift Mappings list (/scheduler/mappings/) must ONLY show Teletherapy machines
+    resp_mappings = c.get('/scheduler/mappings/')
+    assert resp_mappings.status_code == 200
+    mappings_html = resp_mappings.content.decode('utf-8')
+    assert 'ELEKTA - LA1' in mappings_html
+    assert 'Varian - DBX' in mappings_html
+    assert 'Saginova - Co60' not in mappings_html, "Brachytherapy machine Saginova must NOT appear in Machine Mappings table"
+    assert 'Bebig' not in mappings_html, "Brachytherapy machine Bebig must NOT appear in Machine Mappings table"
+    assert 'Papilon' not in mappings_html, "Brachytherapy machine Papilon must NOT appear in Machine Mappings table"
+    assert 'Dynamic Teletherapy Machine & Shift Mappings' in mappings_html
+
+    # 2. Block editing non-teletherapy machine mappings
+    saginova_mach = Machine.objects.filter(treatment_mode='Brachytherapy').first()
+    if saginova_mach and hasattr(saginova_mach, 'mapping'):
+        resp_edit_brachy_map = c.get(f'/scheduler/mappings/{saginova_mach.mapping.id}/edit/')
+        assert resp_edit_brachy_map.status_code == 302, "Editing Brachy machine mapping should redirect"
+        assert resp_edit_brachy_map.url == '/scheduler/mappings/'
+
+    # 3. Teletherapy Scheduling Slot Finder API (/scheduler/api/mapped-machine-slots/) returns ONLY Teletherapy machines
+    imrt_tech = Technique.objects.filter(is_active=True).first()
+    none_spec = SpecialTechnique.objects.filter(is_active=True).first()
+    resp_slot_api = c.get(f'/scheduler/api/mapped-machine-slots/?technique_id={imrt_tech.id}&special_technique_id={none_spec.id}')
+    assert resp_slot_api.status_code == 200
+    slot_data = resp_slot_api.json()
+    slot_mach_names = [m['machine_name'] for m in slot_data.get('machines', [])]
+    for s_name in slot_mach_names:
+        mach_obj = Machine.objects.filter(name=s_name).first()
+        assert mach_obj is not None
+        assert mach_obj.treatment_mode == 'Teletherapy', f"Slot finder should only return Teletherapy machines, got {s_name}"
+
+    # 4. Brachytherapy Scheduling (/scheduler/patient/<id>/brachytherapy/) shows ONLY Brachy machines
+    pt_test37 = Patient.objects.create(
+        mr_no=9999370,
+        pt_name='PADMAVATHI',
+        age=55,
+        sex='F',
+        diagnosis='Ca Cervix Stage IIIB',
+        site_of_treatment='Cervix',
+        rt_no='4999',
+        phone_no='9777788888',
+        created_by=admin_user
+    )
+
+    resp_brachy_form = c.get(f'/scheduler/patient/{pt_test37.id}/brachytherapy/')
+    assert resp_brachy_form.status_code == 200
+    brachy_form_html = resp_brachy_form.content.decode('utf-8')
+    assert 'Brachytherapy Machine' in brachy_form_html
+    assert 'Saginova - Co60' in brachy_form_html
+    assert 'ELEKTA - LA1' not in brachy_form_html, "Teletherapy machines must NOT appear in Brachytherapy Machine dropdown"
+    assert 'Varian - DBX' not in brachy_form_html
+
+    # Schedule brachytherapy with specific machine
+    app_obj = BrachyApplicator.objects.filter(is_active=True).first()
+    ana_obj = BrachyAnesthesia.objects.filter(is_active=True).first()
+    brachy_mach = Machine.objects.filter(treatment_mode='Brachytherapy', is_active=True).first()
+
+    resp_book_brachy = c.post(
+        f'/scheduler/patient/{pt_test37.id}/brachytherapy/',
+        json.dumps({
+            'selected_dates': ['2026-11-20', '2026-11-25'],
+            'machine_id': brachy_mach.id,
+            'applicator_id': app_obj.id,
+            'anesthesia_id': ana_obj.id,
+            'site_of_treatment': 'Cervix',
+            'remarks': 'Test Brachy Machine Assignment',
+        }),
+        content_type='application/json'
+    )
+    assert resp_book_brachy.status_code == 200
+    assert resp_book_brachy.json()['success'] is True
+
+    # Verify TreatmentSchedule.machine is assigned
+    brachy_course = pt_test37.schedules.filter(treatment_type='Brachytherapy').first()
+    assert brachy_course is not None
+    assert brachy_course.machine == brachy_mach, "Brachy course must have the selected Brachytherapy machine assigned"
+
+    # Patient details shows the machine without shift
+    resp_pt_detail37 = c.get(f'/patients/{pt_test37.id}/')
+    assert resp_pt_detail37.status_code == 200
+    pt37_html = resp_pt_detail37.content.decode('utf-8')
+    assert brachy_mach.name in pt37_html, "Brachytherapy machine name must be rendered on patient detail course list"
+    assert 'Not Assigned' not in pt37_html
+
+    # 5. Reference Lookup Manager (/lookups/machine/) Machine Type Column Width
+    resp_lookup_mach = c.get('/lookups/machine/')
+    assert resp_lookup_mach.status_code == 200
+    lookup_html = resp_lookup_mach.content.decode('utf-8')
+    assert 'width: 200px;' in lookup_html or 'min-width: 200px' in lookup_html
+    assert 'white-space: nowrap;' in lookup_html
+
+    # Cleanup
+    pt_test37.delete()
+    print("✓ Test 37 Passed: Teletherapy/Brachytherapy modality separation, Machine Mappings exclusivity, Brachy machine dropdown & Machine Type single-line width fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

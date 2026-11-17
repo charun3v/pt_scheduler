@@ -243,6 +243,7 @@
                                                data-rt-no="{{ appt.rt_no }}"
                                                data-diagnosis="{{ appt.diagnosis }}"
                                                data-site="{{ appt.site }}"
+                                               data-machine="{{ appt.machine|default:'Brachy Unit' }}"
                                                data-applicator="{{ appt.applicator }}"
                                                data-anesthesia="{{ appt.anesthesia }}"
                                                data-fraction="{{ appt.fraction }}"
@@ -277,6 +278,7 @@
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>MR No:</strong> <span id="tt_mr"></span> | <strong>RT:</strong> <span id="tt_rt"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Diagnosis:</strong> <span id="tt_dx"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Site:</strong> <span id="tt_site"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Machine:</strong> <span id="tt_mach"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Applicator:</strong> <span id="tt_app"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Anaesthesia:</strong> <span id="tt_ana"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Scheduled:</strong> <span id="tt_date"></span> (<span id="tt_frac"></span>)</div>
@@ -384,6 +386,7 @@
                                data-rt-no="${escapeHtml(appt.rt_no)}"
                                data-diagnosis="${escapeHtml(appt.diagnosis)}"
                                data-site="${escapeHtml(appt.site)}"
+                               data-machine="${escapeHtml(appt.machine || 'Brachy Unit')}"
                                data-applicator="${escapeHtml(appt.applicator)}"
                                data-anesthesia="${escapeHtml(appt.anesthesia)}"
                                data-fraction="${appt.fraction}"
@@ -417,6 +420,7 @@
         document.getElementById('tt_rt').textContent = el.dataset.rtNo || '-';
         document.getElementById('tt_dx').textContent = el.dataset.diagnosis || '-';
         document.getElementById('tt_site').textContent = el.dataset.site || '-';
+        document.getElementById('tt_mach').textContent = el.dataset.machine || 'Brachy Unit';
         document.getElementById('tt_app').textContent = el.dataset.applicator;
         document.getElementById('tt_ana').textContent = el.dataset.anesthesia;
         document.getElementById('tt_date').textContent = el.dataset.date;

@@ -291,8 +291,24 @@
                 <span style="font-weight: normal; font-size: 11px;">Configure applicator, anaesthesia, and treatment site</span>
             </div>
             <div class="brachy-body">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
                     
+                    <!-- Brachytherapy Machine Dropdown (Only Brachytherapy Units) -->
+                    <div>
+                        <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                            Brachytherapy Machine <span style="color: #dc2626;">*</span>
+                        </label>
+                        <select id="form_machine_id" class="access-select" style="width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px; background: #ffffff;">
+                            <option value="">-- Select Brachy Machine --</option>
+                            {% for bm in brachy_machines %}
+                                <option value="{{ bm.id }}" {% if selected_machine_id == bm.id %}selected{% endif %}>
+                                    {{ bm.name }} ({{ bm.code|default:bm.machine_type }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 3px;">Dedicated Brachytherapy units only (e.g. Saginova, Bebig, Papilon).</div>
+                    </div>
+
                     <!-- Applicator Type Dropdown (Reference Lookup) -->
                     <div>
                         <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
@@ -453,6 +469,7 @@
                                                      data-rt-no="{{ appt.rt_no }}"
                                                      data-diagnosis="{{ appt.diagnosis }}"
                                                      data-site="{{ appt.site }}"
+                                                     data-machine="{{ appt.machine|default:'Brachy Unit' }}"
                                                      data-applicator="{{ appt.applicator }}"
                                                      data-anesthesia="{{ appt.anesthesia }}"
                                                      data-fraction="{{ appt.fraction }}"
@@ -577,6 +594,10 @@
                         <strong id="summary_site">-</strong>
                     </div>
                     <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">BRACHYTHERAPY MACHINE</span>
+                        <strong id="summary_machine" style="color: #003366;">-</strong>
+                    </div>
+                    <div>
                         <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">APPLICATOR TYPE</span>
                         <strong id="summary_applicator" style="color: #0078d4;">-</strong>
                     </div>
@@ -642,6 +663,7 @@
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>MR No:</strong> <span id="tt_mr"></span> | <strong>RT:</strong> <span id="tt_rt"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Diagnosis:</strong> <span id="tt_dx"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Site:</strong> <span id="tt_site"></span></div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Machine:</strong> <span id="tt_mach"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Applicator:</strong> <span id="tt_app"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Anaesthesia:</strong> <span id="tt_ana"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Scheduled:</strong> <span id="tt_date"></span> (<span id="tt_frac"></span>)</div>
@@ -862,6 +884,7 @@
                                   data-rt-no="${escapeHtml(appt.rt_no)}"
                                   data-diagnosis="${escapeHtml(appt.diagnosis)}"
                                   data-site="${escapeHtml(appt.site)}"
+                                  data-machine="${escapeHtml(appt.machine || 'Brachy Unit')}"
                                   data-applicator="${escapeHtml(appt.applicator)}"
                                   data-anesthesia="${escapeHtml(appt.anesthesia)}"
                                   data-fraction="${appt.fraction}"
@@ -897,6 +920,7 @@
         document.getElementById('tt_rt').textContent = el.dataset.rtNo || '-';
         document.getElementById('tt_dx').textContent = el.dataset.diagnosis || '-';
         document.getElementById('tt_site').textContent = el.dataset.site || '-';
+        document.getElementById('tt_mach').textContent = el.dataset.machine || 'Brachy Unit';
         document.getElementById('tt_app').textContent = el.dataset.applicator;
         document.getElementById('tt_ana').textContent = el.dataset.anesthesia;
         document.getElementById('tt_date').textContent = el.dataset.date;
@@ -971,10 +995,17 @@
             return;
         }
 
+        const machineSelect = document.getElementById('form_machine_id');
         const applicatorSelect = document.getElementById('form_applicator_id');
         const anesthesiaSelect = document.getElementById('form_anesthesia_id');
         const siteInput = document.getElementById('form_site_of_treatment');
         const remarksInput = document.getElementById('form_remarks');
+
+        if (machineSelect && !machineSelect.value) {
+            alert("Brachytherapy Machine selection is mandatory.");
+            machineSelect.focus();
+            return;
+        }
 
         if (!applicatorSelect.value) {
             alert("Applicator Type Planned is mandatory.");
@@ -1014,6 +1045,11 @@
 
         // Fill Confirmation Summary fields
         document.getElementById('summary_site').textContent = siteInput.value.trim();
+        if (machineSelect && machineSelect.value) {
+            document.getElementById('summary_machine').textContent = machineSelect.options[machineSelect.selectedIndex].text;
+        } else {
+            document.getElementById('summary_machine').textContent = 'Not Specified';
+        }
         document.getElementById('summary_applicator').textContent = applicatorSelect.options[applicatorSelect.selectedIndex].text;
         document.getElementById('summary_anesthesia').textContent = anesthesiaSelect.options[anesthesiaSelect.selectedIndex].text;
         document.getElementById('summary_total_count').textContent = `${total} application${total > 1 ? 's' : ''} (${gExistingApptsCount} existing + ${gSelectedDates.size} new)`;
@@ -1076,6 +1112,7 @@
 
         const payload = {
             selected_dates: Array.from(gSelectedDates).sort(),
+            machine_id: document.getElementById('form_machine_id') ? document.getElementById('form_machine_id').value : '',
             applicator_id: document.getElementById('form_applicator_id').value,
             anesthesia_id: document.getElementById('form_anesthesia_id').value,
             site_of_treatment: document.getElementById('form_site_of_treatment').value.trim(),
