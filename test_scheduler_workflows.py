@@ -3065,6 +3065,96 @@ def run_tests():
     pt_em.delete()
     print("✓ Test 33 Passed: Patient search, single action button, clinical milestones, modality box, site dropdown, application terminology, and emergency slot exclusion for brachytherapy fully verified.")
 
+    # -------------------------------------------------------------
+    print("\n--- Running Test 34: Two-Way Mutual Course Clubbing, Connecting Bracket Line & Clinical Milestones on Patient Detail ---")
+    c.force_login(admin_user)
+
+    Patient.objects.filter(mr_no=9999035).delete()
+    pt_club = Patient.objects.create(
+        mr_no=9999035,
+        pt_name="TestClubbing Patient",
+        age=52,
+        sex='Female',
+        phone_no='9888800035',
+        diagnosis='Recurrent Ca Cervix',
+        site_of_treatment='Pelvis',
+        primary_consultant=active_consultant
+    )
+
+    # 1. Create two courses for pt_club: Course 1 (Teletherapy) and Course 2 (Brachytherapy)
+    course_1 = TreatmentSchedule.objects.create(
+        patient=pt_club,
+        treatment_type='Teletherapy',
+        date_of_start=date(2026, 12, 1),
+        is_emergency_slot=False,
+        status='Scheduled',
+        machine=first_active_machine
+    )
+    course_2 = TreatmentSchedule.objects.create(
+        patient=pt_club,
+        treatment_type='Brachytherapy',
+        date_of_start=date(2026, 12, 10),
+        status='Scheduled'
+    )
+
+    # 2. Tag Course 2 to Course 1 via POST
+    resp_tag = c.post(f'/scheduler/course/{course_2.id}/tag/', {'tagged_to_id': str(course_1.id)})
+    assert resp_tag.status_code == 302
+
+    # Refresh from DB - verify mutual two-way clubbing!
+    course_1.refresh_from_db()
+    course_2.refresh_from_db()
+    assert course_1.tagged_to_id == course_2.id, f"Expected Course 1 tagged_to == Course 2 ({course_2.id}), got {course_1.tagged_to_id}"
+    assert course_2.tagged_to_id == course_1.id, f"Expected Course 2 tagged_to == Course 1 ({course_1.id}), got {course_2.tagged_to_id}"
+
+    # 3. Verify Patient Detail page renders mutual clubbed badges, bracket line, and clinical milestones
+    resp_pt_detail = c.get(f'/patients/{pt_club.id}/')
+    assert resp_pt_detail.status_code == 200
+    pt_detail_html = resp_pt_detail.content.decode('utf-8')
+
+    # Clinical Tracking Milestones verification
+    assert "📍 Clinical Tracking Milestones:" in pt_detail_html
+    assert "Patient registered on:" in pt_detail_html
+    assert "Regular slot (EBRT) taken on:" in pt_detail_html
+    assert "01-Dec-2026" in pt_detail_html
+
+    # Mutual clubbing badges in table
+    assert f"🔗 Clubbed with #{course_1.id}" in pt_detail_html
+    assert f"🔗 Clubbed with #{course_2.id}" in pt_detail_html
+    # Neither course should show one-way "Primary (1 tagged)"
+    assert "⭐ Primary" not in pt_detail_html
+
+    # Thin black line bracket connector elements
+    assert "border-left: 2px solid #000000; border-top: 2px solid #000000" in pt_detail_html
+    assert "border-left: 2px solid #000000; border-bottom: 2px solid #000000" in pt_detail_html
+
+    # 4. Untag Course 1 (set to Independent) -> Both courses become unlinked
+    resp_untag = c.post(f'/scheduler/course/{course_1.id}/tag/', {'tagged_to_id': ''})
+    assert resp_untag.status_code == 302
+
+    course_1.refresh_from_db()
+    course_2.refresh_from_db()
+    assert course_1.tagged_to is None, "Course 1 should be unlinked"
+    assert course_2.tagged_to is None, "Course 2 should be mutually unlinked"
+
+    # 5. Verify auto-heal of legacy one-way tagged courses in patient_detail_view
+    course_2.tagged_to = course_1
+    course_2.save(update_fields=['tagged_to'])
+    # course_1.tagged_to is currently None (one-way link)
+    assert TreatmentSchedule.objects.get(id=course_1.id).tagged_to is None
+
+    # Visiting patient detail triggers auto-heal to mutual two-way
+    resp_heal = c.get(f'/patients/{pt_club.id}/')
+    assert resp_heal.status_code == 200
+    course_1.refresh_from_db()
+    course_2.refresh_from_db()
+    assert course_1.tagged_to_id == course_2.id, "Course 1 should have been auto-healed to point to Course 2"
+    assert course_2.tagged_to_id == course_1.id, "Course 2 should point to Course 1"
+
+    # Cleanup
+    pt_club.delete()
+    print("✓ Test 34 Passed: Two-way mutual course clubbing, bracket connector lines, clinical milestones banner, and auto-heal verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

@@ -193,6 +193,32 @@
                 <span class="demo-item-label" style="display: inline; margin-right: 6px;">Diagnosis:</span>
                 <strong style="color: #0f172a; font-size: 12px;">{{ patient.diagnosis }}</strong>
             </div>
+
+            <!-- Clinical Tracking Milestones Ribbon -->
+            <div style="grid-column: span 6; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 8px 14px; margin-top: 6px; font-size: 12.5px; color: #166534; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 18px; flex-wrap: wrap;">
+                    <span style="font-weight: 800; color: #14532d; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+                        📍 Clinical Tracking Milestones:
+                    </span>
+                    <span>
+                        📅 <strong>Patient registered on:</strong> {{ registered_date_display }}
+                    </span>
+                    <span style="color: #86efac;">|</span>
+                    <span>
+                        ⚡ <strong>Regular slot (EBRT) taken on:</strong> 
+                        <strong style="{% if regular_slot_date_display != 'Not taken' %}color: #0369a1;{% else %}color: #64748b;{% endif %}">
+                            {{ regular_slot_date_display }}
+                        </strong>
+                    </span>
+                    {% if emergency_slot_date_display %}
+                    <span style="color: #86efac;">|</span>
+                    <span style="color: #b91c1c;">
+                        🚨 <strong>Shifted to Emergency / Vacant slot on:</strong> 
+                        <strong style="color: #991b1b;">{{ emergency_slot_date_display }}</strong>
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
 
@@ -201,7 +227,7 @@
         <div class="courses-header">
             <div style="display: flex; align-items: center; gap: 8px;">
                 <h3 style="margin: 0; font-size: 14px; color: #003366; font-weight: 700;">
-                    Treatment Courses & Radiotherapy Schedule ({{ schedules.count }})
+                    Treatment Courses & Radiotherapy Schedule ({{ schedules|length }})
                 </h3>
             </div>
             <div>
@@ -218,7 +244,7 @@
             <table class="courses-table">
                 <thead>
                     <tr>
-                        <th style="width: 110px;">Course / Tag</th>
+                        <th style="width: 120px;">Course / Tag</th>
                         <th style="width: 95px;">Sim Date</th>
                         <th style="width: 100px;">Start Date</th>
                         <th style="width: 100px;">End Date</th>
@@ -233,20 +259,22 @@
                 </thead>
                 <tbody>
                     {% for s in schedules %}
-                    <tr class="{% if s.tagged_to_id %}clubbed-row{% endif %}">
+                    <tr class="{% if s.tagged_to_id %}clubbed-row{% endif %}" style="{% if s.tagged_to_id %}background: #fafcff;{% endif %}">
                         <!-- Course / Tag -->
-                        <td>
+                        <td style="position: relative; {% if s.club_position %}padding-left: 20px;{% endif %}">
+                            {% if s.club_position == 'top' %}
+                                <div style="position: absolute; left: 6px; top: 16px; bottom: 0; width: 8px; border-left: 2px solid #000000; border-top: 2px solid #000000; pointer-events: none; z-index: 3;" title="Clubbed with Course #{{ s.tagged_to.id }}"></div>
+                            {% elif s.club_position == 'bottom' %}
+                                <div style="position: absolute; left: 6px; top: 0; bottom: 16px; width: 8px; border-left: 2px solid #000000; border-bottom: 2px solid #000000; pointer-events: none; z-index: 3;" title="Clubbed with Course #{{ s.tagged_to.id }}"></div>
+                            {% elif s.club_position == 'middle' %}
+                                <div style="position: absolute; left: 6px; top: 0; bottom: 0; width: 8px; border-left: 2px solid #000000; pointer-events: none; z-index: 3;" title="Clubbed with Course #{{ s.tagged_to.id }}"></div>
+                            {% endif %}
+
                             <strong style="color: #003366;">Course #{{ s.id }}</strong>
                             {% if s.tagged_to %}
                                 <div style="margin-top: 2px;">
-                                    <span class="badge-status badge-clubbed" title="Clubbed with Course #{{ s.tagged_to.id }} ({{ s.tagged_to.machine_display }})">
+                                    <span class="badge-status badge-clubbed" style="background: #eef2ff; color: #1e40af; border: 1px solid #93c5fd; font-weight: 700; padding: 2px 8px; font-size: 10.5px;" title="Clubbed with Course #{{ s.tagged_to.id }} ({{ s.tagged_to.machine_display|default:s.tagged_to.treatment_type }})">
                                         🔗 Clubbed with #{{ s.tagged_to.id }}
-                                    </span>
-                                </div>
-                            {% elif s.tagged_courses.all %}
-                                <div style="margin-top: 2px;">
-                                    <span class="badge-status badge-clubbed" style="background: #e0e7ff; color: #3730a3; border-color: #a5b4fc;" title="Parent course with tagged treatments">
-                                        ⭐ Primary ({{ s.tagged_courses.count }} tagged)
                                     </span>
                                 </div>
                             {% endif %}
@@ -387,7 +415,7 @@
                                 </div>
 
                                 <!-- Inline Club / Tag with Previous Course Form -->
-                                {% if schedules.count > 1 %}
+                                {% if schedules|length > 1 %}
                                 <form method="POST" action="{% url 'tag_treatment_course' s.id %}" style="display: inline-flex; align-items: center; gap: 3px; margin: 0;">
                                     {% csrf_token %}
                                     <select name="tagged_to_id" onchange="this.form.submit();" style="font-size: 10px; padding: 1px 3px; border: 1px solid #d0d7de; border-radius: 3px; max-width: 140px; background: #fff;" title="Tag / club this course with another previous course">
@@ -395,7 +423,7 @@
                                         {% for other in schedules %}
                                             {% if other.id != s.id %}
                                                 <option value="{{ other.id }}" {% if s.tagged_to_id == other.id %}selected{% endif %}>
-                                                    Club with #{{ other.id }} ({{ other.machine_display }})
+                                                    Club with #{{ other.id }} ({{ other.machine_display|default:other.treatment_type }})
                                                 </option>
                                             {% endif %}
                                         {% endfor %}

@@ -203,6 +203,9 @@ def schedule_patient_view(request, patient_id):
             sched.notes = notes
             sched.status = 'Draft'
             sched.save()
+            if tagged_to_obj:
+                tagged_to_obj.tagged_to = sched
+                tagged_to_obj.save(update_fields=['tagged_to'])
 
             AuditLog.objects.create(
                 user=request.user,
@@ -275,6 +278,9 @@ def schedule_patient_view(request, patient_id):
         sched.notes = notes
         sched.status = 'Scheduled'
         sched.save()
+        if tagged_to_obj:
+            tagged_to_obj.tagged_to = sched
+            tagged_to_obj.save(update_fields=['tagged_to'])
 
         AuditLog.objects.create(
             user=request.user,
@@ -715,24 +721,51 @@ def tag_treatment_course_view(request, schedule_id):
             if target.id == schedule.id:
                 messages.error(request, "A course cannot be tagged to itself.")
                 return redirect('patient_detail', patient_id=patient.id)
+
+            # Unlink previous partners if switching
+            if schedule.tagged_to and schedule.tagged_to != target:
+                prev_partner = schedule.tagged_to
+                if prev_partner.tagged_to == schedule:
+                    prev_partner.tagged_to = None
+                    prev_partner.save(update_fields=['tagged_to'])
+            if target.tagged_to and target.tagged_to != schedule:
+                prev_target_partner = target.tagged_to
+                if prev_target_partner.tagged_to == target:
+                    prev_target_partner.tagged_to = None
+                    prev_target_partner.save(update_fields=['tagged_to'])
+
+            # Mutual two-way clubbing (both ways!)
             schedule.tagged_to = target
-            schedule.save()
+            target.tagged_to = schedule
+            schedule.save(update_fields=['tagged_to'])
+            target.save(update_fields=['tagged_to'])
+
             AuditLog.objects.create(
                 user=request.user,
                 action="COURSE_TAGGED",
                 mr_no=str(patient.mr_no),
-                details=f"Course #{schedule.id} ({schedule.machine_display}) clubbed/tagged to Course #{target.id} ({target.machine_display}) for {patient.pt_name}",
+                details=f"Course #{schedule.id} ({schedule.machine_display}) mutually clubbed with Course #{target.id} ({target.machine_display}) for {patient.pt_name}",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
-            messages.success(request, f"Course #{schedule.id} successfully clubbed with Course #{target.id} ({target.machine_display})!")
+            messages.success(request, f"Course #{schedule.id} and Course #{target.id} are now mutually clubbed together!")
         else:
+            # Unlink both ways
+            old_partner = schedule.tagged_to
             schedule.tagged_to = None
-            schedule.save()
+            schedule.save(update_fields=['tagged_to'])
+            if old_partner:
+                if old_partner.tagged_to == schedule:
+                    old_partner.tagged_to = None
+                    old_partner.save(update_fields=['tagged_to'])
+            for child in schedule.tagged_courses.all():
+                child.tagged_to = None
+                child.save(update_fields=['tagged_to'])
+
             AuditLog.objects.create(
                 user=request.user,
                 action="COURSE_UNTAGGED",
                 mr_no=str(patient.mr_no),
-                details=f"Course #{schedule.id} untagged and set as independent course for {patient.pt_name}",
+                details=f"Course #{schedule.id} unclubbed and set as independent course for {patient.pt_name}",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
             messages.success(request, f"Course #{schedule.id} is now an independent course.")

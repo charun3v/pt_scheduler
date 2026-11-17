@@ -261,9 +261,82 @@ def patient_edit_view(request, patient_id):
 @login_required
 def patient_detail_view(request, patient_id):
     patient = get_object_or_404(Patient, id=patient_id)
-    schedules = patient.schedules.select_related(
+    raw_schedules = list(patient.schedules.select_related(
         'machine', 'shift', 'technique', 'special_technique', 'intent', 'tagged_to'
-    ).order_by('id')
+    ).order_by('id'))
+
+    # Auto-heal / sync any existing one-way clubbed courses to be mutual (both ways)
+    needs_refresh = False
+    for s in raw_schedules:
+        if s.tagged_to and not s.tagged_to.tagged_to:
+            s.tagged_to.tagged_to = s
+            s.tagged_to.save(update_fields=['tagged_to'])
+            needs_refresh = True
+        elif not s.tagged_to and s.tagged_courses.exists():
+            s.tagged_to = s.tagged_courses.first()
+            s.save(update_fields=['tagged_to'])
+            needs_refresh = True
+
+    if needs_refresh:
+        raw_schedules = list(patient.schedules.select_related(
+            'machine', 'shift', 'technique', 'special_technique', 'intent', 'tagged_to'
+        ).order_by('id'))
+
+    # Group clubbed courses together in table display order
+    schedules = []
+    visited_ids = set()
+    for s in raw_schedules:
+        if s.id in visited_ids:
+            continue
+        schedules.append(s)
+        visited_ids.add(s.id)
+        if s.tagged_to and s.tagged_to.id not in visited_ids:
+            schedules.append(s.tagged_to)
+            visited_ids.add(s.tagged_to.id)
+
+    # Determine club_position for thin black connector line on left of clubbed rows
+    for i, s in enumerate(schedules):
+        if s.tagged_to:
+            partner = s.tagged_to
+            partner_idx = next((idx for idx, other in enumerate(schedules) if other.id == partner.id), None)
+            if partner_idx is not None:
+                if i < partner_idx:
+                    s.club_position = 'top'
+                elif i > partner_idx:
+                    s.club_position = 'bottom'
+                else:
+                    s.club_position = None
+            else:
+                s.club_position = None
+        else:
+            s.club_position = None
+
+    # Clinical Tracking Milestones:
+    # 1. Registered date
+    registered_date_display = patient.created_at.strftime("%d-%b-%Y") if patient.created_at else "-"
+
+    # 2. Regular slot (EBRT) taken on
+    reg_sched = next((s for s in raw_schedules if not s.is_emergency_slot and s.treatment_type == 'Teletherapy' and s.date_of_start), None)
+    em_sched = next((s for s in raw_schedules if s.is_emergency_slot), None)
+
+    if reg_sched and reg_sched.date_of_start:
+        regular_slot_date_display = reg_sched.date_of_start.strftime("%d-%b-%Y")
+    elif em_sched and em_sched.original_scheduled_date:
+        regular_slot_date_display = em_sched.original_scheduled_date.strftime("%d-%b-%Y")
+    elif any(s.date_of_start and not s.is_emergency_slot for s in raw_schedules):
+        any_reg = next(s for s in raw_schedules if s.date_of_start and not s.is_emergency_slot)
+        regular_slot_date_display = any_reg.date_of_start.strftime("%d-%b-%Y")
+    else:
+        regular_slot_date_display = "Not taken"
+
+    # 3. Shifted to Emergency / Vacant slot on (if taken)
+    if em_sched:
+        em_date = em_sched.intended_start_date or em_sched.date_of_start
+        if not em_date and em_sched.created_at:
+            em_date = em_sched.created_at.date()
+        emergency_slot_date_display = em_date.strftime("%d-%b-%Y") if em_date else "Yes"
+    else:
+        emergency_slot_date_display = None
 
     audit_logs = AuditLog.objects.filter(mr_no=str(patient.mr_no)).select_related('user').order_by('-log_datetime')[:50]
 
@@ -271,6 +344,9 @@ def patient_detail_view(request, patient_id):
         'patient': patient,
         'schedules': schedules,
         'audit_logs': audit_logs,
+        'registered_date_display': registered_date_display,
+        'regular_slot_date_display': regular_slot_date_display,
+        'emergency_slot_date_display': emergency_slot_date_display,
         'can_edit_identity': can_edit_locked_identity(request.user),
     }
     return render(request, 'patients/patient_detail.html', context)
