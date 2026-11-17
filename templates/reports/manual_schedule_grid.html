@@ -12,6 +12,9 @@
         box-shadow: 0 4px 16px rgba(0,0,0,0.15);
         margin-bottom: 24px;
         overflow: hidden;
+        width: -moz-fit-content;
+        width: fit-content;
+        max-width: 100%;
     }
     .excel-title-bar {
         background: #107c41;
@@ -45,10 +48,11 @@
         overflow: auto;
         max-height: 75vh;
         background: #fdfdfd;
+        width: 100%;
     }
     .excel-table {
         width: max-content;
-        min-width: 0;
+        min-width: 100%;
         border-collapse: collapse;
         font-family: "Segoe UI", Tahoma, Calibri, sans-serif;
         font-size: 11px;
@@ -288,7 +292,7 @@
                     <col style="width: 25ch;">                 <!-- E: Diagnosis -->
                     <col style="width: 16ch;">                 <!-- F: Start Date (14 chars max + 2 = 16ch) -->
                     <col style="width: 8ch;">                  <!-- G: Shift (5 chars max + 3 = 8ch) -->
-                    <col style="width: 9ch;">                  <!-- H: Machine (7 chars max + 2 = 9ch) -->
+                    <col style="width: 18ch;">                 <!-- H: Machine (doubled to 18ch) -->
                     <col style="width: 19ch;">                 <!-- I: Consultant Name (17 chars max + 2 = 19ch) -->
                     <col style="width: 13ch;">                 <!-- J: Jr Resident -->
                     <col style="width: 78px;">                 <!-- K: Status -->
@@ -304,7 +308,7 @@
                         <th class="col-letter" style="width: 25ch;">E</th>
                         <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold; width: 16ch;">F (Edit)</th>
                         <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold; width: 8ch;">G (Edit)</th>
-                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold; width: 9ch;">H (Edit)</th>
+                        <th class="col-letter" style="background: #d4edda; color: #155724; font-weight: bold; width: 18ch;">H (Edit)</th>
                         <th class="col-letter" style="width: 19ch;">I</th>
                         <th class="col-letter" style="width: 13ch;">J</th>
                         <th class="col-letter" style="width: 78px;">K</th>
@@ -319,7 +323,7 @@
                         <th style="width: 25ch; white-space: nowrap;">Diagnosis</th>
                         <th style="background: #c3e6cb; color: #155724; width: 16ch; white-space: nowrap;" title="Start Date (Editable)">Start Date</th>
                         <th style="background: #c3e6cb; color: #155724; width: 8ch; white-space: nowrap;" title="Shift (Editable)">Shift</th>
-                        <th style="background: #c3e6cb; color: #155724; width: 9ch; white-space: nowrap;" title="Machine (Assigned)">Machine</th>
+                        <th style="background: #c3e6cb; color: #155724; width: 18ch; white-space: nowrap;" title="Machine (Assigned)">Machine</th>
                         <th style="width: 19ch; white-space: nowrap;">Consultant Name</th>
                         <th style="width: 13ch; white-space: nowrap;">Jr Resident</th>
                         <th style="text-align: center; width: 78px; white-space: nowrap;">Status</th>
@@ -333,9 +337,9 @@
 
                         <td class="row-num" style="width: 32px;">{{ forloop.counter }}</td>
                         
-                        <!-- 1. MR No. (13ch max width: 11 digits + 2) -->
-                        <td style="font-family: Consolas, monospace; font-weight: bold; white-space: nowrap; width: 13ch; max-width: 13ch; overflow: hidden; text-overflow: ellipsis;">
-                            <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #003366; text-decoration: underline;" title="{{ s.patient.mr_no }}">
+                        <!-- 1. MR No. (13ch max width: 11 digits + 2 - Not Bold) -->
+                        <td style="font-family: Consolas, monospace; font-weight: normal; white-space: nowrap; width: 13ch; max-width: 13ch; overflow: hidden; text-overflow: ellipsis;">
+                            <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #003366; text-decoration: underline; font-weight: normal;" title="{{ s.patient.mr_no }}">
                                 {{ s.patient.mr_no }}
                             </a>
                         </td>
@@ -388,8 +392,8 @@
                             </select>
                         </td>
 
-                        <!-- 8. EDITABLE: Machine (9ch max width: 7 chars + 2) -->
-                        <td style="background: #fdfdfd; padding: 1px 2px; width: 9ch; max-width: 9ch; overflow: hidden;">
+                        <!-- 8. EDITABLE: Machine (18ch doubled width) -->
+                        <td style="background: #fdfdfd; padding: 1px 2px; width: 18ch; max-width: 18ch; overflow: hidden;">
                             <select name="machine_{{ s.id }}" id="machine_{{ s.id }}" class="excel-cell-select"
                                     style="width: 100%; height: 20px; font-size: 11px; padding: 0 1px;"
                                     onchange="markCellModified('{{ s.id }}'); liveAutoSave('{{ s.id }}');">
