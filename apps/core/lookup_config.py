@@ -179,6 +179,18 @@ LOOKUP_CONFIG = {
         'secondary_field': None,
         'secondary_label': None,
     },
+    'completion_status': {
+        'title': 'Treatment Completion Statuses',
+        'icon': '🏁',
+        'table_name': 'tblCompletionStatus',
+        'app': 'scheduler',
+        'model_name': 'TreatmentCompletionStatus',
+        'pk': 'id',
+        'name_field': 'name',
+        'name_label': 'Completion Status (e.g. Completed, Incomplete, Not Started)',
+        'secondary_field': None,
+        'secondary_label': None,
+    },
 }
 
 

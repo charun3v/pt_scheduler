@@ -151,6 +151,26 @@ class BrachyAnesthesia(models.Model):
         return self.name
 
 
+class TreatmentCompletionStatus(models.Model):
+    """
+    Reference table for Course Completion Status:
+    Completed, Incomplete, Not Started, Defaulted, Discontinued, etc.
+    Configurable via Dropdown Options & Reference Tables Manager.
+    """
+    name = models.CharField(max_length=100, unique=True, verbose_name="Status Name")
+    is_completed = models.BooleanField(default=False, verbose_name="Signifies Course Completed")
+    display_order = models.IntegerField(default=1, verbose_name="Display Order")
+    is_active = models.BooleanField(default=True, verbose_name="Active")
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        verbose_name = "Treatment Completion Status"
+        verbose_name_plural = "Treatment Completion Statuses"
+
+    def __str__(self):
+        return self.name
+
+
 class MachineMapping(models.Model):
     """
     Dynamic Admin Mapping:
@@ -233,6 +253,15 @@ class TreatmentSchedule(models.Model):
     intended_start_date = models.DateField(blank=True, null=True, verbose_name="Intended Start Date")
     original_scheduled_date = models.DateField(blank=True, null=True, verbose_name="Original Scheduled Date")
 
+    # Actual Treatment Delivery & Status Tracking
+    actual_start_date = models.DateField(null=True, blank=True, verbose_name="Actual Start Date")
+    actual_end_date = models.DateField(null=True, blank=True, verbose_name="Actual End Date")
+    actual_treatment_status = models.ForeignKey(
+        TreatmentCompletionStatus, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='schedules', verbose_name="Actual Treatment Status"
+    )
+    actual_status_notes = models.CharField(max_length=255, blank=True, null=True, verbose_name="Actual Status Remarks")
+
     # Audit
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -306,6 +335,53 @@ class TreatmentSchedule(models.Model):
         if self.shift:
             return self.shift.name
         return '-'
+
+    @property
+    def final_scheduled_date(self):
+        """
+        Determines the final scheduled date of this treatment course.
+        For Brachytherapy: the latest scheduled appointment date.
+        For Teletherapy: the scheduled/calculated end date, or start date, or intended start date.
+        """
+        if self.treatment_type == 'Brachytherapy':
+            latest_app = self.brachy_appointments.order_by('-appointment_date').first()
+            if latest_app:
+                return latest_app.appointment_date
+        if self.date_of_end:
+            return self.date_of_end
+        calc_end = self.calculate_end_date()
+        if calc_end:
+            return calc_end
+        if self.date_of_start:
+            return self.date_of_start
+        if self.intended_start_date:
+            return self.intended_start_date
+        return None
+
+    @property
+    def is_frozen(self):
+        """
+        Returns True if more than one month (30 days) has passed since the final scheduled date.
+        Frozen courses can only be edited or modified by Administrators.
+        """
+        f_date = self.final_scheduled_date
+        if not f_date:
+            return False
+        from datetime import date, timedelta
+        return date.today() > (f_date + timedelta(days=30))
+
+    def is_editable_by(self, user):
+        """
+        Returns True if the given user is allowed to edit this schedule.
+        If the schedule is frozen (> 1 month past final scheduled date), ONLY Admin can edit it.
+        Otherwise, standard scheduling permission rules apply.
+        """
+        from apps.core.permissions import is_admin_only, can_schedule_patient
+        if not can_schedule_patient(user):
+            return False
+        if self.is_frozen:
+            return is_admin_only(user)
+        return True
 
 
 class BrachytherapyAppointment(models.Model):

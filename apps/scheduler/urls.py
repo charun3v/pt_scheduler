@@ -9,6 +9,7 @@ urlpatterns = [
     path('brachytherapy/api/month/', views.brachy_calendar_month_api, name='brachy_calendar_month_api'),
     path('schedule/<int:schedule_id>/delete/', views.schedule_delete_view, name='schedule_delete'),
     path('course/<int:schedule_id>/tag/', views.tag_treatment_course_view, name='tag_treatment_course'),
+    path('course/<int:schedule_id>/actual-status/', views.update_actual_treatment_status_view, name='update_actual_treatment_status'),
     path('course/<int:schedule_id>/emergency-slot/', views.emergency_slot_view, name='emergency_slot_view'),
     path('emergency-slot/<int:schedule_id>/', views.emergency_slot_view, name='emergency_slot_direct'),
     path('course/<int:schedule_id>/revert-emergency/', views.revert_emergency_slot_view, name='revert_emergency_slot'),

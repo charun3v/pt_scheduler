@@ -113,11 +113,73 @@
 {% endblock %}
 
 {% block content %}
-<div style="max-width: 1140px; margin: 0 auto;">
+<div style="max-width: 100%; margin: 0 auto;">
 
     <!-- Form encapsulates registration editable fields and scheduling fields -->
     <form method="POST" id="scheduleForm" onsubmit="return validateScheduleSubmission();">
         {% csrf_token %}
+
+        {% if prev_course_needs_completion and latest_prev %}
+        <!-- PREVIOUS COURSE STATUS CONFIRMATION PROMPT -->
+        <div style="background: #fffbeb; border: 2px solid #f59e0b; border-radius: 6px; padding: 12px 16px; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                <span style="font-weight: 800; color: #b45309; font-size: 13px;">
+                    ⚠️ Previous Course #{{ latest_prev.id }} ({{ latest_prev.machine_display|default:latest_prev.treatment_type }}) - Completion Status Confirmation:
+                </span>
+                <span style="font-size: 11.5px; color: #78350f;">
+                    Planned: <strong>{{ latest_prev.date_of_start|date:"d-M-Y"|default:"Unscheduled" }}</strong> &rarr; <strong>{{ latest_prev.treatment_end_date|date:"d-M-Y"|default:"-" }}</strong>
+                </span>
+            </div>
+            <div style="font-size: 13px; color: #92400e; margin-bottom: 10px;">
+                Patient already has a previous course. <strong>Is it completed?</strong>
+            </div>
+            <input type="hidden" name="prev_course_id" value="{{ latest_prev.id }}">
+            <div style="display: flex; gap: 24px; align-items: center; margin-bottom: 12px;">
+                <label style="display: flex; align-items: center; gap: 6px; font-weight: 700; color: #166534; cursor: pointer; font-size: 13.5px;">
+                    <input type="radio" name="prev_is_completed" value="yes" checked onchange="togglePrevComp(this.value);" style="width: 15px; height: 15px;">
+                    ✅ Yes, Completed
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-weight: 700; color: #991b1b; cursor: pointer; font-size: 13.5px;">
+                    <input type="radio" name="prev_is_completed" value="no" onchange="togglePrevComp(this.value);" style="width: 15px; height: 15px;">
+                    ❌ No (Incomplete / Not Started / Defaulted / Discontinued)
+                </label>
+            </div>
+            <!-- Yes fields -->
+            <div id="prev_yes_fields" style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center; background: #f0fdf4; padding: 10px 14px; border-radius: 4px; border: 1px solid #bbf7d0;">
+                <div>
+                    <label style="font-size: 11.5px; font-weight: 600; color: #166534; margin-right: 4px;">Actual Start Date:</label>
+                    <input type="date" name="prev_actual_start_date" value="{% if latest_prev.actual_start_date %}{{ latest_prev.actual_start_date|date:'Y-m-d' }}{% elif latest_prev.date_of_start %}{{ latest_prev.date_of_start|date:'Y-m-d' }}{% endif %}" style="padding: 3px 8px; font-size: 12px; border: 1px solid #86efac; border-radius: 3px;">
+                </div>
+                <div>
+                    <label style="font-size: 11.5px; font-weight: 600; color: #166534; margin-right: 4px;">Actual End Date:</label>
+                    <input type="date" name="prev_actual_end_date" value="{% if latest_prev.actual_end_date %}{{ latest_prev.actual_end_date|date:'Y-m-d' }}{% elif latest_prev.treatment_end_date %}{{ latest_prev.treatment_end_date|date:'Y-m-d' }}{% endif %}" style="padding: 3px 8px; font-size: 12px; border: 1px solid #86efac; border-radius: 3px;">
+                </div>
+            </div>
+            <!-- No fields -->
+            <div id="prev_no_fields" style="display: none; gap: 16px; flex-wrap: wrap; align-items: center; background: #fff5f5; padding: 10px 14px; border-radius: 4px; border: 1px solid #fecaca;">
+                <div>
+                    <label style="font-size: 11.5px; font-weight: 600; color: #991b1b; margin-right: 4px;">Status (Reference Lookup):</label>
+                    <select name="prev_completion_status_id" style="padding: 4px 8px; font-size: 12px; border: 1px solid #fca5a5; border-radius: 3px; background: #fff;">
+                        {% for st in completion_statuses %}
+                            {% if not st.is_completed %}
+                            <option value="{{ st.id }}">{{ st.name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size: 11.5px; font-weight: 600; color: #991b1b; margin-right: 4px;">Remarks / Reason:</label>
+                    <input type="text" name="prev_status_notes" placeholder="Reason (e.g. Defaulted after 5 fr)" style="padding: 4px 8px; font-size: 12px; border: 1px solid #fca5a5; border-radius: 3px; width: 240px;">
+                </div>
+            </div>
+        </div>
+        <script>
+        function togglePrevComp(val) {
+            document.getElementById('prev_yes_fields').style.display = (val === 'yes') ? 'flex' : 'none';
+            document.getElementById('prev_no_fields').style.display = (val === 'no') ? 'flex' : 'none';
+        }
+        </script>
+        {% endif %}
 
         <!-- PATIENT REGISTRATION SUMMARY: Light Green Background with Dark Green Border -->
         <div class="patient-summary-simple">

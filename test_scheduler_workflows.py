@@ -3155,6 +3155,154 @@ def run_tests():
     pt_club.delete()
     print("✓ Test 34 Passed: Two-way mutual course clubbing, bracket connector lines, clinical milestones banner, and auto-heal verified.")
 
+    # -------------------------------------------------------------
+    print("\n--- Running Test 35: Schedule Freezing (>1 Month), Actual Treatment Status & Previous Course Verification ---")
+    c.force_login(admin_user)
+
+    Patient.objects.filter(mr_no__in=[9999036, 9999037]).delete()
+    pt_freeze = Patient.objects.create(
+        mr_no=9999036,
+        pt_name="TestFreeze Patient",
+        age=58,
+        sex='Male',
+        phone_no='9888800036',
+        diagnosis='Ca Glottis T2N0',
+        site_of_treatment='Head and neck',
+        primary_consultant=active_consultant
+    )
+
+    # 1. Course with final scheduled date in the past (> 30 days ago, e.g. 45 days ago)
+    old_start = date.today() - timedelta(days=60)
+    old_end = date.today() - timedelta(days=40)
+    sched_old = TreatmentSchedule.objects.create(
+        patient=pt_freeze,
+        treatment_type='Teletherapy',
+        date_of_start=old_start,
+        date_of_end=old_end,
+        no_of_fractions=20,
+        is_emergency_slot=False,
+        status='Scheduled',
+        machine=first_active_machine
+    )
+
+    assert sched_old.final_scheduled_date == old_end
+    assert sched_old.is_frozen is True, "Course older than 30 days past end date must be frozen"
+
+    # Non-admin (Resident) attempts to edit frozen schedule -> Strictly blocked!
+    c.force_login(res_user)
+    resp_res_edit = c.get(f'/scheduler/patient/{pt_freeze.id}/?schedule_id={sched_old.id}')
+    assert resp_res_edit.status_code == 302
+    assert resp_res_edit.url == f'/patients/{pt_freeze.id}/'
+
+    # Non-admin attempts to shift to emergency slot -> Strictly blocked!
+    resp_res_em = c.get(f'/scheduler/course/{sched_old.id}/emergency-slot/')
+    assert resp_res_em.status_code == 302
+    assert resp_res_em.url == f'/patients/{pt_freeze.id}/'
+
+    # Non-admin attempts to revert emergency -> Strictly blocked!
+    resp_res_rev = c.post(f'/scheduler/course/{sched_old.id}/revert-emergency/')
+    assert resp_res_rev.status_code == 302
+    assert resp_res_rev.url == f'/patients/{pt_freeze.id}/'
+
+    # Non-admin attempts to tag/club -> Strictly blocked!
+    resp_res_tag = c.post(f'/scheduler/course/{sched_old.id}/tag/', {'tagged_to_id': ''})
+    assert resp_res_tag.status_code == 302
+    assert resp_res_tag.url == f'/patients/{pt_freeze.id}/'
+
+    # Non-admin attempts to delete -> Strictly blocked!
+    resp_res_del = c.post(f'/scheduler/schedule/{sched_old.id}/delete/')
+    assert resp_res_del.status_code == 302
+
+    # Non-admin attempts to update actual status of frozen course -> Strictly blocked!
+    resp_res_act = c.post(f'/scheduler/course/{sched_old.id}/actual-status/', {'is_completed': 'yes'})
+    assert resp_res_act.status_code == 302
+    assert resp_res_act.url == f'/patients/{pt_freeze.id}/'
+
+    # Admin CAN access and edit frozen schedule
+    c.force_login(admin_user)
+    resp_adm_act = c.post(f'/scheduler/course/{sched_old.id}/actual-status/', {
+        'is_completed': 'yes',
+        'actual_start_date': old_start.strftime('%Y-%m-%d'),
+        'actual_end_date': old_end.strftime('%Y-%m-%d'),
+        'actual_status_notes': 'Course completed as per protocol'
+    })
+    assert resp_adm_act.status_code == 302
+    sched_old.refresh_from_db()
+    assert sched_old.status == 'Completed'
+    assert sched_old.actual_treatment_status is not None
+    assert sched_old.actual_treatment_status.is_completed is True
+    assert sched_old.actual_start_date == old_start
+    assert sched_old.actual_end_date == old_end
+
+    # 2. Patient Detail View rendering with widened layout, actual status button & badges
+    resp_detail = c.get(f'/patients/{pt_freeze.id}/')
+    assert resp_detail.status_code == 200
+    det_html = resp_detail.content.decode('utf-8')
+    assert "Actual Treatment Status" in det_html
+    assert "🔒 Frozen" in det_html
+    assert f"Actual: {old_start.strftime('%d-%b-%Y')}" in det_html
+    assert f"Actual: {old_end.strftime('%d-%b-%Y')}" in det_html
+    assert "max-width: 100%" in det_html
+
+    # 3. Previous Course completion confirmation when creating a new course
+    # Create an uncompleted previous course for another patient
+    pt_prev = Patient.objects.create(
+        mr_no=9999037,
+        pt_name="TestPrevCourse Patient",
+        age=48,
+        sex='Female',
+        phone_no='9888800037',
+        diagnosis='Ca Cervix IIA',
+        site_of_treatment='Pelvis',
+        primary_consultant=active_consultant
+    )
+    first_sched = TreatmentSchedule.objects.create(
+        patient=pt_prev,
+        treatment_type='Teletherapy',
+        date_of_start=date.today() - timedelta(days=10),
+        no_of_fractions=25,
+        status='Scheduled',
+        machine=first_active_machine
+    )
+    assert first_sched.actual_treatment_status is None
+
+    # Patient detail page should flag that patient has uncompleted previous course
+    resp_prev_detail = c.get(f'/patients/{pt_prev.id}/')
+    assert resp_prev_detail.context['has_uncompleted_previous_course'] is True
+
+    # New course scheduling page should display the previous course confirmation block
+    resp_new_sched_page = c.get(f'/scheduler/patient/{pt_prev.id}/?new_course=1')
+    assert resp_new_sched_page.status_code == 200
+    new_html = resp_new_sched_page.content.decode('utf-8')
+    assert "Previous Course" in new_html
+    assert "Completion Status Confirmation" in new_html
+
+    # Submitting new course with previous course completion saves previous course status
+    resp_save_new = c.post(f'/scheduler/patient/{pt_prev.id}/', {
+        'form_action': 'draft',
+        'new_course': '1',
+        'prev_course_id': str(first_sched.id),
+        'prev_is_completed': 'yes',
+        'prev_actual_start_date': (date.today() - timedelta(days=10)).strftime('%Y-%m-%d'),
+        'prev_actual_end_date': date.today().strftime('%Y-%m-%d'),
+        'prev_status_notes': 'Completed 25 fractions',
+        'treatment_type': 'Brachytherapy',
+        'site_of_treatment': 'Cervix',
+        'age': '48',
+        'diagnosis': 'Ca Cervix IIA',
+        'phone_no': '9888800037',
+    })
+    first_sched.refresh_from_db()
+    assert first_sched.status == 'Completed'
+    assert first_sched.actual_treatment_status is not None
+    assert first_sched.actual_treatment_status.is_completed is True
+    assert first_sched.actual_start_date == date.today() - timedelta(days=10)
+
+    # Cleanup
+    pt_freeze.delete()
+    pt_prev.delete()
+    print("✓ Test 35 Passed: Schedule freezing (> 1 month), Admin-only edit permissions, actual treatment dates/status, and previous course confirmation fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

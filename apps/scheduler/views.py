@@ -11,7 +11,7 @@ from decimal import Decimal
 from .models import (
     Machine, Shift, Technique, SpecialTechnique, SimulatedFor,
     TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday, EmergencyReason,
-    BrachyApplicator, BrachyAnesthesia, BrachytherapyAppointment
+    BrachyApplicator, BrachyAnesthesia, BrachytherapyAppointment, TreatmentCompletionStatus
 )
 import json
 import calendar
@@ -19,7 +19,8 @@ from apps.patients.models import Patient, DEFAULT_SITES
 from apps.core.models import AuditLog
 from apps.core.permissions import (
     is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule,
-    can_schedule_patient, can_view_pending_patients, is_consultant_or_admin, is_resident
+    can_schedule_patient, can_view_pending_patients, is_consultant_or_admin, is_resident,
+    is_admin_only, can_edit_patient
 )
 from apps.core.validators import validate_field_value
 
@@ -75,13 +76,71 @@ def schedule_patient_view(request, patient_id):
     else:
         existing_schedule = patient.schedules.filter(status__in=['Draft', 'Pending', 'Scheduled']).first() or patient.schedules.first()
 
+    if existing_schedule and existing_schedule.is_frozen and not is_admin_only(request.user):
+        messages.error(request, f"Treatment Course #{existing_schedule.id} is frozen (> 1 month past scheduled completion). Only Administrators can edit frozen courses.")
+        return redirect('patient_detail', patient_id=patient.id)
+
     previous_schedules = patient.schedules.all()
     if existing_schedule:
         previous_schedules = previous_schedules.exclude(id=existing_schedule.id)
 
+    latest_prev = previous_schedules.order_by('-id').first()
+    prev_course_needs_completion = bool(latest_prev and not latest_prev.actual_treatment_status)
+
     if request.method == 'POST':
         form_action = request.POST.get('form_action', 'approve_schedule')
         is_draft_action = (form_action == 'draft')
+
+        def parse_d(val):
+            if not val:
+                return None
+            for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%b-%Y"):
+                try:
+                    return datetime.strptime(val, fmt).date()
+                except ValueError:
+                    continue
+            return None
+
+        # Handle previous course completion if submitted
+        prev_course_id = request.POST.get('prev_course_id')
+        if prev_course_id and prev_course_needs_completion:
+            prev_s = patient.schedules.filter(id=prev_course_id).first()
+            if prev_s and not prev_s.actual_treatment_status:
+                prev_comp = request.POST.get('prev_is_completed', '').strip().lower()
+                prev_st_date = parse_d(request.POST.get('prev_actual_start_date', '').strip())
+                prev_end_date = parse_d(request.POST.get('prev_actual_end_date', '').strip())
+                prev_st_id = request.POST.get('prev_completion_status_id', '').strip()
+                prev_notes = request.POST.get('prev_status_notes', '').strip()
+
+                if prev_comp == 'yes':
+                    comp_obj = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
+                    if not comp_obj:
+                        comp_obj, _ = TreatmentCompletionStatus.objects.get_or_create(
+                            name='Completed', defaults={'is_completed': True, 'display_order': 1}
+                        )
+                    prev_s.actual_treatment_status = comp_obj
+                    prev_s.status = 'Completed'
+                    prev_s.actual_start_date = prev_st_date or prev_s.date_of_start
+                    prev_s.actual_end_date = prev_end_date or prev_s.treatment_end_date
+                elif prev_comp == 'no':
+                    if prev_st_id:
+                        prev_s.actual_treatment_status = TreatmentCompletionStatus.objects.filter(id=prev_st_id).first()
+                    else:
+                        prev_s.actual_treatment_status = TreatmentCompletionStatus.objects.filter(is_completed=False).first()
+                    if prev_st_date:
+                        prev_s.actual_start_date = prev_st_date
+                    if prev_end_date:
+                        prev_s.actual_end_date = prev_end_date
+                if prev_notes:
+                    prev_s.actual_status_notes = prev_notes
+                prev_s.save()
+                AuditLog.objects.create(
+                    user=request.user,
+                    action="ACTUAL_STATUS_UPDATED",
+                    mr_no=str(patient.mr_no),
+                    details=f"Previous Course #{prev_s.id} completion status recorded before scheduling new course: Status={prev_s.actual_treatment_status.name if prev_s.actual_treatment_status else 'None'}",
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
 
         # 1. Update top-card editable patient registration fields
         age_raw = request.POST.get('age', '').strip()
@@ -325,6 +384,9 @@ def schedule_patient_view(request, patient_id):
         'holiday_map': holiday_map,
         'holiday_map_json': json.dumps(holiday_map),
         'today': date.today().isoformat(),
+        'latest_prev': latest_prev,
+        'prev_course_needs_completion': prev_course_needs_completion,
+        'completion_statuses': TreatmentCompletionStatus.objects.filter(is_active=True).order_by('display_order', 'name'),
     }
     return render(request, 'scheduler/schedule_patient.html', context)
 
@@ -673,6 +735,10 @@ def schedule_delete_view(request, schedule_id):
     machine_name = schedule.machine.name if schedule.machine else 'Unassigned'
     start_date_str = str(schedule.date_of_start) if schedule.date_of_start else 'Pending'
 
+    if schedule.is_frozen and not is_admin_only(request.user):
+        messages.error(request, f"Treatment Course #{schedule.id} is frozen (> 1 month past scheduled completion). Only Administrators can delete frozen courses.")
+        return redirect('patient_detail', patient_id=patient.id)
+
     if request.method == 'POST':
         schedule.delete()
 
@@ -712,6 +778,10 @@ def tag_treatment_course_view(request, schedule_id):
 
     if not can_schedule_patient(request.user):
         messages.error(request, "Access restricted. You do not have permission to modify treatment courses.")
+        return redirect('patient_detail', patient_id=patient.id)
+
+    if schedule.is_frozen and not is_admin_only(request.user):
+        messages.error(request, f"Treatment Course #{schedule.id} is frozen (> 1 month past scheduled completion). Only Administrators can modify course clubbing.")
         return redirect('patient_detail', patient_id=patient.id)
 
     if request.method == 'POST':
@@ -771,6 +841,113 @@ def tag_treatment_course_view(request, schedule_id):
             messages.success(request, f"Course #{schedule.id} is now an independent course.")
 
     return redirect('patient_detail', patient_id=patient.id)
+
+
+@login_required
+def update_actual_treatment_status_view(request, schedule_id):
+    """
+    Records or updates actual treatment start date, actual end date, and completion status.
+    If course is frozen (> 1 month past scheduled completion), strictly restricted to Administrator.
+    """
+    schedule = get_object_or_404(TreatmentSchedule, id=schedule_id)
+    patient = schedule.patient
+
+    if not can_schedule_patient(request.user) and not can_edit_patient(request.user):
+        messages.error(request, "Access restricted. You do not have permission to update treatment status.")
+        return redirect('patient_detail', patient_id=patient.id)
+
+    if schedule.is_frozen and not is_admin_only(request.user):
+        messages.error(request, f"Treatment Course #{schedule.id} is frozen (> 1 month past scheduled completion). Only Administrators can modify frozen courses.")
+        return redirect('patient_detail', patient_id=patient.id)
+
+    if request.method == 'POST':
+        is_completed_val = request.POST.get('is_completed', '').strip().lower()  # 'yes' or 'no'
+        actual_start_raw = request.POST.get('actual_start_date', '').strip()
+        actual_end_raw = request.POST.get('actual_end_date', '').strip()
+        status_id = request.POST.get('completion_status_id', '').strip()
+        notes = request.POST.get('actual_status_notes', '').strip()
+
+        def parse_d(val):
+            if not val:
+                return None
+            for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d-%b-%Y'):
+                try:
+                    return datetime.strptime(val, fmt).date()
+                except ValueError:
+                    continue
+            return None
+
+        act_start = parse_d(actual_start_raw)
+        act_end = parse_d(actual_end_raw)
+
+        if is_completed_val == 'yes':
+            comp_status = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
+            if not comp_status:
+                comp_status, _ = TreatmentCompletionStatus.objects.get_or_create(
+                    name='Completed', defaults={'is_completed': True, 'display_order': 1}
+                )
+            schedule.actual_treatment_status = comp_status
+            schedule.status = 'Completed'
+            schedule.actual_start_date = act_start or schedule.actual_start_date or schedule.date_of_start
+            schedule.actual_end_date = act_end or schedule.actual_end_date or schedule.treatment_end_date
+            if notes:
+                schedule.actual_status_notes = notes
+        elif is_completed_val == 'no':
+            if status_id:
+                st_obj = TreatmentCompletionStatus.objects.filter(id=status_id).first()
+            else:
+                st_obj = TreatmentCompletionStatus.objects.filter(is_completed=False).first()
+            schedule.actual_treatment_status = st_obj
+            if st_obj and st_obj.name.lower() == 'not started':
+                schedule.status = 'Pending'
+            elif st_obj and st_obj.name.lower() in ('defaulted', 'discontinued'):
+                schedule.status = 'Cancelled'
+            elif st_obj and st_obj.name.lower() == 'incomplete':
+                schedule.status = 'In Progress'
+            if act_start:
+                schedule.actual_start_date = act_start
+            if act_end:
+                schedule.actual_end_date = act_end
+            if notes:
+                schedule.actual_status_notes = notes
+        else:
+            if status_id:
+                st_obj = TreatmentCompletionStatus.objects.filter(id=status_id).first()
+                schedule.actual_treatment_status = st_obj
+                if st_obj and st_obj.is_completed:
+                    schedule.status = 'Completed'
+            if act_start:
+                schedule.actual_start_date = act_start
+            if act_end:
+                schedule.actual_end_date = act_end
+            if notes:
+                schedule.actual_status_notes = notes
+
+        schedule.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="ACTUAL_STATUS_UPDATED",
+            mr_no=str(patient.mr_no),
+            details=f"Course #{schedule.id} actual status updated: Status={schedule.actual_treatment_status.name if schedule.actual_treatment_status else 'None'}, Start={schedule.actual_start_date}, End={schedule.actual_end_date} for {patient.pt_name}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"Actual treatment status updated for Course #{schedule.id}.")
+
+        next_url = request.POST.get('next_url') or request.GET.get('next_url')
+        if next_url:
+            return redirect(next_url)
+
+        return redirect('patient_detail', patient_id=patient.id)
+
+    statuses = TreatmentCompletionStatus.objects.filter(is_active=True).order_by('display_order', 'name')
+    context = {
+        'patient': patient,
+        'schedule': schedule,
+        'statuses': statuses,
+    }
+    return render(request, 'scheduler/actual_status_form.html', context)
 
 
 @login_required
@@ -867,6 +1044,10 @@ def emergency_slot_view(request, schedule_id):
 
     if not can_schedule_patient(request.user):
         messages.error(request, "Access restricted. You do not have permission to assign or modify emergency slots.")
+        return redirect('patient_detail', patient_id=patient.id)
+
+    if sched.is_frozen and not is_admin_only(request.user):
+        messages.error(request, f"Treatment Course #{sched.id} is frozen (> 1 month past scheduled completion). Cannot change to Emergency / Vacant slot.")
         return redirect('patient_detail', patient_id=patient.id)
 
     if sched.treatment_type == 'Brachytherapy':
@@ -1009,6 +1190,10 @@ def revert_emergency_slot_view(request, schedule_id):
 
     if not can_schedule_patient(request.user):
         messages.error(request, "Access restricted. You do not have permission to modify treatment schedules.")
+        return redirect('patient_detail', patient_id=patient.id)
+
+    if sched.is_frozen and not is_admin_only(request.user):
+        messages.error(request, f"Treatment Course #{sched.id} is frozen (> 1 month past scheduled completion). Cannot revert frozen course.")
         return redirect('patient_detail', patient_id=patient.id)
 
     if sched.treatment_type == 'Brachytherapy':
@@ -1189,6 +1374,12 @@ def brachy_schedule_patient_view(request, patient_id):
         return redirect('patient_detail', patient_id=patient_id)
 
     patient = get_object_or_404(Patient, id=patient_id)
+
+    existing_brachy = patient.schedules.filter(treatment_type='Brachytherapy').first()
+    if existing_brachy and existing_brachy.is_frozen and not is_admin_only(request.user):
+        messages.error(request, f"Brachytherapy Course #{existing_brachy.id} is frozen (> 1 month past scheduled completion). Only Administrators can modify frozen courses.")
+        return redirect('patient_detail', patient_id=patient.id)
+
     applicators = BrachyApplicator.objects.filter(is_active=True).order_by('display_order', 'name')
     anesthesias = BrachyAnesthesia.objects.filter(is_active=True).order_by('display_order', 'name')
     sites = TreatmentSite.objects.filter(is_active=True).order_by('display_order', 'name')

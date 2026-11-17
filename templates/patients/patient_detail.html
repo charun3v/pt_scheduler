@@ -72,6 +72,7 @@
         border-bottom: 1px solid #eaeef2;
         border-right: 1px solid #eaeef2;
         vertical-align: middle;
+        white-space: nowrap;
     }
     .courses-table tr:hover {
         background: #f9fbfd;
@@ -118,7 +119,7 @@
 {% endblock %}
 
 {% block content %}
-<div style="max-width: 1140px; margin: 0 auto;">
+<div style="max-width: 100%; margin: 0 auto;">
 
     <!-- TOP PATIENT HEADER (COMPACT DEMOGRAPHICS SUMMARY) -->
     <div class="patient-header-compact">
@@ -141,12 +142,16 @@
             </div>
 
             <!-- Action buttons for patient -->
-            <div style="display: flex; gap: 6px; align-items: center;">
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
                 {% if CAN_SCHEDULE_PATIENT %}
-                <a href="{% url 'schedule_patient' patient.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 5px 14px; font-size: 12px; font-weight: bold;">
+                <a href="{% url 'schedule_patient' patient.id %}?new_course=1" 
+                   {% if has_uncompleted_previous_course %}onclick="return promptPrevCourseModal('{% url 'schedule_patient' patient.id %}?new_course=1');"{% endif %}
+                   class="action-ribbon-btn btn-highlight" style="padding: 5px 14px; font-size: 12px; font-weight: bold;">
                     ➕ Add Treatment Course and Schedule
                 </a>
-                <a href="{% url 'brachy_schedule_patient' patient.id %}" class="action-ribbon-btn" style="padding: 5px 14px; font-size: 12px; font-weight: bold; background: #dcfce7; color: #166534; border-color: #86efac;">
+                <a href="{% url 'brachy_schedule_patient' patient.id %}" 
+                   {% if has_uncompleted_previous_course %}onclick="return promptPrevCourseModal('{% url 'brachy_schedule_patient' patient.id %}');"{% endif %}
+                   class="action-ribbon-btn" style="padding: 5px 14px; font-size: 12px; font-weight: bold; background: #dcfce7; color: #166534; border-color: #86efac;">
                     ☢️ Schedule Brachytherapy
                 </a>
                 {% endif %}
@@ -232,7 +237,9 @@
             </div>
             <div>
                 {% if CAN_SCHEDULE_PATIENT %}
-                <a href="{% url 'schedule_patient' patient.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 4px 12px; font-size: 11px; font-weight: bold;">
+                <a href="{% url 'schedule_patient' patient.id %}?new_course=1" 
+                   {% if has_uncompleted_previous_course %}onclick="return promptPrevCourseModal('{% url 'schedule_patient' patient.id %}?new_course=1');"{% endif %}
+                   class="action-ribbon-btn btn-highlight" style="padding: 4px 12px; font-size: 11px; font-weight: bold;">
                     ➕ Add Treatment Course and Schedule
                 </a>
                 {% endif %}
@@ -246,15 +253,15 @@
                     <tr>
                         <th style="width: 120px;">Course / Tag</th>
                         <th style="width: 95px;">Sim Date</th>
-                        <th style="width: 100px;">Start Date</th>
-                        <th style="width: 100px;">End Date</th>
-                        <th style="width: 110px;">Type</th>
+                        <th style="width: 110px;">Start Date</th>
+                        <th style="width: 110px;">End Date</th>
+                        <th style="width: 105px;">Type</th>
                         <th style="width: 95px;">Intent</th>
                         <th style="width: 75px;">Dose</th>
                         <th style="width: 75px;">Fractions</th>
                         <th style="min-width: 130px;">Machine / Shift</th>
-                        <th style="width: 90px; text-align: center;">Status</th>
-                        <th style="min-width: 170px; text-align: center;">Actions & Course Clubbing</th>
+                        <th style="width: 110px; text-align: center;">Status</th>
+                        <th style="min-width: 210px; text-align: center;">Actions & Course Clubbing</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -295,6 +302,11 @@
                             {% else %}
                                 <span style="color: #cf222e; font-style: italic;">Unscheduled</span>
                             {% endif %}
+                            {% if s.actual_start_date %}
+                                <div style="font-size: 10.5px; color: #047857; font-weight: 600; margin-top: 2px;" title="Actual Treatment Start Date">
+                                    Actual: {{ s.actual_start_date|date:"d-M-Y" }}
+                                </div>
+                            {% endif %}
                         </td>
 
                         <!-- Treatment End Date (Calculated skipping Sundays) -->
@@ -303,6 +315,11 @@
                                 <strong>{{ s.treatment_end_date|date:"d-M-Y" }}</strong>
                             {% else %}
                                 <span style="color: #57606a;">-</span>
+                            {% endif %}
+                            {% if s.actual_end_date %}
+                                <div style="font-size: 10.5px; color: #047857; font-weight: 600; margin-top: 2px;" title="Actual Treatment End Date">
+                                    Actual: {{ s.actual_end_date|date:"d-M-Y" }}
+                                </div>
                             {% endif %}
                         </td>
 
@@ -372,6 +389,28 @@
                             {% else %}
                                 <span class="badge-status badge-pending">{{ s.status }}</span>
                             {% endif %}
+
+                            {% if s.actual_treatment_status %}
+                                <div style="margin-top: 3px;">
+                                    {% if s.actual_treatment_status.is_completed %}
+                                        <span class="badge-status badge-completed" style="background: #dcfce7; color: #15803d; border-color: #86efac; font-size: 10px;" title="Actual Status: Completed">
+                                            🩺 {{ s.actual_treatment_status.name }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge-status" style="background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; font-size: 10px;" title="Actual Status: {{ s.actual_treatment_status.name }}{% if s.actual_status_notes %} ({{ s.actual_status_notes }}){% endif %}">
+                                            ⚠️ {{ s.actual_treatment_status.name }}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+
+                            {% if s.is_frozen %}
+                                <div style="margin-top: 3px;">
+                                    <span class="badge-status" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-size: 9.5px; font-weight: 700;" title="Schedule is frozen (> 1 month past scheduled date). Only Administrators can edit.">
+                                        🔒 Frozen{% if is_admin_user %} <span style="font-size: 8.5px; opacity: 0.8;">(Admin)</span>{% endif %}
+                                    </span>
+                                </div>
+                            {% endif %}
                         </td>
 
                         <!-- Actions & Course Tagging / Clubbing -->
@@ -379,43 +418,59 @@
                             {% if CAN_SCHEDULE_PATIENT %}
                             <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
                                 <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: center;">
-                                    {% if s.treatment_type == 'Brachytherapy' %}
-                                    <a href="{% url 'brachy_schedule_patient' patient.id %}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; background: #e0f2fe; color: #0369a1; border-color: #7dd3fc;" title="Edit brachytherapy schedule & fractions">
-                                        ☢️ Edit Brachy
-                                    </a>
-                                    {% else %}
-                                    <a href="{% url 'schedule_patient' patient.id %}?schedule_id={{ s.id }}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px;" title="Edit or Approve this course">
-                                        ✏️ Edit
-                                    </a>
-                                    {% endif %}
-                                    
-                                    {% if s.treatment_type != 'Brachytherapy' %}
-                                        {% if not s.is_emergency_slot %}
-                                        <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Shift patient to Emergency or Vacant slot list">
-                                            🚨 Add to Emergency slot
-                                        </a>
-                                        {% else %}
-                                        <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Edit Emergency / Vacant Slot details">
-                                            ✏️ Edit Slot
-                                        </a>
-                                        <form method="POST" action="{% url 'revert_emergency_slot' s.id %}" style="display: inline; margin: 0;" onsubmit="return confirm('Revert this course back to normal schedule queue?');">
-                                            {% csrf_token %}
-                                            <button type="submit" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #1e40af; border-color: #93c5fd; background: #eff6ff; font-weight: 600; cursor: pointer;" title="Revert back to normal schedule list">
-                                                ↩️ Revert
-                                            </button>
-                                        </form>
-                                        {% endif %}
+                                    <!-- Actual Treatment Status Button -->
+                                    {% if not s.is_frozen or is_admin_user %}
+                                    <button type="button" class="action-ribbon-btn" 
+                                            style="padding: 2px 7px; font-size: 10.5px; background: #ecfdf5; color: #065f46; border-color: #a7f3d0; font-weight: 600;"
+                                            onclick="openActualStatusModal({{ s.id }}, '{{ s.actual_start_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_treatment_status_id|default:'' }}', '{{ s.status }}', '{{ s.date_of_start|date:'Y-m-d'|default:'' }}', '{{ s.treatment_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_status_notes|default:''|escapejs }}');"
+                                            title="Record Actual Start Date, End Date, and Treatment Completion Status">
+                                        🩺 Actual Treatment Status
+                                    </button>
                                     {% endif %}
 
-                                    {% if CAN_REMOVE_FROM_SCHEDULE %}
-                                    <a href="{% url 'schedule_delete' s.id %}" class="btn-delete" style="padding: 2px 6px; font-size: 11px;" title="Delete or remove this course">
-                                        🗑️
-                                    </a>
+                                    {% if s.is_frozen and not is_admin_user %}
+                                    <span style="font-size: 11px; color: #64748b; font-style: italic;">
+                                        🔒 Frozen (Admin Only)
+                                    </span>
+                                    {% else %}
+                                        {% if s.treatment_type == 'Brachytherapy' %}
+                                        <a href="{% url 'brachy_schedule_patient' patient.id %}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; background: #e0f2fe; color: #0369a1; border-color: #7dd3fc;" title="Edit brachytherapy schedule & fractions">
+                                            ☢️ Edit Brachy
+                                        </a>
+                                        {% else %}
+                                        <a href="{% url 'schedule_patient' patient.id %}?schedule_id={{ s.id }}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px;" title="Edit or Approve this course">
+                                            ✏️ Edit
+                                        </a>
+                                        {% endif %}
+                                        
+                                        {% if s.treatment_type != 'Brachytherapy' %}
+                                            {% if not s.is_emergency_slot %}
+                                            <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Shift patient to Emergency or Vacant slot list">
+                                                🚨 Add to Emergency slot
+                                            </a>
+                                            {% else %}
+                                            <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Edit Emergency / Vacant Slot details">
+                                                ✏️ Edit Slot
+                                            </a>
+                                            <form method="POST" action="{% url 'revert_emergency_slot' s.id %}" style="display: inline; margin: 0;" onsubmit="return confirm('Revert this course back to normal schedule queue?');">
+                                                {% csrf_token %}
+                                                <button type="submit" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #1e40af; border-color: #93c5fd; background: #eff6ff; font-weight: 600; cursor: pointer;" title="Revert back to normal schedule list">
+                                                    ↩️ Revert
+                                                </button>
+                                            </form>
+                                            {% endif %}
+                                        {% endif %}
+
+                                        {% if CAN_REMOVE_FROM_SCHEDULE %}
+                                        <a href="{% url 'schedule_delete' s.id %}" class="btn-delete" style="padding: 2px 6px; font-size: 11px;" title="Delete or remove this course">
+                                            🗑️
+                                        </a>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
 
                                 <!-- Inline Club / Tag with Previous Course Form -->
-                                {% if schedules|length > 1 %}
+                                {% if schedules|length > 1 and not s.is_frozen or schedules|length > 1 and is_admin_user %}
                                 <form method="POST" action="{% url 'tag_treatment_course' s.id %}" style="display: inline-flex; align-items: center; gap: 3px; margin: 0;">
                                     {% csrf_token %}
                                     <select name="tagged_to_id" onchange="this.form.submit();" style="font-size: 10px; padding: 1px 3px; border: 1px solid #d0d7de; border-radius: 3px; max-width: 140px; background: #fff;" title="Tag / club this course with another previous course">
@@ -515,4 +570,219 @@
     {% endif %}
 
 </div>
+
+<!-- MODAL: ACTUAL TREATMENT STATUS -->
+<div id="actualStatusModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: #ffffff; border-radius: 8px; width: 520px; max-width: 95%; box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden;">
+        <div style="background: #003366; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 14px;">🩺 Record Actual Treatment Status (<span id="modalCourseTitle">Course</span>)</strong>
+            <button type="button" onclick="closeActualStatusModal();" style="background: none; border: none; color: #ffffff; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <form method="POST" id="actualStatusModalForm" action="" style="padding: 18px;">
+            {% csrf_token %}
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-size: 12.5px; font-weight: 700; color: #0f172a; margin-bottom: 6px;">
+                    Is treatment course completed? <span style="color: #dc2626;">*</span>
+                </label>
+                <div style="display: flex; gap: 20px; align-items: center;">
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: #166534;">
+                        <input type="radio" name="is_completed" value="yes" id="modal_comp_yes" checked onchange="toggleModalCompletion();">
+                        ✅ Yes, Completed
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: #991b1b;">
+                        <input type="radio" name="is_completed" value="no" id="modal_comp_no" onchange="toggleModalCompletion();">
+                        ❌ No (Incomplete / Not Started)
+                    </label>
+                </div>
+            </div>
+
+            <div id="modal_yes_box" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: #166534; margin-bottom: 3px;">Actual Start Date:</label>
+                        <input type="date" name="actual_start_date" id="modal_act_start" style="width: 100%; padding: 4px 6px; border: 1px solid #86efac; border-radius: 3px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: #166534; margin-bottom: 3px;">Actual End Date:</label>
+                        <input type="date" name="actual_end_date" id="modal_act_end" style="width: 100%; padding: 4px 6px; border: 1px solid #86efac; border-radius: 3px; font-size: 12px;">
+                    </div>
+                </div>
+            </div>
+
+            <div id="modal_no_box" style="display: none; background: #fff5f5; border: 1px solid #fecaca; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px;">
+                <div style="margin-bottom: 8px;">
+                    <label style="display: block; font-size: 11px; font-weight: 600; color: #991b1b; margin-bottom: 3px;">Status (Reference Lookup):</label>
+                    <select name="completion_status_id" id="modal_status_select" style="width: 100%; padding: 4px 6px; border: 1px solid #fca5a5; border-radius: 3px; font-size: 12px; background: #fff;">
+                        {% for st in completion_statuses %}
+                            {% if not st.is_completed %}
+                            <option value="{{ st.id }}">{{ st.name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: #991b1b; margin-bottom: 3px;">Actual Start Date (optional):</label>
+                        <input type="date" name="actual_start_date_no" id="modal_act_start_no" style="width: 100%; padding: 4px 6px; border: 1px solid #fca5a5; border-radius: 3px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: #991b1b; margin-bottom: 3px;">End / Stop Date (optional):</label>
+                        <input type="date" name="actual_end_date_no" id="modal_act_end_no" style="width: 100%; padding: 4px 6px; border: 1px solid #fca5a5; border-radius: 3px; font-size: 12px;">
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 3px;">Remarks / Notes:</label>
+                <input type="text" name="actual_status_notes" id="modal_act_notes" placeholder="e.g. Completed all fractions / Withdrawn" style="width: 100%; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 3px; font-size: 12px;">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+                <button type="button" onclick="closeActualStatusModal();" style="padding: 5px 12px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; font-size: 12px; cursor: pointer;">Cancel</button>
+                <button type="submit" style="padding: 5px 16px; border: none; border-radius: 4px; background: #003366; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer;">💾 Save Status</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: PREVIOUS COURSE CONFIRMATION PROMPT -->
+{% if has_uncompleted_previous_course and latest_schedule %}
+<div id="prevCoursePromptModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1050; align-items: center; justify-content: center;">
+    <div style="background: #ffffff; border-radius: 8px; width: 540px; max-width: 95%; box-shadow: 0 10px 25px rgba(0,0,0,0.25); overflow: hidden;">
+        <div style="background: #b45309; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 14px;">⚠️ Previous Treatment Course Status Required</strong>
+            <button type="button" onclick="closePrevCourseModal();" style="background: none; border: none; color: #ffffff; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <form method="POST" id="prevCoursePromptForm" action="{% url 'update_actual_treatment_status' latest_schedule.id %}" style="padding: 18px;">
+            {% csrf_token %}
+            <input type="hidden" name="next_url" id="prevPromptNextUrl" value="{% url 'schedule_patient' patient.id %}?new_course=1">
+            
+            <p style="font-size: 13px; color: #1e293b; margin: 0 0 12px 0;">
+                Patient already has a previous course (<strong>Course #{{ latest_schedule.id }} &bull; {{ latest_schedule.machine_display|default:latest_schedule.treatment_type }}</strong>).
+                <br>
+                <span style="font-weight: 700; color: #b45309;">Is it completed?</span>
+            </p>
+
+            <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 12px;">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; cursor: pointer; color: #166534;">
+                    <input type="radio" name="is_completed" value="yes" checked onchange="togglePromptFields(this.value);">
+                    ✅ Yes, Completed
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; cursor: pointer; color: #991b1b;">
+                    <input type="radio" name="is_completed" value="no" onchange="togglePromptFields(this.value);">
+                    ❌ No (Incomplete / Not Started)
+                </label>
+            </div>
+
+            <!-- If YES -->
+            <div id="prompt_yes_box" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: #166534; margin-bottom: 3px;">Actual Start Date:</label>
+                        <input type="date" name="actual_start_date" value="{% if latest_schedule.actual_start_date %}{{ latest_schedule.actual_start_date|date:'Y-m-d' }}{% elif latest_schedule.date_of_start %}{{ latest_schedule.date_of_start|date:'Y-m-d' }}{% endif %}" style="width: 100%; padding: 4px 6px; border: 1px solid #86efac; border-radius: 3px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 11px; font-weight: 600; color: #166534; margin-bottom: 3px;">Actual End Date:</label>
+                        <input type="date" name="actual_end_date" value="{% if latest_schedule.actual_end_date %}{{ latest_schedule.actual_end_date|date:'Y-m-d' }}{% elif latest_schedule.treatment_end_date %}{{ latest_schedule.treatment_end_date|date:'Y-m-d' }}{% endif %}" style="width: 100%; padding: 4px 6px; border: 1px solid #86efac; border-radius: 3px; font-size: 12px;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- If NO -->
+            <div id="prompt_no_box" style="display: none; background: #fff5f5; border: 1px solid #fecaca; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px;">
+                <div style="margin-bottom: 8px;">
+                    <label style="display: block; font-size: 11px; font-weight: 600; color: #991b1b; margin-bottom: 3px;">Status (Reference Lookup):</label>
+                    <select name="completion_status_id" style="width: 100%; padding: 4px 6px; border: 1px solid #fca5a5; border-radius: 3px; font-size: 12px; background: #fff;">
+                        {% for st in completion_statuses %}
+                            {% if not st.is_completed %}
+                            <option value="{{ st.id }}">{{ st.name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 11px; font-weight: 600; color: #991b1b; margin-bottom: 3px;">Remarks / Reason (optional):</label>
+                    <input type="text" name="actual_status_notes" placeholder="e.g. Defaulted after 8 fractions" style="width: 100%; padding: 4px 6px; border: 1px solid #fca5a5; border-radius: 3px; font-size: 12px;">
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+                <button type="button" onclick="closePrevCourseModal();" style="padding: 5px 12px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; font-size: 12px; cursor: pointer;">Cancel</button>
+                <button type="submit" style="padding: 6px 18px; border: none; border-radius: 4px; background: #b45309; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer;">
+                    💾 Save Status & Proceed to Schedule &rarr;
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function openActualStatusModal(courseId, actStart, actEnd, statusId, curStatus, planStart, planEnd, notes) {
+    document.getElementById('modalCourseTitle').innerText = 'Course #' + courseId;
+    document.getElementById('actualStatusModalForm').action = '/scheduler/course/' + courseId + '/actual-status/';
+
+    var isComp = (curStatus === 'Completed' || (!statusId && curStatus !== 'Cancelled'));
+    if (statusId) {
+        document.getElementById('modal_status_select').value = statusId;
+    }
+
+    document.getElementById('modal_act_start').value = actStart || planStart || '';
+    document.getElementById('modal_act_end').value = actEnd || planEnd || '';
+    document.getElementById('modal_act_start_no').value = actStart || '';
+    document.getElementById('modal_act_end_no').value = actEnd || '';
+    document.getElementById('modal_act_notes').value = notes || '';
+
+    if (isComp) {
+        document.getElementById('modal_comp_yes').checked = true;
+    } else {
+        document.getElementById('modal_comp_no').checked = true;
+    }
+    toggleModalCompletion();
+    document.getElementById('actualStatusModal').style.display = 'flex';
+}
+
+function closeActualStatusModal() {
+    document.getElementById('actualStatusModal').style.display = 'none';
+}
+
+function toggleModalCompletion() {
+    var isYes = document.getElementById('modal_comp_yes').checked;
+    document.getElementById('modal_yes_box').style.display = isYes ? 'block' : 'none';
+    document.getElementById('modal_no_box').style.display = isYes ? 'none' : 'block';
+}
+
+function promptPrevCourseModal(nextUrl) {
+    var modal = document.getElementById('prevCoursePromptModal');
+    if (modal) {
+        document.getElementById('prevPromptNextUrl').value = nextUrl;
+        modal.style.display = 'flex';
+        return false;
+    }
+    return true;
+}
+
+function closePrevCourseModal() {
+    var modal = document.getElementById('prevCoursePromptModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function togglePromptFields(val) {
+    document.getElementById('prompt_yes_box').style.display = (val === 'yes') ? 'block' : 'none';
+    document.getElementById('prompt_no_box').style.display = (val === 'no') ? 'block' : 'none';
+}
+
+window.onclick = function(event) {
+    var actModal = document.getElementById('actualStatusModal');
+    if (event.target === actModal) {
+        closeActualStatusModal();
+    }
+    var prevModal = document.getElementById('prevCoursePromptModal');
+    if (event.target === prevModal) {
+        closePrevCourseModal();
+    }
+};
+</script>
 {% endblock %}

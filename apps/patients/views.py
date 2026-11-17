@@ -340,6 +340,11 @@ def patient_detail_view(request, patient_id):
 
     audit_logs = AuditLog.objects.filter(mr_no=str(patient.mr_no)).select_related('user').order_by('-log_datetime')[:50]
 
+    from apps.scheduler.models import TreatmentCompletionStatus
+    latest_schedule = schedules[-1] if schedules else None
+    has_uncompleted_previous_course = bool(latest_schedule and not latest_schedule.actual_treatment_status)
+    completion_statuses = TreatmentCompletionStatus.objects.filter(is_active=True).order_by('display_order', 'name')
+
     context = {
         'patient': patient,
         'schedules': schedules,
@@ -348,6 +353,10 @@ def patient_detail_view(request, patient_id):
         'regular_slot_date_display': regular_slot_date_display,
         'emergency_slot_date_display': emergency_slot_date_display,
         'can_edit_identity': can_edit_locked_identity(request.user),
+        'is_admin_user': is_admin_only(request.user),
+        'latest_schedule': latest_schedule,
+        'has_uncompleted_previous_course': has_uncompleted_previous_course,
+        'completion_statuses': completion_statuses,
     }
     return render(request, 'patients/patient_detail.html', context)
 
