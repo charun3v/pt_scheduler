@@ -1068,7 +1068,7 @@ def emergency_slot_view(request, schedule_id):
         is_active=True
     ).select_related('profile').order_by('first_name', 'username')
 
-    db_reasons = list(EmergencyReason.objects.filter(is_active=True).values_list('name', flat=True))
+    db_reasons = list(EmergencyReason.objects.filter(is_active=True).order_by('display_order').values_list('name', flat=True))
     emergency_reasons = db_reasons if db_reasons else [
         'Spinal cord compression',
         'Bleeding',
@@ -1086,6 +1086,11 @@ def emergency_slot_view(request, schedule_id):
 
         intended_date_raw = request.POST.get('intended_start_date', '').strip()
         emergency_reason = request.POST.get('emergency_reason', '').strip()
+        custom_reason = request.POST.get('custom_emergency_reason', '').strip()
+        if emergency_reason == 'Others' and custom_reason:
+            emergency_reason = custom_reason
+        elif not emergency_reason and custom_reason:
+            emergency_reason = custom_reason
         machine_id_val = request.POST.get('machine_id', '').strip()
         shift_id_val = request.POST.get('shift_id', '').strip()
         jr_resident_val = request.POST.get('jr_resident', '').strip()

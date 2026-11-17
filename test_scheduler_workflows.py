@@ -3764,7 +3764,15 @@ def run_tests():
     assert "MR: 9999041" in page_html
     assert "font-size: 14px" in page_html and "font-weight: 800" in page_html and "border: 2px solid #b91c1c" in page_html, "MR No must be styled prominently"
 
-    # 3. Machine list check: ONLY Teletherapy machines in dropdown, NO Brachytherapy machines
+    # 3. Reason for Emergency dropdown check: Real <select> element with reference options
+    assert '<select name="emergency_reason" id="emergency_reason"' in page_html, "Must render a real <select> element for emergency reasons"
+    assert '<option value="Spinal cord compression"' in page_html
+    assert '<option value="Bleeding"' in page_html
+    assert '<option value="Pain"' in page_html
+    assert '<option value="SVCO"' in page_html
+    assert '<option value="Others"' in page_html
+
+    # 4. Machine list check: ONLY Teletherapy machines in dropdown, NO Brachytherapy machines
     all_machines_in_context = resp_em_page.context['all_machines']
     tele_machine_names = list(Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').values_list('name', flat=True))
     brachy_machine_names = list(Machine.objects.filter(is_active=True, treatment_mode='Brachytherapy').values_list('name', flat=True))
@@ -3778,7 +3786,7 @@ def run_tests():
     for b_name in brachy_machine_names:
         assert b_name not in [m.name for m in all_machines_in_context], f"Brachy machine {b_name} must NOT be in context"
 
-    # 4. Form submission with Teletherapy machine assigns successfully
+    # 5. Form submission with Teletherapy machine assigns successfully
     tele_mach = Machine.objects.filter(treatment_mode='Teletherapy', is_active=True).first()
     resp_post_em = c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
         'slot_category': 'Emergency',
@@ -3790,8 +3798,21 @@ def run_tests():
     sched_41.refresh_from_db()
     assert sched_41.is_emergency_slot is True
     assert sched_41.machine_id == tele_mach.id
+    assert sched_41.emergency_reason == 'Pain'
 
-    # 5. Form submission with Brachytherapy machine is rejected/not assigned
+    # 6. Form submission with 'Others' and custom reason specifies custom detail
+    resp_post_custom = c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
+        'slot_category': 'Emergency',
+        'intended_start_date': '2026-02-01',
+        'emergency_reason': 'Others',
+        'custom_emergency_reason': 'Rapidly progressing cord compromise',
+        'machine_id': str(tele_mach.id)
+    }, follow=True)
+    assert resp_post_custom.status_code == 200
+    sched_41.refresh_from_db()
+    assert sched_41.emergency_reason == 'Rapidly progressing cord compromise'
+
+    # 7. Form submission with Brachytherapy machine is rejected/not assigned
     brachy_mach = Machine.objects.filter(treatment_mode='Brachytherapy', is_active=True).first()
     if brachy_mach:
         c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {

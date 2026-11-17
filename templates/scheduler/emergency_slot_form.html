@@ -121,24 +121,36 @@
                 <span style="font-size: 11px; color: #666; margin-left: 8px;">Target date to accommodate patient</span>
             </div>
 
-            <!-- Field 3: Reason for Emergency (Editable Dropdown) -->
+            <!-- Field 3: Reason for Emergency (Select Dropdown) -->
             <div id="reasonContainer" style="margin-bottom: 16px; {% if sched.slot_category == 'Vacant' %}display: none;{% endif %}">
-                <label style="display: block; font-weight: bold; font-size: 12px; color: #111; margin-bottom: 4px;">
+                <label for="emergency_reason" style="display: block; font-weight: bold; font-size: 12px; color: #111; margin-bottom: 4px;">
                     Reason for Emergency: *
                 </label>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <input type="text" name="emergency_reason" id="emergency_reason" list="emergencyReasonsList"
-                           placeholder="Select from dropdown or type custom indication..."
-                           value="{{ sched.emergency_reason|default:'' }}"
-                           style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13px; border: 1px solid #707070; border-radius: 3px; font-weight: 600; color: #991b1b;">
-                    <datalist id="emergencyReasonsList">
+                <div>
+                    <select name="emergency_reason" id="emergency_reason" required onchange="handleEmergencyReasonChange(this)"
+                            style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13px; border: 1px solid #707070; border-radius: 3px; font-weight: 600; color: #991b1b; background: #ffffff; cursor: pointer;">
+                        <option value="">-- Select Reason for Emergency --</option>
                         {% for r in emergency_reasons %}
-                        <option value="{{ r }}">{{ r }}</option>
+                        <option value="{{ r }}" {% if sched.emergency_reason == r %}selected{% endif %}>{{ r }}</option>
                         {% endfor %}
-                    </datalist>
+                        {% if sched.emergency_reason and sched.emergency_reason not in emergency_reasons %}
+                        <option value="{{ sched.emergency_reason }}" selected>{{ sched.emergency_reason }} (Current)</option>
+                        {% endif %}
+                    </select>
+
+                    <!-- Optional custom details field when "Others" is selected -->
+                    <div id="customReasonWrapper" style="margin-top: 8px; {% if sched.emergency_reason != 'Others' and sched.emergency_reason in emergency_reasons or not sched.emergency_reason %}display: none;{% endif %}">
+                        <label for="custom_emergency_reason" style="display: block; font-size: 11px; font-weight: 600; color: #4b5563; margin-bottom: 3px;">
+                            Specify Details for "Others" / Custom Indication:
+                        </label>
+                        <input type="text" name="custom_emergency_reason" id="custom_emergency_reason"
+                               placeholder="Enter custom clinical indication / details..."
+                               value="{% if sched.emergency_reason and sched.emergency_reason not in emergency_reasons %}{{ sched.emergency_reason }}{% endif %}"
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 3px; color: #991b1b;">
+                    </div>
                 </div>
                 <div style="font-size: 11px; color: #666; margin-top: 4px;">
-                    Select an indication (Spinal cord compression, Bleeding, Pain, SVCO, Others) or type custom clinical reason.
+                    Select an indication (Spinal cord compression, Bleeding, Pain, SVCO, Others) from the configured reference table.
                 </div>
             </div>
 
@@ -229,19 +241,38 @@
 </div>
 
 <script>
+    function handleEmergencyReasonChange(sel) {
+        const customWrap = document.getElementById('customReasonWrapper');
+        const customInput = document.getElementById('custom_emergency_reason');
+        if (sel.value === 'Others') {
+            if (customWrap) customWrap.style.display = 'block';
+            if (customInput) customInput.focus();
+        } else {
+            if (customWrap) customWrap.style.display = 'none';
+        }
+    }
+
     function toggleReasonField() {
         const isEmergency = document.getElementById('catEmergency').checked;
         const reasonContainer = document.getElementById('reasonContainer');
-        const reasonInput = document.getElementById('emergency_reason');
+        const reasonSelect = document.getElementById('emergency_reason');
         if (isEmergency) {
             reasonContainer.style.display = 'block';
-            reasonInput.required = true;
+            reasonSelect.required = true;
         } else {
             reasonContainer.style.display = 'none';
-            reasonInput.required = false;
+            reasonSelect.required = false;
         }
     }
+
     // Run on page load
-    document.addEventListener('DOMContentLoaded', toggleReasonField);
+    document.addEventListener('DOMContentLoaded', function() {
+        toggleReasonField();
+        const reasonSel = document.getElementById('emergency_reason');
+        if (reasonSel && reasonSel.value === 'Others') {
+            const customWrap = document.getElementById('customReasonWrapper');
+            if (customWrap) customWrap.style.display = 'block';
+        }
+    });
 </script>
 {% endblock %}
