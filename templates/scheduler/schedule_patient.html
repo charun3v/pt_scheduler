@@ -178,29 +178,33 @@
         </div>
 
         <!-- MODALITY SELECTOR: Teletherapy vs Brachytherapy -->
-        <div style="background: #ffffff; border: 1px solid #d0d7de; border-radius: 4px; padding: 8px 14px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-            <div style="display: flex; align-items: center; gap: 16px;">
-                <span style="font-size: 12px; font-weight: 700; color: #003366; text-transform: uppercase;">Scheduling Modality:</span>
-                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: #1f2328; margin: 0;">
+        <div style="background: #f0f7ff; border: 2px solid #0078d4; border-radius: 6px; padding: 12px 18px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; box-shadow: 0 2px 6px rgba(0,120,212,0.12);">
+            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <span style="font-size: 14px; font-weight: 800; color: #003366; text-transform: uppercase; letter-spacing: 0.5px;">
+                    ⚡ Scheduling Modality:
+                </span>
+                <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; cursor: pointer; color: #003366; background: #ffffff; padding: 6px 14px; border: 1.5px solid #0078d4; border-radius: 20px; margin: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.2s;">
                     <input type="radio" name="treatment_type" value="Teletherapy" id="modalityTele"
+                           style="width: 18px; height: 18px; cursor: pointer; accent-color: #0078d4;"
                            {% if not schedule or schedule.treatment_type == 'Teletherapy' %}checked{% endif %}
                            onchange="handleModalityChange();">
                     <span>📡 Teletherapy (EBRT)</span>
                 </label>
-                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: #57606a; margin: 0;">
+                <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; cursor: pointer; color: #166534; background: #ffffff; padding: 6px 14px; border: 1.5px solid #16a34a; border-radius: 20px; margin: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all 0.2s;">
                     <input type="radio" name="treatment_type" value="Brachytherapy" id="modalityBrachy"
+                           style="width: 18px; height: 18px; cursor: pointer; accent-color: #16a34a;"
                            {% if schedule and schedule.treatment_type == 'Brachytherapy' %}checked{% endif %}
                            onchange="handleModalityChange();">
                     <span>☢️ Brachytherapy</span>
                 </label>
             </div>
-            <div style="font-size: 11px;">
+            <div style="font-size: 12px;">
                 {% if schedule and schedule.is_draft %}
-                    <span style="background: #fff8c5; color: #9a6700; padding: 2px 8px; border-radius: 10px; border: 1px solid #d4a72c; font-weight: 600;">Status: Draft Course</span>
+                    <span style="background: #fff8c5; color: #9a6700; padding: 4px 12px; border-radius: 12px; border: 1px solid #d4a72c; font-weight: 700;">Status: Draft Course</span>
                 {% elif schedule and schedule.status == 'Scheduled' %}
-                    <span style="background: #dafbe1; color: #1a7f37; padding: 2px 8px; border-radius: 10px; border: 1px solid #4ac26b; font-weight: 600;">Status: Scheduled ({{ schedule.date_of_start|date:'d-M-Y' }})</span>
+                    <span style="background: #dafbe1; color: #1a7f37; padding: 4px 12px; border-radius: 12px; border: 1px solid #4ac26b; font-weight: 700;">Status: Scheduled ({{ schedule.date_of_start|date:'d-M-Y' }})</span>
                 {% elif schedule %}
-                    <span style="background: #f6f8fa; color: #57606a; padding: 2px 8px; border-radius: 10px; border: 1px solid #d0d7de; font-weight: 600;">Status: {{ schedule.status }}</span>
+                    <span style="background: #f6f8fa; color: #57606a; padding: 4px 12px; border-radius: 12px; border: 1px solid #d0d7de; font-weight: 700;">Status: {{ schedule.status }}</span>
                 {% endif %}
             </div>
         </div>

@@ -420,7 +420,7 @@
         document.getElementById('tt_app').textContent = el.dataset.applicator;
         document.getElementById('tt_ana').textContent = el.dataset.anesthesia;
         document.getElementById('tt_date').textContent = el.dataset.date;
-        document.getElementById('tt_frac').textContent = 'Fraction ' + el.dataset.fraction;
+        document.getElementById('tt_frac').textContent = 'Application ' + el.dataset.fraction;
         document.getElementById('tt_status').textContent = el.dataset.status;
 
         const remarksRow = document.getElementById('tt_remarks_row');
@@ -460,7 +460,7 @@
             html += `<a href="/patients/${a.patient_id}/" style="text-decoration: none; color: inherit; display: block; border-left: 4px solid ${a.color}; background: #f8fafc; padding: 10px 14px; border-radius: 4px; border: 1px solid #e2e8f0; border-left-width: 4px;">
                 <div style="font-weight: bold; color: #003366; font-size: 13px;">${escapeHtml(a.patient_name)} (${escapeHtml(a.age_sex)})</div>
                 <div style="font-size: 11.5px; color: #475569; margin-top: 2px;">
-                    MR: <strong>${a.mr_no}</strong> | RT: <strong>${a.rt_no || '-'}</strong> | Fraction: <strong>${a.fraction}</strong>
+                    MR: <strong>${a.mr_no}</strong> | RT: <strong>${a.rt_no || '-'}</strong> | Application: <strong>${a.fraction}</strong>
                 </div>
                 <div style="font-size: 11.5px; color: #1e293b; margin-top: 4px;">
                     Diagnosis: <strong>${escapeHtml(a.diagnosis)}</strong> | Site: <strong>${escapeHtml(a.site)}</strong>

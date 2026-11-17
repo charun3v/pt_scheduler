@@ -323,28 +323,25 @@
                         <div style="font-size: 11px; color: #64748b; margin-top: 3px;">Procedural anaesthesia protocol.</div>
                     </div>
 
-                    <!-- Site of Treatment (Prepopulated from previous entry, Editable) -->
+                    <!-- Site of Treatment (Dropdown from reference lookups, prepopulated & editable) -->
                     <div>
                         <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
                             Site of Treatment <span style="color: #dc2626;">*</span>
                         </label>
-                        <input type="text" id="form_site_of_treatment" list="brachy_sites_list"
-                               value="{{ default_site }}"
-                               placeholder="e.g. Cervix, Uterus, Vault, Breast, Esophagus..."
-                               style="width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
-                        <datalist id="brachy_sites_list">
+                        <select id="form_site_of_treatment" class="access-select" style="width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px; background: #ffffff;">
+                            <option value="">-- Select Site of Treatment --</option>
                             {% for s in sites %}
-                                <option value="{{ s.name }}">
+                                <option value="{{ s.name }}" {% if default_site|lower == s.name|lower %}selected{% endif %}>
+                                    {{ s.name }}
+                                </option>
                             {% endfor %}
-                            <option value="Cervix">
-                            <option value="Vault">
-                            <option value="Uterus">
-                            <option value="Esophagus">
-                            <option value="Breast">
-                            <option value="Head and Neck">
-                            <option value="Prostate">
-                        </datalist>
-                        <div style="font-size: 11px; color: #64748b; margin-top: 3px;">Prepopulated from patient record; fully editable.</div>
+                            {% if default_site and default_site_not_in_sites %}
+                                <option value="{{ default_site }}" selected>
+                                    {{ default_site }} (Prepopulated)
+                                </option>
+                            {% endif %}
+                        </select>
+                        <div style="font-size: 11px; color: #64748b; margin-top: 3px;">Prepopulated from previous record; selectable from Reference Lookup options.</div>
                     </div>
 
                 </div>
@@ -485,17 +482,17 @@
             <div style="background: #ffffff; border-top: 2px solid #003366; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <span style="font-weight: 800; font-size: 13px; color: #003366;">
-                        Selected Appointments (<span id="selectedCountDisplay">0</span>):
+                        Selected Applications (<span id="selectedCountDisplay">0</span>):
                     </span>
                     <div id="selectedChipsContainer" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <span style="color: #94a3b8; font-size: 12px; font-style: italic;">No dates selected. Click on dates in the calendar to schedule fractions.</span>
+                        <span style="color: #94a3b8; font-size: 12px; font-style: italic;">No dates selected. Click on dates in the calendar to schedule applications.</span>
                     </div>
                 </div>
 
                 <div style="font-size: 12px;">
                     <span id="roleLimitNotice" style="background: #f1f5f9; color: #475569; padding: 4px 10px; border-radius: 4px; border: 1px solid #cbd5e1; font-weight: 600;">
                         {% if user_is_consultant %}
-                            🩺 Consultant Mode: Standard 4 sessions, clinical override for >4 fractions.
+                            🩺 Consultant Mode: Standard 4 sessions, clinical override for >4 applications.
                         {% else %}
                             👨‍⚕️ Resident Mode: Maximum 4 sessions per course. Additional sessions require consultant authorization.
                         {% endif %}
@@ -510,11 +507,11 @@
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                 <span style="font-size: 20px;">⚠️</span>
                 <h4 style="margin: 0; color: #b45309; font-size: 14px; font-weight: 800;">
-                    Consultant Authorization Required (>4 Brachytherapy Appointments)
+                    Consultant Authorization Required (>4 Brachytherapy Applications)
                 </h4>
             </div>
             <p style="margin: 0 0 12px 0; font-size: 12.5px; color: #92400e; line-height: 1.4;">
-                Maximum of four brachytherapy appointments permitted for Residents. To schedule more than 4 appointments for this treatment course, please select the supervising Consultant authorizer.
+                Maximum of four brachytherapy applications permitted for Residents. To schedule more than 4 applications for this treatment course, please select the supervising Consultant authorizer.
             </p>
             <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; max-width: 600px;">
                 <div>
@@ -588,7 +585,7 @@
                         <strong id="summary_anesthesia">-</strong>
                     </div>
                     <div>
-                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">TOTAL APPOINTMENTS</span>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; display: block;">TOTAL APPLICATIONS</span>
                         <strong id="summary_total_count" style="color: #166534; font-size: 14px;">-</strong>
                     </div>
                     <div>
@@ -603,14 +600,14 @@
                 </div>
             </div>
 
-            <!-- Chronologically Sorted Fractions Table -->
+            <!-- Chronologically Sorted Applications Table -->
             <h4 style="margin: 0 0 10px 0; color: #003366; font-size: 14px; font-weight: 800;">
-                📅 Chronologically Sorted Treatment Fractions
+                📅 Chronologically Sorted Treatment Applications
             </h4>
             <table class="access-table" style="width: 100%; margin-bottom: 24px;">
                 <thead>
                     <tr style="background: #003366; color: #ffffff;">
-                        <th style="width: 120px; text-align: center;">Fraction</th>
+                        <th style="width: 120px; text-align: center;">Application</th>
                         <th style="width: 180px; text-align: center;">Scheduled Date</th>
                         <th style="width: 140px; text-align: center;">Day of Week</th>
                         <th>Applicator / Session Details</th>
@@ -721,7 +718,7 @@
                 td.classList.add('is-selected');
                 if (badge) {
                     badge.style.display = 'inline-block';
-                    badge.textContent = 'Fr ' + (gExistingApptsCount + dateToIndex[dateIso]);
+                    badge.textContent = 'App ' + (gExistingApptsCount + dateToIndex[dateIso]);
                 }
             } else {
                 td.classList.remove('is-selected');
@@ -748,7 +745,7 @@
         countDisplay.textContent = gSelectedDates.size;
 
         if (gSelectedDates.size === 0) {
-            container.innerHTML = '<span style="color: #94a3b8; font-size: 12px; font-style: italic;">No dates selected. Click on dates in the calendar to schedule fractions.</span>';
+            container.innerHTML = '<span style="color: #94a3b8; font-size: 12px; font-style: italic;">No dates selected. Click on dates in the calendar to schedule applications.</span>';
             return;
         }
 
@@ -758,11 +755,11 @@
             const parts = dStr.split('-');
             const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
             const dFormatted = ("0" + dObj.getDate()).slice(-2) + "-" + monthNames[dObj.getMonth() + 1].slice(0, 3) + "-" + dObj.getFullYear();
-            const frNum = gExistingApptsCount + idx + 1;
+            const appNum = gExistingApptsCount + idx + 1;
 
             html += `<span class="date-chip">
-                <span>Fr ${frNum}: ${dFormatted}</span>
-                <button type="button" onclick="event.stopPropagation(); removeSelectedDate('${dStr}')" title="Remove fraction">&times;</button>
+                <span>App ${appNum}: ${dFormatted}</span>
+                <button type="button" onclick="event.stopPropagation(); removeSelectedDate('${dStr}')" title="Remove application">&times;</button>
             </span>`;
         });
         container.innerHTML = html;
@@ -903,7 +900,7 @@
         document.getElementById('tt_app').textContent = el.dataset.applicator;
         document.getElementById('tt_ana').textContent = el.dataset.anesthesia;
         document.getElementById('tt_date').textContent = el.dataset.date;
-        document.getElementById('tt_frac').textContent = 'Fraction ' + el.dataset.fraction;
+        document.getElementById('tt_frac').textContent = 'Application ' + el.dataset.fraction;
         document.getElementById('tt_status').textContent = el.dataset.status;
 
         const remarksRow = document.getElementById('tt_remarks_row');
@@ -947,7 +944,7 @@
             html += `<div style="border-left: 4px solid ${a.color}; background: #f8fafc; padding: 10px 14px; border-radius: 4px; border: 1px solid #e2e8f0; border-left-width: 4px;">
                 <div style="font-weight: bold; color: #003366; font-size: 13px;">${escapeHtml(a.patient_name)} (${escapeHtml(a.age_sex)})</div>
                 <div style="font-size: 11.5px; color: #475569; margin-top: 2px;">
-                    MR: <strong>${a.mr_no}</strong> | RT: <strong>${a.rt_no || '-'}</strong> | Fraction: <strong>${a.fraction}</strong>
+                    MR: <strong>${a.mr_no}</strong> | RT: <strong>${a.rt_no || '-'}</strong> | Application: <strong>${a.fraction}</strong>
                 </div>
                 <div style="font-size: 11.5px; color: #1e293b; margin-top: 4px;">
                     Diagnosis: <strong>${escapeHtml(a.diagnosis)}</strong> | Site: <strong>${escapeHtml(a.site)}</strong>
@@ -1006,7 +1003,7 @@
             } else {
                 const consultantSelect = document.getElementById('consultant_id');
                 if (!consultantSelect || !consultantSelect.value) {
-                    alert("Maximum of four brachytherapy appointments permitted. Additional appointments require consultant authorization.");
+                    alert("Maximum of four brachytherapy applications permitted. Additional applications require consultant authorization.");
                     document.getElementById('consultantAuthCard').style.display = 'block';
                     consultantSelect.focus();
                     return;
@@ -1019,7 +1016,7 @@
         document.getElementById('summary_site').textContent = siteInput.value.trim();
         document.getElementById('summary_applicator').textContent = applicatorSelect.options[applicatorSelect.selectedIndex].text;
         document.getElementById('summary_anesthesia').textContent = anesthesiaSelect.options[anesthesiaSelect.selectedIndex].text;
-        document.getElementById('summary_total_count').textContent = `${total} fraction${total > 1 ? 's' : ''} (${gExistingApptsCount} existing + ${gSelectedDates.size} new)`;
+        document.getElementById('summary_total_count').textContent = `${total} application${total > 1 ? 's' : ''} (${gExistingApptsCount} existing + ${gSelectedDates.size} new)`;
         document.getElementById('summary_authorizer').textContent = authorizerText;
         document.getElementById('summary_remarks').textContent = remarksInput.value.trim() || 'None';
 
@@ -1030,7 +1027,7 @@
         // Existing appointments if any
         {% for ea in existing_appts %}
             html += `<tr style="background: #f8fafc; color: #64748b;">
-                <td style="text-align: center; font-weight: bold;">Fraction {{ ea.fraction_number }}</td>
+                <td style="text-align: center; font-weight: bold;">Application {{ ea.fraction_number }}</td>
                 <td style="text-align: center; font-weight: bold;">{{ ea.appointment_date|date:'d/m/Y' }}</td>
                 <td style="text-align: center;">{{ ea.appointment_date|date:'l' }}</td>
                 <td>{{ ea.applicator_type.name|default:"Brachytherapy" }} (Already Scheduled)</td>
@@ -1045,10 +1042,10 @@
             const dObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
             const dFormatted = ("0" + dObj.getDate()).slice(-2) + "/" + ("0" + (dObj.getMonth() + 1)).slice(-2) + "/" + dObj.getFullYear();
             const dayOfWeek = dayNames[dObj.getDay()];
-            const fracNum = gExistingApptsCount + idx + 1;
+            const appNum = gExistingApptsCount + idx + 1;
 
             html += `<tr style="background: #ffffff;">
-                <td style="text-align: center; font-weight: bold; color: #003366;">Fraction ${fracNum}</td>
+                <td style="text-align: center; font-weight: bold; color: #003366;">Application ${appNum}</td>
                 <td style="text-align: center; font-weight: 800; color: #003366;">${dFormatted}</td>
                 <td style="text-align: center; font-weight: 600;">${dayOfWeek}</td>
                 <td>${escapeHtml(applicatorSelect.options[applicatorSelect.selectedIndex].text)} (New Booking)</td>

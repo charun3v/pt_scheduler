@@ -361,20 +361,22 @@
                                     </a>
                                     {% endif %}
                                     
-                                    {% if not s.is_emergency_slot %}
-                                    <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Shift patient to Emergency or Vacant slot list">
-                                        🚨 Add to Emergency slot
-                                    </a>
-                                    {% else %}
-                                    <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Edit Emergency / Vacant Slot details">
-                                        ✏️ Edit Slot
-                                    </a>
-                                    <form method="POST" action="{% url 'revert_emergency_slot' s.id %}" style="display: inline; margin: 0;" onsubmit="return confirm('Revert this course back to normal schedule queue?');">
-                                        {% csrf_token %}
-                                        <button type="submit" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #1e40af; border-color: #93c5fd; background: #eff6ff; font-weight: 600; cursor: pointer;" title="Revert back to normal schedule list">
-                                            ↩️ Revert
-                                        </button>
-                                    </form>
+                                    {% if s.treatment_type != 'Brachytherapy' %}
+                                        {% if not s.is_emergency_slot %}
+                                        <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Shift patient to Emergency or Vacant slot list">
+                                            🚨 Add to Emergency slot
+                                        </a>
+                                        {% else %}
+                                        <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Edit Emergency / Vacant Slot details">
+                                            ✏️ Edit Slot
+                                        </a>
+                                        <form method="POST" action="{% url 'revert_emergency_slot' s.id %}" style="display: inline; margin: 0;" onsubmit="return confirm('Revert this course back to normal schedule queue?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #1e40af; border-color: #93c5fd; background: #eff6ff; font-weight: 600; cursor: pointer;" title="Revert back to normal schedule list">
+                                                ↩️ Revert
+                                            </button>
+                                        </form>
+                                        {% endif %}
                                     {% endif %}
 
                                     {% if CAN_REMOVE_FROM_SCHEDULE %}

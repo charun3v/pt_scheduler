@@ -836,6 +836,10 @@ def emergency_slot_view(request, schedule_id):
         messages.error(request, "Access restricted. You do not have permission to assign or modify emergency slots.")
         return redirect('patient_detail', patient_id=patient.id)
 
+    if sched.treatment_type == 'Brachytherapy':
+        messages.error(request, "Emergency slot option is not applicable for Brachytherapy courses.")
+        return redirect('patient_detail', patient_id=patient.id)
+
     all_machines = Machine.objects.filter(is_active=True).order_by('display_order')
     all_shifts = Shift.objects.filter(is_active=True).order_by('display_order')
     jr_users = User.objects.filter(
@@ -972,6 +976,10 @@ def revert_emergency_slot_view(request, schedule_id):
 
     if not can_schedule_patient(request.user):
         messages.error(request, "Access restricted. You do not have permission to modify treatment schedules.")
+        return redirect('patient_detail', patient_id=patient.id)
+
+    if sched.treatment_type == 'Brachytherapy':
+        messages.error(request, "Emergency slot option is not applicable for Brachytherapy courses.")
         return redirect('patient_detail', patient_id=patient.id)
 
     if request.method == 'POST':
@@ -1151,13 +1159,15 @@ def brachy_schedule_patient_view(request, patient_id):
     applicators = BrachyApplicator.objects.filter(is_active=True).order_by('display_order', 'name')
     anesthesias = BrachyAnesthesia.objects.filter(is_active=True).order_by('display_order', 'name')
     sites = TreatmentSite.objects.filter(is_active=True).order_by('display_order', 'name')
-
     # Prepopulate treatment site from patient's previous entry
     default_site = patient.site_of_treatment or ''
     if not default_site:
         latest_sched = patient.schedules.filter(site_of_treatment__isnull=False).exclude(site_of_treatment='').first()
         if latest_sched:
             default_site = latest_sched.site_of_treatment
+
+    sites_names = [s.name.lower() for s in sites]
+    default_site_not_in_sites = bool(default_site and default_site.lower() not in sites_names)
 
     # Existing active brachytherapy appointments for this patient
     existing_appts = BrachytherapyAppointment.objects.filter(
@@ -1392,6 +1402,7 @@ def brachy_schedule_patient_view(request, patient_id):
         'anesthesias': anesthesias,
         'sites': sites,
         'default_site': default_site,
+        'default_site_not_in_sites': default_site_not_in_sites,
         'existing_appts': existing_appts,
         'existing_appts_count': existing_appts.count(),
         'calendar': calendar_data,

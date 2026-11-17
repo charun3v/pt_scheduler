@@ -281,45 +281,79 @@ def patient_search_view(request):
     query = request.GET.get('q', '').strip()
     status_filter = request.GET.get('status', '').strip()
 
-    patients = Patient.objects.select_related('primary_consultant').prefetch_related('schedules__machine').all()
+    has_searched = bool(query or status_filter)
 
-    if query:
-        if query.isdigit():
-            patients = patients.filter(Q(mr_no=int(query)) | Q(phone_no__icontains=query))
-        else:
-            patients = patients.filter(
-                Q(pt_name__icontains=query) |
-                Q(diagnosis__icontains=query) |
-                Q(rt_no__icontains=query) |
-                Q(primary_consultant__name__icontains=query)
-            )
+    if not has_searched:
+        patients = Patient.objects.none()
+    else:
+        patients = Patient.objects.select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').all()
 
-    if status_filter == 'unscheduled':
-        patients = patients.filter(schedules__isnull=True)
-    elif status_filter == 'scheduled':
-        patients = patients.filter(schedules__isnull=False).distinct()
+        if query:
+            if query.isdigit():
+                patients = patients.filter(Q(mr_no=int(query)) | Q(phone_no__icontains=query))
+            else:
+                patients = patients.filter(
+                    Q(pt_name__icontains=query) |
+                    Q(diagnosis__icontains=query) |
+                    Q(rt_no__icontains=query) |
+                    Q(primary_consultant__name__icontains=query)
+                )
+
+        if status_filter == 'unscheduled':
+            patients = patients.filter(schedules__isnull=True)
+        elif status_filter == 'scheduled':
+            patients = patients.filter(schedules__isnull=False).distinct()
 
     paginator = Paginator(patients, 25)
     page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
+    page_obj = paginator.get_page(page_number) if has_searched else None
 
-    for p in page_obj:
-        schedules = list(p.schedules.all())
-        active_sched = next((s for s in schedules if s.date_of_start), None) or (schedules[0] if schedules else None)
-        if active_sched:
-            p.dashboard_schedule_status = active_sched.status or ('Emergency' if active_sched.is_emergency_slot else 'Scheduled')
-            p.dashboard_schedule_date = active_sched.date_of_start.strftime("%d-%b-%Y") if active_sched.date_of_start else ("Intended: " + active_sched.intended_start_date.strftime("%d-%b-%Y") if active_sched.intended_start_date else "Unscheduled")
-            p.dashboard_machine = active_sched.machine.name if active_sched.machine else "Unassigned"
-        else:
-            p.dashboard_schedule_status = "Pending"
-            p.dashboard_schedule_date = "-"
-            p.dashboard_machine = "-"
+    if page_obj:
+        for p in page_obj:
+            schedules = list(p.schedules.all())
+            active_sched = next((s for s in schedules if s.date_of_start), None) or (schedules[0] if schedules else None)
+            if active_sched:
+                p.dashboard_schedule_status = active_sched.status or ('Emergency' if active_sched.is_emergency_slot else 'Scheduled')
+                p.dashboard_schedule_date = active_sched.date_of_start.strftime("%d-%b-%Y") if active_sched.date_of_start else ("Intended: " + active_sched.intended_start_date.strftime("%d-%b-%Y") if active_sched.intended_start_date else "Unscheduled")
+                p.dashboard_machine = active_sched.machine.name if active_sched.machine else "Unassigned"
+            else:
+                p.dashboard_schedule_status = "Pending"
+                p.dashboard_schedule_date = "-"
+                p.dashboard_machine = "-"
+
+            # Clinical Tracking Milestones:
+            # 1. Patient registered on:
+            p.registered_date_display = p.created_at.strftime("%d-%b-%Y") if p.created_at else "-"
+
+            # 2. Regular slot (EBRT) taken on:
+            reg_sched = next((s for s in schedules if not s.is_emergency_slot and s.treatment_type == 'Teletherapy' and s.date_of_start), None)
+            em_sched = next((s for s in schedules if s.is_emergency_slot), None)
+
+            if reg_sched and reg_sched.date_of_start:
+                p.regular_slot_display = reg_sched.date_of_start.strftime("%d-%b-%Y")
+            elif em_sched and em_sched.original_scheduled_date:
+                p.regular_slot_display = em_sched.original_scheduled_date.strftime("%d-%b-%Y")
+            elif any(s.date_of_start and not s.is_emergency_slot for s in schedules):
+                any_reg = next(s for s in schedules if s.date_of_start and not s.is_emergency_slot)
+                p.regular_slot_display = any_reg.date_of_start.strftime("%d-%b-%Y")
+            else:
+                p.regular_slot_display = "Not taken"
+
+            # 3. Shifted to Emergency / Vacant slot on (if taken):
+            if em_sched:
+                em_date = em_sched.intended_start_date or em_sched.date_of_start
+                if not em_date and em_sched.created_at:
+                    em_date = em_sched.created_at.date()
+                p.emergency_slot_display = em_date.strftime("%d-%b-%Y") if em_date else "Yes"
+            else:
+                p.emergency_slot_display = None
 
     context = {
         'page_obj': page_obj,
+        'has_searched': has_searched,
         'query': query,
         'status_filter': status_filter,
-        'total_count': paginator.count,
+        'total_count': paginator.count if has_searched else 0,
     }
     return render(request, 'patients/patient_search.html', context)
 
