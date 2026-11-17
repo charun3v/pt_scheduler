@@ -1105,6 +1105,24 @@ def emergency_slot_view(request, schedule_id):
                 return None
 
         intended_date = parse_d(intended_date_raw)
+        today_date = date.today()
+        scheduled_date = sched.original_scheduled_date or sched.date_of_start
+
+        if intended_date:
+            is_changing_date = (intended_date != sched.intended_start_date)
+            if not sched.is_emergency_slot or is_changing_date:
+                if intended_date < today_date:
+                    messages.error(
+                        request,
+                        f"Intended date can only be on or after the current date ({today_date.strftime('%d-%b-%Y')})."
+                    )
+                    return redirect(request.get_full_path())
+                if scheduled_date and scheduled_date > today_date and intended_date >= scheduled_date:
+                    messages.error(
+                        request,
+                        f"Intended date must be before the scheduled start date ({scheduled_date.strftime('%d-%b-%Y')})."
+                    )
+                    return redirect(request.get_full_path())
 
         if slot_category == 'Emergency' and not emergency_reason:
             emergency_reason = 'Emergency clinical indication'
@@ -1174,8 +1192,21 @@ def emergency_slot_view(request, schedule_id):
             return redirect('emergency_slots_report')
         return redirect('patient_detail', patient_id=patient.id)
 
-    today = date.today().isoformat()
-    default_intended_date = sched.intended_start_date.isoformat() if sched.intended_start_date else today
+    today_date = date.today()
+    today = today_date.isoformat()
+    scheduled_date = sched.original_scheduled_date or sched.date_of_start
+    max_intended_date = None
+    if scheduled_date and scheduled_date > today_date:
+        max_intended_date = (scheduled_date - timedelta(days=1)).isoformat()
+
+    if sched.intended_start_date and sched.intended_start_date >= today_date:
+        if max_intended_date and sched.intended_start_date.isoformat() > max_intended_date:
+            default_intended_date = today
+        else:
+            default_intended_date = sched.intended_start_date.isoformat()
+    else:
+        default_intended_date = today
+
     jr_user_names = [u.get_full_name().strip() or u.username for u in jr_users]
 
     context = {
@@ -1187,6 +1218,9 @@ def emergency_slot_view(request, schedule_id):
         'jr_user_names': jr_user_names,
         'emergency_reasons': emergency_reasons,
         'today': today,
+        'today_date': today_date,
+        'scheduled_date': scheduled_date,
+        'max_intended_date': max_intended_date,
         'default_intended_date': default_intended_date,
         'next_url': next_url,
         'is_editing': sched.is_emergency_slot,

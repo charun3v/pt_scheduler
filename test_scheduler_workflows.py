@@ -2085,7 +2085,7 @@ def run_tests():
     # Post updates via dedicated emergency slot editor
     resp_post_edit = c.post(f'/scheduler/course/{sched_em1.id}/emergency-slot/', {
         'slot_category': 'Emergency',
-        'intended_start_date': '2026-01-20',
+        'intended_start_date': '2026-01-15',
         'emergency_reason': 'Pain',
         'machine_id': str(m_test_1.id),
         'shift_id': str(s_test_1.id),
@@ -2099,7 +2099,7 @@ def run_tests():
     # Verify changes committed to DB without adding to daily treatment start quota
     sched_em1.refresh_from_db()
     assert sched_em1.is_emergency_slot is True
-    assert sched_em1.intended_start_date == date(2026, 1, 20)
+    assert sched_em1.intended_start_date == date(2026, 1, 15)
     assert sched_em1.emergency_reason == 'Pain'
     assert sched_em1.machine_id == m_test_1.id
     assert sched_em1.jr_resident == 'Dr. Updated Resident'
@@ -3736,6 +3736,8 @@ def run_tests():
     Patient.objects.filter(mr_no=9999041).delete()
     cons_41 = Consultant.objects.first()
     tech_41 = Technique.objects.first()
+    today_41 = date.today()
+    future_sched_date_41 = today_41 + timedelta(days=14)
     pt_41 = Patient.objects.create(
         mr_no=9999041,
         pt_name="Test41 Teletherapy Pt",
@@ -3749,7 +3751,8 @@ def run_tests():
         patient=pt_41,
         treatment_type="Teletherapy",
         technique=tech_41,
-        date_of_sim=date(2026, 1, 10),
+        date_of_sim=today_41 - timedelta(days=5),
+        date_of_start=future_sched_date_41,
         status="Scheduled"
     )
 
@@ -3772,7 +3775,12 @@ def run_tests():
     assert '<option value="SVCO"' in page_html
     assert '<option value="Others"' in page_html
 
-    # 4. Machine list check: ONLY Teletherapy machines in dropdown, NO Brachytherapy machines
+    # 4. Date validation attributes on input: min (today) and max (before scheduled start date)
+    assert f'min="{today_41.isoformat()}"' in page_html, "Intended date min must be today"
+    max_expected = (future_sched_date_41 - timedelta(days=1)).isoformat()
+    assert f'max="{max_expected}"' in page_html, "Intended date max must be day before scheduled start date"
+
+    # 5. Machine list check: ONLY Teletherapy machines in dropdown, NO Brachytherapy machines
     all_machines_in_context = resp_em_page.context['all_machines']
     tele_machine_names = list(Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').values_list('name', flat=True))
     brachy_machine_names = list(Machine.objects.filter(is_active=True, treatment_mode='Brachytherapy').values_list('name', flat=True))
@@ -3786,11 +3794,33 @@ def run_tests():
     for b_name in brachy_machine_names:
         assert b_name not in [m.name for m in all_machines_in_context], f"Brachy machine {b_name} must NOT be in context"
 
-    # 5. Form submission with Teletherapy machine assigns successfully
     tele_mach = Machine.objects.filter(treatment_mode='Teletherapy', is_active=True).first()
+
+    # 6. Intended date BEFORE today (past date) -> Rejected with validation error
+    past_date_41 = (today_41 - timedelta(days=2)).isoformat()
+    resp_past = c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
+        'slot_category': 'Emergency',
+        'intended_start_date': past_date_41,
+        'emergency_reason': 'Pain',
+        'machine_id': str(tele_mach.id)
+    }, follow=True)
+    assert any("Intended date can only be on or after the current date" in m.message for m in resp_past.context['messages']), "Past date must be rejected"
+
+    # 7. Intended date AFTER or ON scheduled start date -> Rejected with validation error
+    after_sched_date_41 = (future_sched_date_41 + timedelta(days=2)).isoformat()
+    resp_after = c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
+        'slot_category': 'Emergency',
+        'intended_start_date': after_sched_date_41,
+        'emergency_reason': 'Pain',
+        'machine_id': str(tele_mach.id)
+    }, follow=True)
+    assert any("Intended date must be before the scheduled start date" in m.message for m in resp_after.context['messages']), "Date after scheduled start must be rejected"
+
+    # 8. Valid intended date (today <= intended < scheduled_start_date) -> Succeeds!
+    valid_date_41 = (today_41 + timedelta(days=3)).isoformat()
     resp_post_em = c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
         'slot_category': 'Emergency',
-        'intended_start_date': '2026-02-01',
+        'intended_start_date': valid_date_41,
         'emergency_reason': 'Pain',
         'machine_id': str(tele_mach.id)
     }, follow=True)
@@ -3799,11 +3829,13 @@ def run_tests():
     assert sched_41.is_emergency_slot is True
     assert sched_41.machine_id == tele_mach.id
     assert sched_41.emergency_reason == 'Pain'
+    assert sched_41.intended_start_date == today_41 + timedelta(days=3)
 
-    # 6. Form submission with 'Others' and custom reason specifies custom detail
+    # 9. Form submission with 'Others' and custom reason specifies custom detail
+    valid_date_41_b = (today_41 + timedelta(days=4)).isoformat()
     resp_post_custom = c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
         'slot_category': 'Emergency',
-        'intended_start_date': '2026-02-01',
+        'intended_start_date': valid_date_41_b,
         'emergency_reason': 'Others',
         'custom_emergency_reason': 'Rapidly progressing cord compromise',
         'machine_id': str(tele_mach.id)
@@ -3811,13 +3843,14 @@ def run_tests():
     assert resp_post_custom.status_code == 200
     sched_41.refresh_from_db()
     assert sched_41.emergency_reason == 'Rapidly progressing cord compromise'
+    assert sched_41.intended_start_date == today_41 + timedelta(days=4)
 
-    # 7. Form submission with Brachytherapy machine is rejected/not assigned
+    # 10. Form submission with Brachytherapy machine is rejected/not assigned
     brachy_mach = Machine.objects.filter(treatment_mode='Brachytherapy', is_active=True).first()
     if brachy_mach:
         c.post(f'/scheduler/course/{sched_41.id}/emergency-slot/', {
             'slot_category': 'Emergency',
-            'intended_start_date': '2026-02-01',
+            'intended_start_date': valid_date_41,
             'emergency_reason': 'Pain',
             'machine_id': str(brachy_mach.id)
         }, follow=True)
@@ -3826,7 +3859,7 @@ def run_tests():
 
     # Cleanup
     pt_41.delete()
-    print("✓ Test 41 Passed: 'Teletherapy Emergency / Teletherapy Slot Assignment' heading, prominent MR No badge & Teletherapy-only machines verified.")
+    print("✓ Test 41 Passed: 'Teletherapy Emergency / Teletherapy Slot Assignment' heading, prominent MR No badge, date range clamping (>= today and < scheduled start date) & Teletherapy-only machines verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
