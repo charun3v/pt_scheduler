@@ -17,7 +17,8 @@ from apps.scheduler.models import Machine, TreatmentSchedule, Shift, Holiday
 from apps.patients.models import Patient
 from apps.core.models import Consultant, AuditLog, Designation, PrintTemplateConfig
 from apps.core.permissions import (
-    is_admin_or_subadmin, is_admin_only, can_print_schedules, is_frontdesk_nursing_or_physics
+    is_admin_or_subadmin, is_admin_only, can_print_schedules, is_frontdesk_nursing_or_physics,
+    can_view_pending_patients
 )
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
@@ -104,6 +105,10 @@ def pending_starts_report_view(request):
     Replicates Access query & report 'PendingStartDate':
     Patients who have completed simulation but have NO treatment start date set yet.
     """
+    if not can_view_pending_patients(request.user):
+        messages.error(request, "Access restricted. You do not have permission to view pending patient lists.")
+        return redirect('dashboard')
+
     start_sim_str = request.GET.get('start_sim') or request.GET.get('start_date')
     end_sim_str = request.GET.get('end_sim') or request.GET.get('end_date')
 

@@ -78,6 +78,20 @@ def can_manage_lookups(user) -> bool:
     return is_admin_only(user)
 
 
+def is_frontdesk_or_nursing(user) -> bool:
+    """Checks if the user belongs to Front Desk or Nursing roles."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return False
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role and profile.role.is_active:
+        r_name = profile.role.role_name.strip().lower()
+        if any(keyword in r_name for keyword in ('front desk', 'front office', 'nursing', 'nurse')):
+            return True
+    return False
+
+
 def is_frontdesk_nursing_or_physics(user) -> bool:
     """Checks if the user belongs to Front Desk, Nursing, or Physics roles."""
     if not user or not user.is_authenticated:
@@ -92,6 +106,22 @@ def is_frontdesk_nursing_or_physics(user) -> bool:
     return False
 
 
+def can_view_pending_patients(user) -> bool:
+    """Controls whether user can view the pending/unscheduled patients queue on dashboard."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role and profile.role.is_active:
+        if is_frontdesk_or_nursing(user) and not getattr(profile.role, 'cap_view_pending_queue', False):
+            return False
+        if hasattr(profile.role, 'cap_view_pending_queue'):
+            return bool(profile.role.cap_view_pending_queue)
+        return bool(profile.role.cap_view_patients)
+    return True
+
+
 def can_register_patient(user) -> bool:
     if is_admin_or_subadmin(user):
         return True
@@ -102,26 +132,40 @@ def can_register_patient(user) -> bool:
 
 
 def can_schedule_patient(user) -> bool:
-    """Front desk, Nursing, and Physics staff cannot schedule patients."""
+    """Front desk, Nursing, and Physics staff cannot schedule patients unless role capability is enabled."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role and profile.role.is_active:
+        if is_frontdesk_nursing_or_physics(user) and not profile.role.cap_schedule_patient:
+            return False
+        return bool(profile.role.cap_schedule_patient)
     if is_frontdesk_nursing_or_physics(user):
         return False
     if is_admin_or_subadmin(user):
         return True
-    profile = getattr(user, 'profile', None)
-    if profile and profile.role and profile.role.is_active:
-        return bool(profile.role.cap_schedule_patient)
     return True
 
 
 def can_edit_patient(user) -> bool:
-    """Front desk, Nursing, and Physics staff can view patient details but cannot edit or add."""
+    """Front desk, Nursing, and Physics staff can view patient details but cannot edit unless permitted."""
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role and profile.role.is_active:
+        if is_frontdesk_nursing_or_physics(user) and not getattr(profile.role, 'cap_edit_patient', False):
+            return False
+        if hasattr(profile.role, 'cap_edit_patient'):
+            return bool(profile.role.cap_edit_patient)
+        return bool(profile.role.cap_register_patient or profile.role.cap_edit_locked_identity)
     if is_frontdesk_nursing_or_physics(user):
         return False
     if is_admin_or_subadmin(user):
         return True
-    profile = getattr(user, 'profile', None)
-    if profile and profile.role and profile.role.is_active:
-        return bool(profile.role.cap_register_patient or profile.role.cap_edit_locked_identity)
     return True
 
 
@@ -150,8 +194,15 @@ def can_remove_from_schedule(user) -> bool:
 
 
 def can_manual_schedule(user) -> bool:
-    """Manual treatment scheduling in Excel grid format is available to Admin and SubAdmin."""
-    return is_admin_or_subadmin(user)
+    """Manual treatment scheduling in Excel grid format is available to Admin and SubAdmin or roles with cap_manual_schedule."""
+    if not user or not user.is_authenticated:
+        return False
+    if is_admin_or_subadmin(user):
+        return True
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role and profile.role.is_active:
+        return bool(getattr(profile.role, 'cap_manual_schedule', False))
+    return False
 
 
 def can_export_data(user) -> bool:

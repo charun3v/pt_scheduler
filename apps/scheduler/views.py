@@ -15,7 +15,10 @@ from .models import (
 import json
 from apps.patients.models import Patient, DEFAULT_SITES
 from apps.core.models import AuditLog
-from apps.core.permissions import is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule, can_schedule_patient
+from apps.core.permissions import (
+    is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule,
+    can_schedule_patient, can_view_pending_patients
+)
 from apps.core.validators import validate_field_value
 
 
@@ -637,6 +640,9 @@ def edit_machine_mapping_view(request, mapping_id):
 @login_required
 def unscheduled_patients_view(request):
     """Queue of registered patients who have no treatment schedule booked yet."""
+    if not can_view_pending_patients(request.user):
+        messages.error(request, "Access restricted. You do not have permission to view pending patient lists.")
+        return redirect('dashboard')
     patients = Patient.objects.filter(schedules__isnull=True).order_by('-created_at')
     return render(request, 'scheduler/unscheduled_patients.html', {'patients': patients})
 

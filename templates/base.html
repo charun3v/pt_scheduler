@@ -67,8 +67,10 @@
         <a href="{% url 'dashboard' %}" class="action-ribbon-btn">🏠 Dashboard</a>
         <a href="{% url 'patient_register' %}" class="action-ribbon-btn btn-highlight">➕ Register Patient</a>
         <a href="{% url 'patient_search' %}" class="action-ribbon-btn">🔍 Search Patients</a>
+        {% if CAN_VIEW_PENDING_PATIENTS %}
         <a href="{% url 'unscheduled_patients' %}" class="action-ribbon-btn">⏳ Unscheduled Queue</a>
         <a href="{% url 'pending_starts_report' %}" class="action-ribbon-btn">📋 Start Dates Pending</a>
+        {% endif %}
         <a href="{% url 'machine_daily_list' %}" class="action-ribbon-btn">⚡ Machine Schedules</a>
         {% if IS_ADMIN_ONLY %}
         <a href="{% url 'consultant_stats' %}" class="action-ribbon-btn">📊 Consultant Stats</a>

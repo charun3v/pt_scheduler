@@ -211,6 +211,25 @@
         {% endif %}
     {% endif %}
 
+    {% if not CAN_VIEW_PENDING_PATIENTS and not query %}
+    <!-- Dedicated Search Portal for Front Desk & Nursing (who do not see the pending patients list) -->
+    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 36px 24px; text-align: center; margin-bottom: 20px;">
+        <div style="font-size: 40px; margin-bottom: 10px;">🔍</div>
+        <h3 style="margin: 0 0 8px 0; color: #003366; font-size: 18px; font-weight: bold;">
+            Search Patient Directory & Check Schedule Status
+        </h3>
+        <p style="color: #64748b; font-size: 13px; max-width: 580px; margin: 0 auto 20px auto; line-height: 1.5;">
+            Search any patient across the institution by MR Number, Patient Name, Phone Number, or RT Number to instantly verify their appointment status, machine, and schedule start date.
+        </p>
+        <form method="GET" action="{% url 'dashboard' %}" style="display: flex; gap: 8px; justify-content: center; max-width: 560px; margin: 0 auto;">
+            <input type="text" name="q" placeholder="Enter MR Number, Patient Name, or Phone..." autofocus required
+                   style="flex: 1; padding: 11px 16px; font-size: 14px; border: 2px solid #003366; border-radius: 4px; outline: none; box-shadow: inset 0 1px 2px rgba(0,0,0,0.08);">
+            <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 11px 24px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.15);">
+                🔍 Search Patient
+            </button>
+        </form>
+    </div>
+    {% else %}
     <!-- Table of Non-Scheduled Patients (Strict Single Line per Row) -->
     <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden;">
         
@@ -218,7 +237,12 @@
         <div style="background: #f0f4f8; border-bottom: 2px solid #003366; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <h3 style="margin: 0; font-size: 14px; color: #003366; font-weight: bold; display: flex; align-items: center; gap: 6px;">
-                    {% if show_hidden %}
+                    {% if query %}
+                        <span>🔍</span> Patient Search Results
+                        <span style="font-size: 11px; font-weight: normal; background: #003366; color: #ffffff; padding: 2px 8px; border-radius: 10px;">
+                            {{ total_non_scheduled }} patient{{ total_non_scheduled|pluralize }} found
+                        </span>
+                    {% elif show_hidden %}
                         <span>👁️‍🗨️</span> Hidden Patients Queue
                         <span style="font-size: 11px; font-weight: normal; background: #991b1b; color: #ffffff; padding: 2px 8px; border-radius: 10px;">
                             {{ total_non_scheduled }} patient{{ total_non_scheduled|pluralize }} hidden
@@ -451,6 +475,7 @@
         {% endif %}
 
     </div>
+    {% endif %}
 </div>
 
 <!-- Modal: Quick Schedule by MR Number -->

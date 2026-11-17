@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
 from datetime import date, timedelta
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Max
 from django.core.paginator import Paginator
 
 from .models import Role, UserProfile, Consultant, AuditLog, FieldValidationConfig, LookupDefault
@@ -15,7 +15,8 @@ from .permissions import (
     can_manage_users,
     can_manage_roles,
     can_manage_lookups,
-    can_manage_validation_rules
+    can_manage_validation_rules,
+    can_view_pending_patients
 )
 from .lookup_config import LOOKUP_CONFIG, get_lookup_model
 from .lookup_defaults import get_default_lookup_id, set_default_lookup_id, clear_default_lookup_id
@@ -208,9 +209,13 @@ def dashboard_view(request):
             )
     else:
         # Default view: Non-scheduled patients (pending patients awaiting scheduling)
-        patient_qs = Patient.objects.filter(
-            base_filter & (Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True))
-        ).distinct().select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
+        # Front desk and nursing need not see the Pending Patients list
+        if not can_view_pending_patients(request.user):
+            patient_qs = Patient.objects.none()
+        else:
+            patient_qs = Patient.objects.filter(
+                base_filter & (Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True))
+            ).distinct().select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
 
     hidden_count = Patient.objects.filter(
         is_hidden_from_dashboard=True
@@ -549,12 +554,178 @@ def user_edit_view(request, user_id):
 
 @login_required
 def role_dashboard_view(request):
+    """
+    Role-Based Access Control (RBAC) Management Dashboard.
+    Strictly restricted to Admin.
+    Lists all system roles with their active status, user counts, and key capabilities.
+    Provides direct access to edit permissions and access capabilities for each role.
+    """
     if not can_manage_roles(request.user):
         messages.error(request, "Access restricted to Administrators.")
         return redirect('dashboard')
 
-    roles = Role.objects.all().order_by('display_order')
-    return render(request, 'core/role_dashboard.html', {'roles': roles})
+    roles = Role.objects.all().order_by('display_order', 'role_name')
+    for r in roles:
+        r.users_count = User.objects.filter(profile__role=r).count()
+        r.active_users_count = User.objects.filter(profile__role=r, is_active=True).count()
+
+    total_roles = roles.count()
+    active_roles = sum(1 for r in roles if r.is_active)
+    sched_roles = sum(1 for r in roles if r.cap_schedule_patient)
+
+    context = {
+        'roles': roles,
+        'total_roles': total_roles,
+        'active_roles': active_roles,
+        'sched_roles': sched_roles,
+    }
+    return render(request, 'core/role_dashboard.html', context)
+
+
+@login_required
+def role_edit_view(request, role_id=None):
+    """
+    Dedicated Role & Permissions Editor Dashboard.
+    Allows Administrators to configure granular capabilities and access rights for any role.
+    """
+    if not can_manage_roles(request.user):
+        messages.error(request, "Access restricted to Administrators.")
+        return redirect('dashboard')
+
+    is_new = (role_id is None)
+    if is_new:
+        role = None
+        assigned_users = []
+    else:
+        role = get_object_or_404(Role, role_id=role_id)
+        assigned_users = User.objects.filter(profile__role=role).select_related('profile').order_by('first_name', 'username')
+
+    if request.method == 'POST':
+        role_name = request.POST.get('role_name', '').strip()
+        role_description = request.POST.get('role_description', '').strip()
+        display_order_raw = request.POST.get('display_order', '1').strip()
+        is_active = (request.POST.get('is_active') == '1')
+
+        try:
+            display_order = int(display_order_raw)
+        except ValueError:
+            display_order = 1
+
+        if not role_name:
+            messages.error(request, "Role Name is required.")
+            return render(request, 'core/role_form.html', {
+                'role': role,
+                'is_new': is_new,
+                'assigned_users': assigned_users,
+                'form_data': request.POST,
+            })
+
+        # Name uniqueness
+        name_qs = Role.objects.filter(role_name__iexact=role_name)
+        if not is_new:
+            name_qs = name_qs.exclude(role_id=role.role_id)
+        if name_qs.exists():
+            messages.error(request, f"A role named '{role_name}' already exists.")
+            return render(request, 'core/role_form.html', {
+                'role': role,
+                'is_new': is_new,
+                'assigned_users': assigned_users,
+                'form_data': request.POST,
+            })
+
+        # Capability checkboxes
+        cap_login = (request.POST.get('cap_login') == '1')
+        cap_view_patients = (request.POST.get('cap_view_patients') == '1')
+        cap_view_pending_queue = (request.POST.get('cap_view_pending_queue') == '1')
+        cap_register_patient = (request.POST.get('cap_register_patient') == '1')
+        cap_schedule_patient = (request.POST.get('cap_schedule_patient') == '1')
+        cap_edit_patient = (request.POST.get('cap_edit_patient') == '1')
+        cap_edit_locked_identity = (request.POST.get('cap_edit_locked_identity') == '1')
+        cap_manual_schedule = (request.POST.get('cap_manual_schedule') == '1')
+        cap_manage_mappings = (request.POST.get('cap_manage_mappings') == '1')
+        cap_manage_lookups = (request.POST.get('cap_manage_lookups') == '1')
+        cap_manage_users = (request.POST.get('cap_manage_users') == '1')
+        cap_manage_roles = (request.POST.get('cap_manage_roles') == '1')
+        cap_delete_records = (request.POST.get('cap_delete_records') == '1')
+        cap_export_data = (request.POST.get('cap_export_data') == '1')
+        cap_view_reports = (request.POST.get('cap_view_reports') == '1')
+
+        # Admin safety lock
+        if not is_new and (role.role_id == 1 or role.role_name.lower() == 'admin'):
+            is_active = True
+            cap_login = True
+            cap_manage_roles = True
+            cap_manage_users = True
+
+        if is_new:
+            new_id = (Role.objects.aggregate(Max('role_id'))['role_id__max'] or 0) + 1
+            role = Role.objects.create(
+                role_id=new_id,
+                role_name=role_name,
+                role_description=role_description,
+                display_order=display_order,
+                is_active=is_active,
+                cap_login=cap_login,
+                cap_view_patients=cap_view_patients,
+                cap_view_pending_queue=cap_view_pending_queue,
+                cap_register_patient=cap_register_patient,
+                cap_schedule_patient=cap_schedule_patient,
+                cap_edit_patient=cap_edit_patient,
+                cap_edit_locked_identity=cap_edit_locked_identity,
+                cap_manual_schedule=cap_manual_schedule,
+                cap_manage_mappings=cap_manage_mappings,
+                cap_manage_lookups=cap_manage_lookups,
+                cap_manage_users=cap_manage_users,
+                cap_manage_roles=cap_manage_roles,
+                cap_delete_records=cap_delete_records,
+                cap_export_data=cap_export_data,
+                cap_view_reports=cap_view_reports,
+            )
+            AuditLog.objects.create(
+                user=request.user,
+                action="ROLE_CREATE",
+                details=f"Created new role '{role.role_name}' (ID: {role.role_id}) with custom capabilities.",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            messages.success(request, f"New role '{role.role_name}' created successfully!")
+        else:
+            role.role_name = role_name
+            role.role_description = role_description
+            role.display_order = display_order
+            role.is_active = is_active
+            role.cap_login = cap_login
+            role.cap_view_patients = cap_view_patients
+            role.cap_view_pending_queue = cap_view_pending_queue
+            role.cap_register_patient = cap_register_patient
+            role.cap_schedule_patient = cap_schedule_patient
+            role.cap_edit_patient = cap_edit_patient
+            role.cap_edit_locked_identity = cap_edit_locked_identity
+            role.cap_manual_schedule = cap_manual_schedule
+            role.cap_manage_mappings = cap_manage_mappings
+            role.cap_manage_lookups = cap_manage_lookups
+            role.cap_manage_users = cap_manage_users
+            role.cap_manage_roles = cap_manage_roles
+            role.cap_delete_records = cap_delete_records
+            role.cap_export_data = cap_export_data
+            role.cap_view_reports = cap_view_reports
+            role.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action="ROLE_UPDATE",
+                details=f"Updated access capabilities for role '{role.role_name}' (ID: {role.role_id}).",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            messages.success(request, f"Access permissions and capabilities for role '{role.role_name}' updated successfully!")
+
+        return redirect('role_dashboard')
+
+    context = {
+        'role': role,
+        'is_new': is_new,
+        'assigned_users': assigned_users,
+    }
+    return render(request, 'core/role_form.html', context)
 
 
 # --- Gynae-Style Centralized Dropdown & Lookup Tables Manager (Admin Only) ---

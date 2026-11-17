@@ -2464,15 +2464,14 @@ def run_tests():
     assert "Schedule Date & Machine" in pt_search_html
     assert "View Details" in pt_search_html
 
-    # b. Dashboard default shows only pending patients (unscheduled)
+    # b. Dashboard default hides pending patients list for Front Desk & Nursing; shows dedicated Search & Track portal
     resp_dash_def = c_fd.get('/')
     assert resp_dash_def.status_code == 200
-    # Pending queue should be rendered, not showing the Quick Schedule modal or button
     dash_def_html = resp_dash_def.content.decode('utf-8')
     assert '<div id="quickScheduleModal"' not in dash_def_html
     assert "⚡ Quick Schedule" not in dash_def_html
-    assert "Search & Track Patients" in dash_def_html
-    assert "Non-Scheduled Patients" in dash_def_html
+    assert "Search Patient Directory & Check Schedule Status" in dash_def_html
+    assert "Non-Scheduled Patients" not in dash_def_html
 
     # c. Register a patient (allowed)
     test_reg_mr = 9999099
@@ -2534,6 +2533,142 @@ def run_tests():
     # Clean up test patient
     created_pt.delete()
     print("✓ Test 29 Passed: Header page label removal, and Front Desk, Nursing, and Physics read-only & print controls verified.")
+
+    # --- Test 30: Role & Access Rights Management Dashboard & Granular Permissions Editing ---
+    print("\n--- Test 30: Role & Access Rights Management Dashboard & Granular Permissions Editing ---")
+    # 1. RBAC Dashboard Access Control
+    # SubAdmin / Resident / Front Desk attempt to access /roles/ -> blocked
+    c.force_login(subadmin_user)
+    resp = c.get('/roles/')
+    assert resp.status_code == 302, f"SubAdmin must be redirected from /roles/, got {resp.status_code}"
+
+    c.force_login(res_user)
+    resp = c.get('/roles/')
+    assert resp.status_code == 302, f"Resident must be redirected from /roles/, got {resp.status_code}"
+
+    # Admin access to /roles/ -> 200 OK with matrix, summary cards, and edit links
+    c.force_login(admin_user)
+    resp = c.get('/roles/')
+    assert resp.status_code == 200
+    roles_html = resp.content.decode('utf-8')
+    assert "Role &amp; Access Rights Management" in roles_html or "Role & Access Rights Management" in roles_html
+    assert "Create New Role" in roles_html
+    assert "Front Desk" in roles_html
+    assert "Nursing" in roles_html
+    assert "Edit Access" in roles_html
+
+    # 2. Queue View Protection: Front Desk & Nursing blocked from pending queues
+    c_fd.login(username='test_frontdesk', password='FrontDesk123!')
+    unsched_resp = c_fd.get('/scheduler/unscheduled/', follow=True)
+    assert unsched_resp.status_code == 200
+    assert "Access restricted. You do not have permission to view pending patient lists." in unsched_resp.content.decode('utf-8')
+
+    pending_starts_resp = c_fd.get('/reports/pending-starts/', follow=True)
+    assert pending_starts_resp.status_code == 200
+    assert "Access restricted. You do not have permission to view pending patient lists." in pending_starts_resp.content.decode('utf-8')
+
+    # Admin CAN view both queues
+    c.force_login(admin_user)
+    assert c.get('/scheduler/unscheduled/').status_code == 200
+    assert c.get('/reports/pending-starts/').status_code == 200
+
+    # 3. Dynamic Permission Editing: Toggle Front Desk pending queue visibility
+    fd_role = Role.objects.get(role_id=5)
+    assert fd_role.cap_view_pending_queue is False
+
+    # Admin edits Front Desk role to ENABLE cap_view_pending_queue
+    resp_edit_get = c.get(f'/roles/{fd_role.role_id}/edit/')
+    assert resp_edit_get.status_code == 200
+    assert "Edit: Front Desk" in resp_edit_get.content.decode('utf-8')
+
+    resp_edit_post = c.post(f'/roles/{fd_role.role_id}/edit/', {
+        'role_name': 'Front Desk',
+        'role_description': 'Front office patient registration and queue tracking',
+        'display_order': '5',
+        'is_active': '1',
+        'cap_login': '1',
+        'cap_view_patients': '1',
+        'cap_view_pending_queue': '1',  # Temporarily enabled!
+        'cap_register_patient': '1',
+        'cap_edit_patient': '0',
+        'cap_schedule_patient': '0',
+        'cap_view_reports': '1',
+    }, follow=True)
+    assert resp_edit_post.status_code == 200
+    fd_role.refresh_from_db()
+    assert fd_role.cap_view_pending_queue is True
+
+    # Now verify Front Desk user DOES see the pending patients table
+    resp_fd_enabled = c_fd.get('/')
+    assert resp_fd_enabled.status_code == 200
+    assert "Non-Scheduled Patients" in resp_fd_enabled.content.decode('utf-8')
+
+    # Revert Front Desk back to cap_view_pending_queue = False
+    c.force_login(admin_user)
+    c.post(f'/roles/{fd_role.role_id}/edit/', {
+        'role_name': 'Front Desk',
+        'role_description': 'Front office patient registration and queue tracking',
+        'display_order': '5',
+        'is_active': '1',
+        'cap_login': '1',
+        'cap_view_patients': '1',
+        'cap_view_pending_queue': '0',  # Restored to False
+        'cap_register_patient': '1',
+        'cap_edit_patient': '0',
+        'cap_schedule_patient': '0',
+        'cap_view_reports': '1',
+    }, follow=True)
+    fd_role.refresh_from_db()
+    assert fd_role.cap_view_pending_queue is False
+
+    # Verify Front Desk again sees only the dedicated Search portal
+    resp_fd_restored = c_fd.get('/')
+    assert resp_fd_restored.status_code == 200
+    fd_restored_html = resp_fd_restored.content.decode('utf-8')
+    assert "Search Patient Directory & Check Schedule Status" in fd_restored_html
+    assert "Non-Scheduled Patients" not in fd_restored_html
+
+    # 4. Create New Role via UI form
+    Role.objects.filter(role_name='Clinical Auditor').delete()
+    resp_create = c.post('/roles/new/', {
+        'role_name': 'Clinical Auditor',
+        'role_description': 'Audits clinical scheduling and patient start compliance',
+        'display_order': '8',
+        'is_active': '1',
+        'cap_login': '1',
+        'cap_view_patients': '1',
+        'cap_view_pending_queue': '0',
+        'cap_register_patient': '0',
+        'cap_schedule_patient': '0',
+        'cap_view_reports': '1',
+        'cap_export_data': '1',
+    }, follow=True)
+    assert resp_create.status_code == 200
+    assert Role.objects.filter(role_name='Clinical Auditor').exists()
+    auditor_role = Role.objects.get(role_name='Clinical Auditor')
+    assert auditor_role.cap_view_reports is True
+    assert auditor_role.cap_schedule_patient is False
+
+    # 5. Admin Safeguards: Admin role (role_id=1) cannot be accidentally locked out
+    admin_role = Role.objects.get(role_id=1)
+    c.post(f'/roles/{admin_role.role_id}/edit/', {
+        'role_name': 'Admin',
+        'role_description': 'System Administrator',
+        'display_order': '1',
+        'is_active': '0',          # Attempt to deactivate Admin
+        'cap_login': '0',          # Attempt to revoke login
+        'cap_manage_roles': '0',   # Attempt to revoke role management
+        'cap_manage_users': '0',   # Attempt to revoke user management
+    }, follow=True)
+    admin_role.refresh_from_db()
+    assert admin_role.is_active is True
+    assert admin_role.cap_login is True
+    assert admin_role.cap_manage_roles is True
+    assert admin_role.cap_manage_users is True
+
+    # Clean up test role
+    auditor_role.delete()
+    print("✓ Test 30 Passed: Role & Access Rights Management dashboard, granular permissions editing, queue view guards, and Admin safety locks verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

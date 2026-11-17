@@ -1,56 +1,172 @@
 {% extends "base.html" %}
 
-{% block title %}Roles & Capabilities - EBRT Scheduler{% endblock %}
+{% block title %}Role & Access Management - EBRT Scheduler{% endblock %}
 
 {% block content %}
-<div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 20px;">
-    
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 2px solid #003366; padding-bottom: 10px;">
-        <div>
-            <h2 style="margin: 0; font-size: 18px; color: #003366;">🛡️ Role-Based Access Control (RBAC) Matrix</h2>
-            <div style="font-size: 12px; color: #666;">Granular security capabilities across clinical and administrative roles.</div>
+<div style="display: flex; flex-direction: column; gap: 20px;">
+
+    <!-- Header Banner -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+            <div>
+                <h2 style="margin: 0 0 6px 0; font-size: 20px; color: #003366; display: flex; align-items: center; gap: 10px;">
+                    <span>🛡️</span> Role & Access Rights Management
+                </h2>
+                <div style="font-size: 13px; color: #555;">
+                    Centralized Role-Based Access Control (RBAC). Configure clinical permissions, pending queue visibility, registration, scheduling rights, and administrative capabilities for every role.
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <a href="{% url 'role_create' %}" class="btn" style="background: #0078d4; color: #ffffff; text-decoration: none; padding: 8px 16px; border-radius: 4px; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+                    <span>➕</span> Create New Role
+                </a>
+                <a href="{% url 'user_list' %}" class="btn" style="background: #f3f4f6; color: #333; text-decoration: none; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;">
+                    👥 Manage Users
+                </a>
+            </div>
+        </div>
+
+        <!-- Metric KPI Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;">
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #003366; border-radius: 4px; padding: 12px 16px;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px;">Total Roles</div>
+                <div style="font-size: 24px; font-weight: bold; color: #003366; margin-top: 4px;">{{ total_roles }}</div>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #107c41; border-radius: 4px; padding: 12px 16px;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px;">Active Roles</div>
+                <div style="font-size: 24px; font-weight: bold; color: #107c41; margin-top: 4px;">{{ active_roles }}</div>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #d83b01; border-radius: 4px; padding: 12px 16px;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px;">Scheduling Rights</div>
+                <div style="font-size: 24px; font-weight: bold; color: #d83b01; margin-top: 4px;">{{ sched_roles }}</div>
+            </div>
         </div>
     </div>
 
-    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-        <thead>
-            <tr style="background: #003366; color: #ffffff; text-align: center;">
-                <th style="padding: 10px; text-align: left;">Role Name</th>
-                <th style="padding: 10px;">View Patients</th>
-                <th style="padding: 10px;">Register</th>
-                <th style="padding: 10px;">Schedule</th>
-                <th style="padding: 10px;">Edit Locked Identity</th>
-                <th style="padding: 10px;">Manage Mappings</th>
-                <th style="padding: 10px;">Manage Users</th>
-                <th style="padding: 10px;">Delete Records</th>
-                <th style="padding: 10px;">Export</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for r in roles %}
-            <tr style="border-bottom: 1px solid #eee; text-align: center;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
-                <td style="padding: 10px; text-align: left; font-weight: bold; color: #003366;">
-                    {{ r.role_name }}
-                    <small style="display: block; color: #666; font-weight: normal;">{{ r.role_description }}</small>
-                </td>
-                <td style="padding: 10px;">{% if r.cap_view_patients %}✅{% else %}❌{% endif %}</td>
-                <td style="padding: 10px;">{% if r.cap_register_patient %}✅{% else %}❌{% endif %}</td>
-                <td style="padding: 10px;">{% if r.cap_schedule_patient %}✅{% else %}❌{% endif %}</td>
-                <td style="padding: 10px;">
-                    {% if r.cap_edit_locked_identity %}
-                        <span class="badge-success">YES</span>
-                    {% else %}
-                        <span style="color: #bbb;">🔒 No</span>
-                    {% endif %}
-                </td>
-                <td style="padding: 10px;">{% if r.cap_manage_mappings %}✅{% else %}❌{% endif %}</td>
-                <td style="padding: 10px;">{% if r.cap_manage_users %}✅{% else %}❌{% endif %}</td>
-                <td style="padding: 10px;">{% if r.cap_delete_records %}⚠️ Yes{% else %}❌{% endif %}</td>
-                <td style="padding: 10px;">{% if r.cap_export_data %}✅{% else %}❌{% endif %}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <!-- Roles Table -->
+    <div style="background: #ffffff; border: 1px solid var(--ms-border); border-radius: 6px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+            <thead>
+                <tr style="background: #003366; color: #ffffff; text-align: left;">
+                    <th style="padding: 12px 10px; width: 220px;">Role & Description</th>
+                    <th style="padding: 12px 8px; text-align: center; width: 70px;">Status</th>
+                    <th style="padding: 12px 8px; text-align: center; width: 85px;">Users</th>
+                    <th style="padding: 12px 8px; text-align: center; background: #002244;">Pending Queue</th>
+                    <th style="padding: 12px 8px; text-align: center; background: #002244;">Register</th>
+                    <th style="padding: 12px 8px; text-align: center; background: #002244;">Schedule</th>
+                    <th style="padding: 12px 8px; text-align: center; background: #002244;">Edit Patient</th>
+                    <th style="padding: 12px 8px; text-align: center; background: #002244;">Locked ID</th>
+                    <th style="padding: 12px 8px; text-align: center;">Reports</th>
+                    <th style="padding: 12px 8px; text-align: center;">Mappings</th>
+                    <th style="padding: 12px 8px; text-align: center;">Lookups</th>
+                    <th style="padding: 12px 8px; text-align: center;">Users Admin</th>
+                    <th style="padding: 12px 8px; text-align: center;">Delete</th>
+                    <th style="padding: 12px 10px; text-align: center; width: 140px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in roles %}
+                <tr style="border-bottom: 1px solid #e5e7eb; transition: background 0.15s;" onmouseover="this.style.background='#f8fafc';" onmouseout="this.style.background='';">
+                    <td style="padding: 12px 10px; vertical-align: middle;">
+                        <div style="font-weight: bold; font-size: 13px; color: #003366; display: flex; align-items: center; gap: 6px;">
+                            {{ r.role_name }}
+                            {% if r.role_id == 1 %}
+                                <span style="background: #e0f2fe; color: #0369a1; font-size: 10px; font-weight: normal; padding: 2px 6px; border-radius: 10px; border: 1px solid #bae6fd;">Super Role</span>
+                            {% endif %}
+                        </div>
+                        <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">{{ r.role_description|default:"No description provided." }}</div>
+                    </td>
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle;">
+                        {% if r.is_active %}
+                            <span style="background: #dcfce7; color: #166534; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 12px; display: inline-block;">Active</span>
+                        {% else %}
+                            <span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 12px; display: inline-block;">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle;">
+                        <span style="background: #f1f5f9; color: #334155; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 12px; border: 1px solid #cbd5e1;">
+                            {{ r.users_count }}
+                        </span>
+                    </td>
+                    <!-- Pending Queue -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle; background: #fafbfc;">
+                        {% if r.cap_view_pending_queue %}
+                            <span title="Can see pending patients queue" style="color: #16a34a; font-size: 14px;">✅</span>
+                        {% else %}
+                            <span title="Pending patients list hidden" style="color: #94a3b8; font-size: 14px;">❌</span>
+                        {% endif %}
+                    </td>
+                    <!-- Register -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle; background: #fafbfc;">
+                        {% if r.cap_register_patient %}
+                            <span title="Can register patients" style="color: #16a34a; font-size: 14px;">✅</span>
+                        {% else %}
+                            <span title="Cannot register patients" style="color: #94a3b8; font-size: 14px;">❌</span>
+                        {% endif %}
+                    </td>
+                    <!-- Schedule -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle; background: #fafbfc;">
+                        {% if r.cap_schedule_patient %}
+                            <span title="Can schedule radiotherapy slots" style="color: #16a34a; font-size: 14px;">✅</span>
+                        {% else %}
+                            <span title="No scheduling rights" style="color: #94a3b8; font-size: 14px;">❌</span>
+                        {% endif %}
+                    </td>
+                    <!-- Edit Patient -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle; background: #fafbfc;">
+                        {% if r.cap_edit_patient %}
+                            <span title="Can edit patient demographics" style="color: #16a34a; font-size: 14px;">✅</span>
+                        {% else %}
+                            <span title="View only - cannot edit demographics" style="color: #94a3b8; font-size: 14px;">🔒</span>
+                        {% endif %}
+                    </td>
+                    <!-- Locked Identity -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle; background: #fafbfc;">
+                        {% if r.cap_edit_locked_identity %}
+                            <span style="background: #fef08a; color: #854d0e; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">Unlocked</span>
+                        {% else %}
+                            <span style="color: #94a3b8; font-size: 11px;">🔒 Locked</span>
+                        {% endif %}
+                    </td>
+                    <!-- Reports -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle;">
+                        {% if r.cap_view_reports %}<span style="color: #16a34a;">✅</span>{% else %}<span style="color: #94a3b8;">❌</span>{% endif %}
+                    </td>
+                    <!-- Mappings -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle;">
+                        {% if r.cap_manage_mappings %}<span style="color: #16a34a;">✅</span>{% else %}<span style="color: #94a3b8;">❌</span>{% endif %}
+                    </td>
+                    <!-- Lookups -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle;">
+                        {% if r.cap_manage_lookups %}<span style="color: #16a34a;">✅</span>{% else %}<span style="color: #94a3b8;">❌</span>{% endif %}
+                    </td>
+                    <!-- Users Admin -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle;">
+                        {% if r.cap_manage_users %}<span style="color: #16a34a;">✅</span>{% else %}<span style="color: #94a3b8;">❌</span>{% endif %}
+                    </td>
+                    <!-- Delete -->
+                    <td style="padding: 12px 8px; text-align: center; vertical-align: middle;">
+                        {% if r.cap_delete_records %}
+                            <span style="background: #fee2e2; color: #991b1b; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">Allowed</span>
+                        {% else %}
+                            <span style="color: #94a3b8;">❌</span>
+                        {% endif %}
+                    </td>
+                    <!-- Action -->
+                    <td style="padding: 12px 10px; text-align: center; vertical-align: middle;">
+                        <a href="{% url 'role_edit' r.role_id %}" class="btn" style="background: #f8fafc; color: #003366; text-decoration: none; border: 1px solid #cbd5e1; padding: 5px 12px; border-radius: 4px; font-weight: 600; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;" onmouseover="this.style.background='#003366'; this.style.color='#ffffff';" onmouseout="this.style.background='#f8fafc'; this.style.color='#003366';">
+                            <span>✏️</span> Edit Access
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="14" style="text-align: center; padding: 30px; color: #64748b;">No roles configured.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
 </div>
 {% endblock %}

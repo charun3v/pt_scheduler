@@ -15,7 +15,9 @@ from .permissions import (
     can_register_patient,
     can_edit_patient,
     can_print_schedules,
-    is_frontdesk_nursing_or_physics
+    is_frontdesk_nursing_or_physics,
+    is_frontdesk_or_nursing,
+    can_view_pending_patients
 )
 
 def role_permissions(request):
@@ -48,5 +50,7 @@ def role_permissions(request):
         'CAN_REGISTER_PATIENT': can_register_patient(request.user),
         'CAN_EDIT_PATIENT': can_edit_patient(request.user),
         'CAN_PRINT_SCHEDULES': can_print_schedules(request.user),
+        'CAN_VIEW_PENDING_PATIENTS': can_view_pending_patients(request.user),
         'IS_FRONTDESK_NURSING_PHYSICS': is_frontdesk_nursing_or_physics(request.user),
+        'IS_FRONTDESK_OR_NURSING': is_frontdesk_or_nursing(request.user),
     }

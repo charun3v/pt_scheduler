@@ -14,9 +14,12 @@ class Role(models.Model):
     # Granular Capability Flags
     cap_login = models.BooleanField(default=True)
     cap_view_patients = models.BooleanField(default=True)
+    cap_view_pending_queue = models.BooleanField(default=True, help_text="Can view pending non-scheduled patients queue on dashboard")
     cap_register_patient = models.BooleanField(default=True)
     cap_schedule_patient = models.BooleanField(default=True)
+    cap_edit_patient = models.BooleanField(default=True, help_text="Can edit patient demographic details")
     cap_edit_locked_identity = models.BooleanField(default=False, help_text="Can edit locked MR No and Patient Name")
+    cap_manual_schedule = models.BooleanField(default=False, help_text="Can use Excel spreadsheet manual treatment grid editor")
     cap_manage_mappings = models.BooleanField(default=False, help_text="Can configure machine-shift-technique mappings")
     cap_manage_lookups = models.BooleanField(default=False, help_text="Can edit dropdown options")
     cap_manage_users = models.BooleanField(default=False, help_text="Can add/edit user accounts")
