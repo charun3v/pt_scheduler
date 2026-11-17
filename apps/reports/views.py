@@ -18,7 +18,7 @@ from apps.patients.models import Patient
 from apps.core.models import Consultant, AuditLog, Designation, PrintTemplateConfig
 from apps.core.permissions import (
     is_admin_or_subadmin, is_admin_only, can_print_schedules, is_frontdesk_nursing_or_physics,
-    can_view_pending_patients
+    can_view_pending_patients, get_four_months_ago
 )
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
@@ -54,18 +54,27 @@ def machine_daily_list_view(request):
         except ValueError:
             end_date = start_date
 
-    # Front Desk, Nursing, and Physics staff: restricted to +/- 6 months from today
+    four_months_ago = get_four_months_ago(today)
+    is_admin = is_admin_only(request.user)
+
+    # Any role except Admin can only print for the past 4 months (older dates not accessible)
+    if not is_admin:
+        if start_date < four_months_ago:
+            start_date = four_months_ago
+        if end_date < four_months_ago:
+            end_date = four_months_ago
+        if end_date < start_date:
+            end_date = start_date
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+
+    # Front Desk, Nursing, and Physics staff: also capped at max +6 months ahead
     if is_frontdesk_nursing_or_physics(request.user):
-        min_allowed = today - timedelta(days=183)
         max_allowed = today + timedelta(days=183)
-        if start_date < min_allowed:
-            start_date = min_allowed
-        elif start_date > max_allowed:
+        if start_date > max_allowed:
             start_date = max_allowed
         if end_date > max_allowed:
             end_date = max_allowed
-        elif end_date < min_allowed:
-            end_date = min_allowed
         if end_date < start_date:
             end_date = start_date
         start_date_str = start_date.strftime("%Y-%m-%d")
@@ -538,6 +547,8 @@ def emergency_slots_report_view(request):
     today = date.today()
     default_start = get_upcoming_monday(today)
     default_end = add_six_months(default_start)
+    four_months_ago = get_four_months_ago(today)
+    is_admin = is_admin_only(request.user)
 
     start_date = None
     end_date = None
@@ -586,11 +597,31 @@ def emergency_slots_report_view(request):
             end_date = None
             end_date_str = ''
 
+    if not is_admin:
+        # Non-admin users (SubAdmin, etc.) can only search for the past 4 months; older dates not accessible
+        if start_date is None or start_date < four_months_ago:
+            if start_date is not None or preset in ['all', 'all_2026']:
+                messages.warning(
+                    request,
+                    f"Date filter restricted: SubAdministrators can only search for records from the past 4 months (from {four_months_ago.strftime('%d-%b-%Y')} onwards). Older records are restricted to Administrators."
+                )
+            start_date = four_months_ago
+            start_date_str = start_date.isoformat()
+        if end_date and end_date < four_months_ago:
+            end_date = four_months_ago
+            end_date_str = end_date.isoformat()
+
     base_qs = TreatmentSchedule.objects.select_related(
         'patient', 'patient__primary_consultant', 'machine', 'shift', 'technique'
     ).filter(
         Q(is_emergency_slot=True) | Q(status__in=['Emergency', 'Vacant'])
     )
+
+    if not is_admin:
+        base_qs = base_qs.filter(
+            Q(intended_start_date__gte=four_months_ago) |
+            (Q(intended_start_date__isnull=True) & (Q(date_of_sim__gte=four_months_ago) | Q(date_of_sim__isnull=True, created_at__date__gte=four_months_ago)))
+        )
 
     selected_machine = None
     if machine_id and machine_id != 'all':
@@ -639,6 +670,9 @@ def emergency_slots_report_view(request):
         'print_default_start': default_start.isoformat(),
         'print_default_end': default_end.isoformat(),
         'preset': preset,
+        'is_admin': is_admin,
+        'min_search_date': four_months_ago.isoformat() if not is_admin else '',
+        'four_months_ago_str': four_months_ago.strftime('%d-%b-%Y'),
         'consultant_options': consultant_options,
         'designations': designations,
         'print_template_config': active_print_cfg,
@@ -873,6 +907,8 @@ def manual_schedule_grid_view(request):
     today = date.today()
     default_start_date = get_upcoming_monday(today)
     default_end_date = add_six_months(default_start_date)
+    four_months_ago = get_four_months_ago(today)
+    is_admin = is_admin_only(request.user)
 
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
@@ -916,9 +952,29 @@ def manual_schedule_grid_view(request):
             end_date = add_six_months(start_date)
             end_date_str = end_date.isoformat()
 
+    if not is_admin:
+        # Non-admin users (SubAdmin, etc.) can only search for the past 4 months; older dates not accessible
+        if start_date < four_months_ago:
+            messages.warning(
+                request,
+                f"Date filter restricted: SubAdministrators can only search for records from the past 4 months (from {four_months_ago.strftime('%d-%b-%Y')} onwards). Older records are restricted to Administrators."
+            )
+            start_date = four_months_ago
+            start_date_str = start_date.isoformat()
+        if end_date < four_months_ago:
+            end_date = four_months_ago
+            end_date_str = end_date.isoformat()
+
     base_filter = Q(treatment_type='Teletherapy')
     if selected_machine:
         base_filter &= Q(machine=selected_machine)
+
+    if not is_admin:
+        # Non-admin users cannot access courses simulated or scheduled older than 4 months
+        base_filter &= (
+            Q(date_of_start__gte=four_months_ago) |
+            (Q(date_of_start__isnull=True) & (Q(date_of_sim__gte=four_months_ago) | Q(date_of_sim__isnull=True)))
+        )
 
     if include_pending:
         date_filter = Q(date_of_start__range=[start_date, end_date]) | Q(date_of_start__isnull=True)
@@ -961,6 +1017,12 @@ def manual_schedule_grid_view(request):
             if new_date_str:
                 try:
                     new_date = datetime.strptime(new_date_str, "%Y-%m-%d").date()
+                    if not is_admin and new_date < four_months_ago:
+                        messages.error(
+                            request,
+                            f"Cannot set start date for {sched.patient.pt_name}: Start date ({new_date.strftime('%d-%m-%Y')}) is older than 4 months ({four_months_ago.strftime('%d-%b-%Y')}). Only Administrators can modify older dates."
+                        )
+                        continue
                     if sched.date_of_sim and new_date < sched.date_of_sim:
                         messages.error(
                             request,
@@ -1033,6 +1095,9 @@ def manual_schedule_grid_view(request):
         'schedules': schedules_list,
         'total_count': len(schedules_list),
         'preset': preset,
+        'is_admin': is_admin,
+        'min_search_date': four_months_ago.isoformat() if not is_admin else '',
+        'four_months_ago_str': four_months_ago.strftime('%d-%b-%Y'),
         'holiday_map': holiday_map,
         'holiday_map_json': holiday_map_json,
         'consultant_options': consultant_options,
@@ -1068,6 +1133,12 @@ def manual_schedule_save_row_api(request):
     if date_str:
         try:
             new_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            four_months_ago = get_four_months_ago(date.today())
+            if not is_admin_only(request.user) and new_date < four_months_ago:
+                return JsonResponse({
+                    'success': False,
+                    'error': f"Date of start ({new_date.strftime('%d-%m-%Y')}) is older than 4 months ({four_months_ago.strftime('%d-%b-%Y')}). Only Administrators can modify older dates."
+                }, status=400)
             if sched.date_of_sim and new_date < sched.date_of_sim:
                 return JsonResponse({
                     'success': False,
@@ -1590,18 +1661,27 @@ def get_print_schedule_data(request):
     else:
         end_date = default_end
 
-    # Front Desk, Nursing, and Physics staff: restricted to +/- 6 months from today
+    four_months_ago = get_four_months_ago(today)
+    is_admin = is_admin_only(request.user)
+
+    # Any role except Admin can only print for the past 4 months (older dates not accessible)
+    if not is_admin:
+        if start_date < four_months_ago:
+            start_date = four_months_ago
+        if end_date < four_months_ago:
+            end_date = four_months_ago
+        if end_date < start_date:
+            end_date = start_date
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+
+    # Front Desk, Nursing, and Physics staff: also capped at max +6 months ahead
     if is_frontdesk_nursing_or_physics(request.user):
-        min_allowed = today - timedelta(days=183)
         max_allowed = today + timedelta(days=183)
-        if start_date < min_allowed:
-            start_date = min_allowed
-        elif start_date > max_allowed:
+        if start_date > max_allowed:
             start_date = max_allowed
         if end_date > max_allowed:
             end_date = max_allowed
-        elif end_date < min_allowed:
-            end_date = min_allowed
         if end_date < start_date:
             end_date = start_date
         start_date_str = start_date.strftime("%Y-%m-%d")
@@ -2251,18 +2331,27 @@ def get_print_emergency_schedule_data(request):
     else:
         end_date = default_end
 
-    # Front Desk, Nursing, and Physics staff: restricted to +/- 6 months from today
+    four_months_ago = get_four_months_ago(today)
+    is_admin = is_admin_only(request.user)
+
+    # Any role except Admin can only print for the past 4 months (older dates not accessible)
+    if not is_admin:
+        if start_date < four_months_ago:
+            start_date = four_months_ago
+        if end_date < four_months_ago:
+            end_date = four_months_ago
+        if end_date < start_date:
+            end_date = start_date
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+
+    # Front Desk, Nursing, and Physics staff: also capped at max +6 months ahead
     if is_frontdesk_nursing_or_physics(request.user):
-        min_allowed = today - timedelta(days=183)
         max_allowed = today + timedelta(days=183)
-        if start_date < min_allowed:
-            start_date = min_allowed
-        elif start_date > max_allowed:
+        if start_date > max_allowed:
             start_date = max_allowed
         if end_date > max_allowed:
             end_date = max_allowed
-        elif end_date < min_allowed:
-            end_date = min_allowed
         if end_date < start_date:
             end_date = start_date
         start_date_str = start_date.strftime("%Y-%m-%d")

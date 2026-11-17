@@ -20,7 +20,7 @@ from apps.core.models import AuditLog
 from apps.core.permissions import (
     is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule,
     can_schedule_patient, can_view_pending_patients, is_consultant_or_admin, is_resident,
-    is_admin_only, can_edit_patient
+    is_admin_only, can_edit_patient, get_four_months_ago
 )
 from apps.core.validators import validate_field_value
 
@@ -1235,10 +1235,11 @@ def revert_emergency_slot_view(request, schedule_id):
 
 # --- Brachytherapy Multi-Date Scheduling & Visual Monthly Calendar ---
 
-def get_month_calendar_data(year, month):
+def get_month_calendar_data(year, month, user=None):
     """
     Constructs a 7-column (Monday through Sunday) grid of weeks for the specified month and year,
     annotated with all active BrachytherapyAppointment records.
+    Restricts historical lookback to the past 4 months for non-administrators.
     """
     cal = calendar.Calendar(firstweekday=0)  # Monday=0, Sunday=6
     month_days = cal.monthdatescalendar(year, month)
@@ -1283,6 +1284,11 @@ def get_month_calendar_data(year, month):
         })
 
     today = timezone.localdate()
+    four_months_ago = get_four_months_ago(today)
+    is_admin = is_admin_only(user) if user else True
+
+    min_cal_year = four_months_ago.year
+    min_cal_month = four_months_ago.month
 
     weeks = []
     for week in month_days:
@@ -1306,6 +1312,11 @@ def get_month_calendar_data(year, month):
     prev_month_date = date(year, month, 1) - timedelta(days=1)
     next_month_date = date(year, month, 28) + timedelta(days=5)
 
+    if not is_admin:
+        can_go_prev = (prev_month_date.year, prev_month_date.month) >= (min_cal_year, min_cal_month)
+    else:
+        can_go_prev = True
+
     return {
         'year': year,
         'month': month,
@@ -1318,7 +1329,12 @@ def get_month_calendar_data(year, month):
         'next_month': next_month_date.month,
         'today_iso': today.isoformat(),
         'all_months': [(m, calendar.month_name[m]) for m in range(1, 13)],
-        'all_years': list(range(today.year - 1, today.year + 4)),
+        'all_years': list(range(min_cal_year if not is_admin else today.year - 1, today.year + 4)),
+        'can_go_prev': can_go_prev,
+        'min_calendar_year': min_cal_year if not is_admin else None,
+        'min_calendar_month': min_cal_month if not is_admin else None,
+        'min_calendar_date': four_months_ago.isoformat() if not is_admin else None,
+        'is_admin': is_admin,
     }
 
 
@@ -1327,6 +1343,7 @@ def brachy_calendar_month_api(request):
     """
     JSON API for dynamic AJAX calendar navigation across months without page reloads.
     Returns calendar weeks grid and appointments for requested month and year.
+    Enforces 4-month historical lookback limit for non-administrators.
     """
     today = timezone.localdate()
     try:
@@ -1338,7 +1355,19 @@ def brachy_calendar_month_api(request):
     if month < 1 or month > 12:
         month = today.month
 
-    data = get_month_calendar_data(year, month)
+    four_months_ago = get_four_months_ago(today)
+    is_admin = is_admin_only(request.user)
+
+    if not is_admin:
+        min_year = four_months_ago.year
+        min_month = four_months_ago.month
+        if (year, month) < (min_year, min_month):
+            return JsonResponse({
+                'success': False,
+                'error': f"Calendar access restricted: Non-administrative users can only access calendar schedules from the past 4 months (from {calendar.month_name[min_month]} {min_year} onwards). Older dates are restricted to Administrators."
+            }, status=403)
+
+    data = get_month_calendar_data(year, month, user=request.user)
     return JsonResponse({'success': True, 'calendar': data})
 
 
@@ -1347,6 +1376,7 @@ def brachy_calendar_view(request):
     """
     Standalone Departmental Brachytherapy Visual Monthly Calendar.
     Displays all scheduled brachytherapy appointments with color coding, tooltips, +N more popovers.
+    Enforces 4-month historical navigation limit for non-administrators.
     """
     today = timezone.localdate()
     try:
@@ -1358,7 +1388,20 @@ def brachy_calendar_view(request):
     if month < 1 or month > 12:
         year, month = today.year, today.month
 
-    calendar_data = get_month_calendar_data(year, month)
+    four_months_ago = get_four_months_ago(today)
+    is_admin = is_admin_only(request.user)
+
+    if not is_admin:
+        min_year = four_months_ago.year
+        min_month = four_months_ago.month
+        if (year, month) < (min_year, min_month):
+            messages.warning(
+                request,
+                f"Calendar access restricted: Non-administrative users can only access calendar schedules from the past 4 months (from {calendar.month_name[min_month]} {min_year} onwards). Older dates are restricted to Administrators."
+            )
+            year, month = min_year, min_month
+
+    calendar_data = get_month_calendar_data(year, month, user=request.user)
     applicators = BrachyApplicator.objects.filter(is_active=True).order_by('display_order', 'name')
 
     context = {
@@ -1638,7 +1681,7 @@ def brachy_schedule_patient_view(request, patient_id):
     if month < 1 or month > 12:
         year, month = today.year, today.month
 
-    calendar_data = get_month_calendar_data(year, month)
+    calendar_data = get_month_calendar_data(year, month, user=request.user)
 
     selected_machine_id = None
     if existing_brachy and existing_brachy.machine_id:

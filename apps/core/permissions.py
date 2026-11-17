@@ -2,6 +2,24 @@
 Centralized Role-Based Access Control (RBAC) & Authority Checks.
 Admin and SubAdmin have administrative control as per user specifications.
 """
+import calendar
+from datetime import date
+
+
+def get_four_months_ago(ref_date=None) -> date:
+    """
+    Returns the exact date 4 calendar months prior to ref_date (defaults to today).
+    Used to enforce the 4-month historical search and print boundary for SubAdmin and non-Admin roles.
+    """
+    if ref_date is None:
+        ref_date = date.today()
+    y = ref_date.year
+    m = ref_date.month - 4
+    while m <= 0:
+        m += 12
+        y -= 1
+    d = min(ref_date.day, calendar.monthrange(y, m)[1])
+    return date(y, m, d)
 
 def is_admin_or_subadmin(user) -> bool:
     if not user or not user.is_authenticated:

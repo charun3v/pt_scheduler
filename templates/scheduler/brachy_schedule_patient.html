@@ -383,7 +383,7 @@
                     
                     <!-- Month Navigation Controls -->
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <button type="button" onclick="navigateCalendarMonth(-1)" class="btn" style="background: #f1f5f9; color: #003366; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
+                        <button type="button" id="prevMonthBtn" onclick="navigateCalendarMonth(-1)" class="btn" style="background: #f1f5f9; color: #003366; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; {% if not calendar.can_go_prev %}opacity: 0.4; pointer-events: none;{% endif %}" title="{% if not calendar.can_go_prev %}Access to calendar months older than 4 months is restricted to Administrators.{% endif %}">
                             ◀ Prev Month
                         </button>
                         <button type="button" onclick="goToTodayMonth()" class="btn" style="background: #003366; color: #ffffff; border: none; padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer;">
@@ -802,6 +802,25 @@
         }
     }
 
+    const gMinYear = {{ calendar.min_calendar_year|default:'null' }};
+    const gMinMonth = {{ calendar.min_calendar_month|default:'null' }};
+    const gIsAdmin = {{ calendar.is_admin|yesno:'true,false' }};
+
+    function updateNavButtons(calData) {
+        const prevBtn = document.getElementById('prevMonthBtn');
+        if (prevBtn) {
+            if (calData && calData.can_go_prev === false) {
+                prevBtn.style.opacity = '0.4';
+                prevBtn.style.pointerEvents = 'none';
+                prevBtn.title = 'Access to calendar months older than 4 months is restricted to Administrators.';
+            } else {
+                prevBtn.style.opacity = '1';
+                prevBtn.style.pointerEvents = 'auto';
+                prevBtn.title = '';
+            }
+        }
+    }
+
     // Dynamic AJAX Month Navigation
     function navigateCalendarMonth(delta) {
         let newMonth = gCurrentMonth + delta;
@@ -812,6 +831,12 @@
         } else if (newMonth > 12) {
             newMonth = 1;
             newYear += 1;
+        }
+        if (!gIsAdmin && gMinYear !== null && gMinMonth !== null) {
+            if (newYear < gMinYear || (newYear === gMinYear && newMonth < gMinMonth)) {
+                alert("Calendar access restricted: Non-administrative users can only access calendar schedules from the past 4 months. Older dates are restricted to Administrators.");
+                return;
+            }
         }
         loadCalendarMonth(newYear, newMonth);
     }
@@ -824,6 +849,14 @@
     function jumpToMonthYear() {
         const m = parseInt(document.getElementById('jumpMonthSelect').value);
         const y = parseInt(document.getElementById('jumpYearSelect').value);
+        if (!gIsAdmin && gMinYear !== null && gMinMonth !== null) {
+            if (y < gMinYear || (y === gMinYear && m < gMinMonth)) {
+                alert("Calendar access restricted: Non-administrative users can only access calendar schedules from the past 4 months. Older dates are restricted to Administrators.");
+                document.getElementById('jumpMonthSelect').value = gCurrentMonth;
+                document.getElementById('jumpYearSelect').value = gCurrentYear;
+                return;
+            }
+        }
         loadCalendarMonth(y, m);
     }
 
@@ -837,6 +870,7 @@
         const cacheKey = `${year}_${month}`;
         if (gCachedMonthData[cacheKey]) {
             renderCalendarGrid(gCachedMonthData[cacheKey]);
+            updateNavButtons(gCachedMonthData[cacheKey]);
             return;
         }
 
@@ -846,6 +880,9 @@
                 if (data.success && data.calendar) {
                     gCachedMonthData[cacheKey] = data.calendar;
                     renderCalendarGrid(data.calendar);
+                    updateNavButtons(data.calendar);
+                } else if (!data.success && data.error) {
+                    alert(data.error);
                 }
             })
             .catch(err => console.error("Error loading calendar month:", err));

@@ -32,7 +32,8 @@ from apps.core.permissions import (
     can_schedule_patient,
     can_edit_patient,
     can_register_patient,
-    can_print_schedules
+    can_print_schedules,
+    get_four_months_ago
 )
 
 
@@ -3602,6 +3603,103 @@ def run_tests():
     # Cleanup
     pt_test38.delete()
     print("✓ Test 38 Passed: Teletherapy Treatment Schedule Worksheet heading, Teletherapy-only dropdowns, and Brachy exclusion fully verified.")
+
+    # --- Test 39: 4-Month Historical Lookback Restriction for SubAdmin & Non-Admin Roles ---
+    print("\n--- Running Test 39: 4-Month Lookback Boundary Enforcement ---")
+    today = date.today()
+    four_months_ago = get_four_months_ago(today)
+    older_date = four_months_ago - timedelta(days=40)  # ~5+ months ago
+
+    # Create an old patient simulated and scheduled 5+ months ago
+    Patient.objects.filter(mr_no='9999039').delete()
+    pt_test39_old = Patient.objects.create(
+        mr_no='9999039',
+        pt_name='Test39 Old Patient',
+        age=60,
+        sex='M',
+        diagnosis='Ca Lung',
+        primary_consultant=Consultant.objects.first(),
+        created_by=admin_user
+    )
+    sched_old = TreatmentSchedule.objects.create(
+        patient=pt_test39_old,
+        machine=tele_machines[0],
+        treatment_type='Teletherapy',
+        date_of_sim=older_date,
+        date_of_start=older_date,
+        status='Scheduled'
+    )
+
+    # 1. Teletherapy Worksheet: SubAdmin is restricted to past 4 months
+    c.force_login(subadmin_user)
+    resp_subadmin_grid = c.get(f'/reports/manual-grid/?machine_id={tele_machines[0].id}&start_date={older_date.isoformat()}&end_date={today.isoformat()}')
+    assert resp_subadmin_grid.status_code == 200
+    sub_grid_html = resp_subadmin_grid.content.decode('utf-8')
+    assert "Date filter restricted" in sub_grid_html or four_months_ago.strftime('%d-%b-%Y') in sub_grid_html
+    assert 'Test39 Old Patient' not in sub_grid_html, "Old schedule must NOT be accessible to SubAdmin on worksheet"
+
+    # SubAdmin cannot inline-edit date to older than 4 months
+    resp_bad_date = c.post('/reports/manual-grid/save-row/', {
+        'schedule_id': sched_old.id,
+        'date_of_start': older_date.isoformat()
+    })
+    assert resp_bad_date.status_code == 400
+    assert "older than 4 months" in resp_bad_date.json()['error']
+
+    # Admin CAN access older dates on Teletherapy Worksheet
+    c.force_login(admin_user)
+    resp_admin_grid = c.get(f'/reports/manual-grid/?machine_id={tele_machines[0].id}&start_date={older_date.isoformat()}&end_date={today.isoformat()}')
+    assert resp_admin_grid.status_code == 200
+    admin_grid_html = resp_admin_grid.content.decode('utf-8')
+    assert 'Test39 Old Patient' in admin_grid_html, "Admin must be able to view older records on worksheet"
+
+    # 2. Emergency Slots: SubAdmin cannot access emergency records older than 4 months
+    c.force_login(subadmin_user)
+    resp_subadmin_em = c.get(f'/reports/emergency-slots/?preset=all')
+    assert resp_subadmin_em.status_code == 200
+    assert f'min="{four_months_ago.isoformat()}"' in resp_subadmin_em.content.decode('utf-8')
+
+    # 3. Brachy Calendar: SubAdmin cannot navigate back >4 months
+    c.force_login(subadmin_user)
+    old_year = older_date.year
+    old_month = older_date.month
+    resp_old_cal_api = c.get(f'/scheduler/brachytherapy/api/month/?year={old_year}&month={old_month}')
+    assert resp_old_cal_api.status_code == 403
+    assert resp_old_cal_api.json()['success'] is False
+    assert "older dates are restricted to administrators" in resp_old_cal_api.json()['error'].lower()
+
+    # Admin CAN access older months on Brachy Calendar
+    c.force_login(admin_user)
+    resp_admin_cal_api = c.get(f'/scheduler/brachytherapy/api/month/?year={old_year}&month={old_month}')
+    assert resp_admin_cal_api.status_code == 200
+    assert resp_admin_cal_api.json()['success'] is True
+
+    # 4. Printing of Schedule: Non-admin roles (SubAdmin, Physics, etc.) cannot print older dates
+    c.force_login(subadmin_user)
+    resp_subadmin_print = c.get(f'/reports/print-schedule/?machines={tele_machines[0].id}&start_date={older_date.isoformat()}&end_date={older_date.isoformat()}')
+    assert resp_subadmin_print.status_code == 200
+    sub_print_html = resp_subadmin_print.content.decode('utf-8')
+    assert 'Test39 Old Patient' not in sub_print_html, "Old patient must NOT appear in SubAdmin schedule printout"
+
+    # Admin CAN print older dates
+    c.force_login(admin_user)
+    resp_admin_print = c.get(f'/reports/print-schedule/?machines={tele_machines[0].id}&start_date={older_date.isoformat()}&end_date={older_date.isoformat()}')
+    assert resp_admin_print.status_code == 200
+    assert 'Test39 Old Patient' in resp_admin_print.content.decode('utf-8'), "Admin must be able to print older dates"
+
+    # 5. Individual Patient Search: SubAdmin CAN search and view old patient with NO restriction
+    c.force_login(subadmin_user)
+    resp_search = c.get(f'/patients/search/?q=9999039')
+    assert resp_search.status_code == 200
+    assert 'Test39 Old Patient' in resp_search.content.decode('utf-8'), "Individual patient search must NOT have 4-month restriction"
+
+    resp_pt_detail = c.get(f'/patients/{pt_test39_old.id}/')
+    assert resp_pt_detail.status_code == 200
+    assert 'Test39 Old Patient' in resp_pt_detail.content.decode('utf-8'), "Individual patient detail must NOT have 4-month restriction"
+
+    # Cleanup
+    pt_test39_old.delete()
+    print("✓ Test 39 Passed: 4-month historical lookback restriction for SubAdmin, calendar API guard, print clamping & unrestricted patient search fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

@@ -55,7 +55,7 @@
         <!-- Start Date -->
         <div style="display: flex; align-items: center; gap: 6px;">
             <label for="filterStartDate" style="font-size: 11px; font-weight: bold; color: #003366;">Start Date:</label>
-            <input type="date" name="start_date" id="filterStartDate" value="{{ start_date_str }}"
+            <input type="date" name="start_date" id="filterStartDate" value="{{ start_date_str }}" {% if min_search_date %}min="{{ min_search_date }}"{% endif %}
                    style="padding: 3px 6px; font-size: 11px; border: 1px solid #707070; border-radius: 3px;">
         </div>
 
@@ -261,7 +261,7 @@
                         <label style="display: block; font-weight: bold; font-size: 12px; color: #003366; margin-bottom: 3px;">
                             Start Date (for printing): *
                         </label>
-                        <input type="date" name="start_date" id="print_start_date" required value="{{ start_date_str|default:print_default_start }}"
+                        <input type="date" name="start_date" id="print_start_date" required value="{{ start_date_str|default:print_default_start }}" {% if min_search_date %}min="{{ min_search_date }}"{% endif %}
                                style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px;">
                         <span style="font-size: 11px; color: #64748b;">Start of scheduled starts range</span>
                     </div>
