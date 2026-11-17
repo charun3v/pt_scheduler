@@ -123,32 +123,32 @@
     </div>
 
     <!-- Table -->
-    <div style="overflow-x: auto;">
-        <table id="emergencyDataTable" style="width: 100%; border-collapse: collapse; font-size: 11.5px; white-space: nowrap;">
+    <div style="overflow-x: auto; width: fit-content; max-width: 100%;">
+        <table id="emergencyDataTable" style="width: auto; border-collapse: collapse; font-size: 11px; white-space: nowrap;">
             <thead>
                 <tr style="background: #b91c1c; color: #ffffff; text-align: left; height: 28px; white-space: nowrap;">
-                    <th style="padding: 5px 6px; text-align: center; width: 32px; white-space: nowrap;">#</th>
-                    <th style="padding: 5px 8px; white-space: nowrap;">MR No.</th>
-                    <th style="padding: 5px 8px; white-space: nowrap;">Patient Name</th>
-                    <th style="padding: 5px 6px; text-align: center; white-space: nowrap;">Classification</th>
-                    <th style="padding: 5px 8px; text-align: center; white-space: nowrap;">Intended Start</th>
-                    <th style="padding: 5px 8px; white-space: nowrap;">Emergency Indication / Reason</th>
-                    <th style="padding: 5px 8px; white-space: nowrap;">Machine & Shift</th>
-                    <th style="padding: 5px 8px; white-space: nowrap;">Consultant</th>
-                    <th style="padding: 5px 8px; white-space: nowrap;">Jr. Resident</th>
-                    <th style="padding: 5px 8px; text-align: center; width: 190px; white-space: nowrap;">Actions</th>
+                    <th style="padding: 4px 6px; text-align: center; width: 30px; white-space: nowrap;">#</th>
+                    <th style="padding: 4px 6px; width: 15ch; max-width: 15ch; white-space: nowrap;">MR No.</th>
+                    <th style="padding: 4px 6px; max-width: 160px; white-space: nowrap;">Patient Name</th>
+                    <th style="padding: 4px 6px; text-align: center; white-space: nowrap;">Classification</th>
+                    <th style="padding: 4px 6px; text-align: center; white-space: nowrap;">Intended Start</th>
+                    <th style="padding: 4px 6px; width: 26ch; max-width: 26ch; white-space: nowrap;" title="Emergency Indication">Emergency Indication</th>
+                    <th style="padding: 4px 6px; width: 18ch; max-width: 18ch; white-space: nowrap;">Machine</th>
+                    <th style="padding: 4px 6px; max-width: 140px; white-space: nowrap;">Consultant</th>
+                    <th style="padding: 4px 6px; max-width: 110px; white-space: nowrap;">Jr. Resident</th>
+                    <th style="padding: 4px 6px; text-align: center; width: 190px; white-space: nowrap;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for s in schedules %}
                 <tr class="emergency-row" style="border-bottom: 1px solid #fee2e2; height: 28px; background: #fffdfd; white-space: nowrap;" onmouseover="this.style.background='#fef2f2';" onmouseout="this.style.background='#fffdfd';">
                     <td style="padding: 2px 6px; text-align: center; color: #666; font-size: 11px; white-space: nowrap;" class="row-index">{{ forloop.counter }}</td>
-                    <td style="padding: 2px 8px; font-weight: bold; font-family: Consolas, monospace; white-space: nowrap;" class="col-mr">
-                        <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #991b1b; text-decoration: underline;" title="View Patient Details in New Tab">
+                    <td style="padding: 2px 6px; font-weight: bold; font-family: Consolas, monospace; white-space: nowrap; width: 15ch; max-width: 15ch; overflow: hidden; text-overflow: ellipsis;" class="col-mr">
+                        <a href="{% url 'patient_detail' s.patient.id %}" target="_blank" style="color: #991b1b; text-decoration: underline;" title="{{ s.patient.mr_no }}">
                             {{ s.patient.mr_no }}
                         </a>
                     </td>
-                    <td style="padding: 2px 8px; font-weight: 700; color: #111; white-space: nowrap; max-width: 170px; overflow: hidden; text-overflow: ellipsis;" class="col-name" title="{{ s.patient.pt_name }}">{{ s.patient.pt_name }}</td>
+                    <td style="padding: 2px 6px; font-weight: 700; color: #111; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis;" class="col-name" title="{{ s.patient.pt_name }}">{{ s.patient.pt_name }}</td>
                     <td style="padding: 2px 6px; text-align: center; white-space: nowrap;">
                         {% if s.slot_category == 'Emergency' or s.status == 'Emergency' %}
                             <span class="badge-status" style="background: #fee2e2; color: #991b1b; border: 1px solid #f87171; font-weight: bold; font-size: 10px; padding: 1px 5px; white-space: nowrap;">
@@ -160,17 +160,17 @@
                             </span>
                         {% endif %}
                     </td>
-                    <td style="padding: 2px 8px; text-align: center; font-weight: 700; color: #b91c1c; white-space: nowrap;" class="col-date">
+                    <td style="padding: 2px 6px; text-align: center; font-weight: 700; color: #b91c1c; white-space: nowrap;" class="col-date">
                         {{ s.intended_start_date|date:"d-M-Y"|default:"TBD" }}
                     </td>
-                    <td style="padding: 2px 8px; font-weight: 600; color: #991b1b; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis;" class="col-reason" title="{{ s.emergency_reason|default:'Clinical Emergency' }}">
+                    <td style="padding: 2px 6px; font-weight: 600; color: #991b1b; white-space: nowrap; width: 26ch; max-width: 26ch; overflow: hidden; text-overflow: ellipsis;" class="col-reason" title="{{ s.emergency_reason|default:'Clinical Emergency' }}">
                         {{ s.emergency_reason|default:"Clinical Emergency" }}
                     </td>
-                    <td style="padding: 2px 8px; white-space: nowrap;" class="col-machine">
+                    <td style="padding: 2px 6px; white-space: nowrap; width: 18ch; max-width: 18ch; overflow: hidden; text-overflow: ellipsis;" class="col-machine" title="{{ s.machine.name|default:'Unassigned' }}{% if s.shift %} [{{ s.shift.name }}]{% endif %}">
                         <strong>{{ s.machine.name|default:'Unassigned' }}</strong>{% if s.shift %} <span style="color: #555; font-size: 11px;">[{{ s.shift.name }}]</span>{% endif %}
                     </td>
-                    <td style="padding: 2px 8px; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis;" class="col-consultant" title="{{ s.patient.consultant_display }}">{{ s.patient.consultant_display }}</td>
-                    <td style="padding: 2px 8px; font-size: 11px; color: #4b5563; white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis;" class="col-jr" title="{{ s.jr_resident|default:'-' }}">{{ s.jr_resident|default:"-" }}</td>
+                    <td style="padding: 2px 6px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis;" class="col-consultant" title="{{ s.patient.consultant_display }}">{{ s.patient.consultant_display }}</td>
+                    <td style="padding: 2px 6px; font-size: 11px; color: #4b5563; white-space: nowrap; max-width: 110px; overflow: hidden; text-overflow: ellipsis;" class="col-jr" title="{{ s.jr_resident|default:'-' }}">{{ s.jr_resident|default:"-" }}</td>
                     <td style="padding: 2px 6px; text-align: center; white-space: nowrap;">
                         {% if CAN_SCHEDULE_PATIENT %}
                         <div style="display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">

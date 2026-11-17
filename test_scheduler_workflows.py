@@ -3701,6 +3701,30 @@ def run_tests():
     pt_test39_old.delete()
     print("✓ Test 39 Passed: 4-month historical lookback restriction for SubAdmin, calendar API guard, print clamping & unrestricted patient search fully verified.")
 
+    # =========================================================================
+    # TEST 40: Emergency & Vacant Slots Compact Layout, Column Widths (15ch, 26ch, 18ch) & Machine Header
+    # =========================================================================
+    print("\n--- Running Test 40: Emergency & Vacant Slots Compact Table, Column Widths & Machine Header ---")
+    c.force_login(admin_user)
+    resp_em_table = c.get('/reports/emergency-slots/')
+    assert resp_em_table.status_code == 200
+    em_html = resp_em_table.content.decode('utf-8')
+
+    # 1. Compact table wrapper & auto table width
+    assert 'width: fit-content; max-width: 100%;' in em_html, "Table container must use fit-content to be compact horizontally"
+    assert 'table id="emergencyDataTable" style="width: auto;' in em_html, "Table must have width: auto instead of 100% stretch"
+
+    # 2. Header renamed from 'Machine & Shift' to 'Machine'
+    assert '>Machine</th>' in em_html, "Header must be 'Machine'"
+    assert '>Machine & Shift</th>' not in em_html, "Old header 'Machine & Shift' must be replaced"
+    assert '>Emergency Indication</th>' in em_html, "Header must be 'Emergency Indication'"
+
+    # 3. Column widths: MR No (15ch), Emergency Indication (26ch), Machine (18ch)
+    assert 'width: 15ch; max-width: 15ch;' in em_html, "MR No must be styled with 15ch (max chars 12 + 3)"
+    assert 'width: 26ch; max-width: 26ch;' in em_html, "Emergency Indication must be styled with 26ch (max chars 23 + 3)"
+    assert 'width: 18ch; max-width: 18ch;' in em_html, "Machine must be styled with 18ch (max chars 15 + 3)"
+    print("✓ Test 40 Passed: Emergency table compact layout, 15ch MR No, 26ch Emergency Indication, 18ch Machine, and 'Machine' header fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")
