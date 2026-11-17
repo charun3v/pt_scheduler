@@ -146,21 +146,21 @@
 
                     <form method="post" action="{% url 'lookup_add' category %}">
                         {% csrf_token %}
-                        <div style="display: grid; grid-template-columns: {% if cfg.secondary_field %}{% if cfg.extra_field %}2fr 1.2fr 1.5fr 0.8fr 0.8fr 1fr auto{% else %}2fr 1.5fr 1fr 1fr 1fr auto{% endif %}{% else %}{% if cfg.extra_field %}2.5fr 1.5fr 0.8fr 0.8fr 1fr auto{% else %}3fr 1fr 1fr 1fr auto{% endif %}{% endif %}; gap: 10px; align-items: flex-end;">
-                            <div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+                            <div style="flex: 2; min-width: 180px;">
                                 <label class="access-label" style="font-weight: bold; font-size: 11px;">{{ cfg.name_label }} *</label>
                                 <input type="text" name="name_value" class="access-input" required placeholder="Enter option name...">
                             </div>
 
                             {% if cfg.secondary_field %}
-                                <div>
+                                <div style="flex: 1; min-width: 120px;">
                                     <label class="access-label" style="font-size: 11px;">{{ cfg.secondary_label }}</label>
                                     <input type="text" name="secondary_value" class="access-input" placeholder="e.g. Code...">
                                 </div>
                             {% endif %}
 
                             {% if cfg.extra_field %}
-                                <div>
+                                <div style="flex: 1.2; min-width: 140px;">
                                     <label class="access-label" style="font-size: 11px; font-weight: bold;">{{ cfg.extra_label }}</label>
                                     <select name="extra_value" class="access-select" style="width: 100%; padding: 4px 6px; font-size: 11px; background: #fff;">
                                         {% for opt_val, opt_label in cfg.extra_choices %}
@@ -170,7 +170,18 @@
                                 </div>
                             {% endif %}
 
-                            <div>
+                            {% if cfg.extra2_field %}
+                                <div style="flex: 1.2; min-width: 140px;">
+                                    <label class="access-label" style="font-size: 11px; font-weight: bold;">{{ cfg.extra2_label }}</label>
+                                    <select name="extra2_value" class="access-select" style="width: 100%; padding: 4px 6px; font-size: 11px; background: #fff;">
+                                        {% for opt_val, opt_label in cfg.extra2_choices %}
+                                            <option value="{{ opt_val }}">{{ opt_label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            {% endif %}
+
+                            <div style="width: 80px;">
                                 <label class="access-label" style="font-size: 11px;">Display Order</label>
                                 <input type="number" name="display_order" value="{{ items|length|add:1 }}" class="access-input">
                             </div>
@@ -225,6 +236,9 @@
                             {% if cfg.extra_field %}
                                 <th style="width: 140px; text-align: center;">{{ cfg.extra_label }}</th>
                             {% endif %}
+                            {% if cfg.extra2_field %}
+                                <th style="width: 140px; text-align: center;">{{ cfg.extra2_label }}</th>
+                            {% endif %}
                             <th style="width: 90px; text-align: center;">Status</th>
                             <th style="width: 100px; text-align: center;">Default</th>
                             <th style="width: 160px; text-align: center;">Actions</th>
@@ -252,6 +266,14 @@
                                     <td style="text-align: center;">
                                         <span style="background: #eef2f7; color: #003366; padding: 2px 8px; border-radius: 3px; font-weight: bold; font-size: 11px; border: 1px solid #c5d3e0;">
                                             {{ item.extra|default:'-' }}
+                                        </span>
+                                    </td>
+                                {% endif %}
+
+                                {% if cfg.extra2_field %}
+                                    <td style="text-align: center;">
+                                        <span style="background: #f0fdf4; color: #166534; padding: 2px 8px; border-radius: 3px; font-weight: bold; font-size: 11px; border: 1px solid #bbf7d0;">
+                                            {{ item.extra2|default:item.treatment_mode|default:'-' }}
                                         </span>
                                     </td>
                                 {% endif %}
@@ -285,6 +307,7 @@
                                                 '{{ item.name|escapejs }}',
                                                 '{{ item.secondary|default:''|escapejs }}',
                                                 '{{ item.extra|default:''|escapejs }}',
+                                                '{{ item.extra2|default:item.treatment_mode|default:''|escapejs }}',
                                                 '{{ item.display_order }}',
                                                 {{ item.is_active|yesno:'true,false' }},
                                                 {{ item.is_default|yesno:'true,false' }}
@@ -348,6 +371,17 @@
                 </div>
             {% endif %}
 
+            {% if cfg.extra2_field %}
+                <div style="margin-bottom: 12px;">
+                    <label class="access-label" style="font-weight: bold;">{{ cfg.extra2_label }}</label>
+                    <select name="extra2_value" id="edit_extra2_value" class="access-select" style="width: 100%; padding: 6px 8px;">
+                        {% for opt_val, opt_label in cfg.extra2_choices %}
+                            <option value="{{ opt_val }}">{{ opt_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% endif %}
+
             <div style="margin-bottom: 12px;">
                 <label class="access-label">Display Order</label>
                 <input type="number" name="display_order" id="edit_display_order" class="access-input" style="width: 100%;">
@@ -375,7 +409,7 @@
 
 {% block extra_js %}
 <script>
-    function openEditModal(pk, name, secondary, extra, order, isActive, isDefault) {
+    function openEditModal(pk, name, secondary, extra, extra2, order, isActive, isDefault) {
         document.getElementById('edit_item_id').value = pk;
         document.getElementById('edit_name_value').value = name;
         if (document.getElementById('edit_secondary_value')) {
@@ -383,6 +417,9 @@
         }
         if (document.getElementById('edit_extra_value')) {
             document.getElementById('edit_extra_value').value = extra;
+        }
+        if (document.getElementById('edit_extra2_value')) {
+            document.getElementById('edit_extra2_value').value = extra2;
         }
         document.getElementById('edit_display_order').value = order;
         document.getElementById('edit_is_active').checked = isActive;

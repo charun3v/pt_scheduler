@@ -20,7 +20,7 @@ from apps.core.validators import get_or_create_field_config, validate_field_valu
 from apps.patients.models import Patient
 from apps.scheduler.models import (
     Machine, Shift, Technique, SpecialTechnique, TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday,
-    BrachyApplicator, BrachyAnesthesia, BrachytherapyAppointment
+    BrachyApplicator, BrachyAnesthesia, BrachytherapyAppointment, TreatmentCompletionStatus, MachineType
 )
 from apps.core.permissions import (
     can_edit_locked_identity,
@@ -969,7 +969,8 @@ def run_tests():
     detail_html = resp_pt_detail.content.decode('utf-8')
     assert "Treatment Courses &amp; Radiotherapy Schedule" in detail_html or "Treatment Courses & Radiotherapy Schedule" in detail_html
     assert "Course #" in detail_html
-    assert "🔗 Clubbed with" in detail_html
+    # Bracket connector line connects clubbed courses (no text badge needed)
+    assert "border-left: 2px solid #000000" in detail_html
     assert "Sim Date" in detail_html or "Simulation Date" in detail_html
     assert "Start Date" in detail_html or "Treatment Start Date" in detail_html
     assert "End Date" in detail_html or "Treatment End Date" in detail_html
@@ -3118,9 +3119,8 @@ def run_tests():
     assert "Regular slot (EBRT) taken on:" in pt_detail_html
     assert "01-Dec-2026" in pt_detail_html
 
-    # Mutual clubbing badges in table
-    assert f"🔗 Clubbed with #{course_1.id}" in pt_detail_html
-    assert f"🔗 Clubbed with #{course_2.id}" in pt_detail_html
+    # Mutual clubbing connected via bracket connector lines; text badge removed per user specification
+    assert "🔗 Clubbed with" not in pt_detail_html
     # Neither course should show one-way "Primary (1 tagged)"
     assert "⭐ Primary" not in pt_detail_html
 
@@ -3240,8 +3240,8 @@ def run_tests():
     det_html = resp_detail.content.decode('utf-8')
     assert "Actual Treatment Status" in det_html
     assert "🔒 Frozen" in det_html
-    assert f"Actual: {old_start.strftime('%d-%b-%Y')}" in det_html
-    assert f"Actual: {old_end.strftime('%d-%b-%Y')}" in det_html
+    assert old_start.strftime('%d-%b-%Y') in det_html
+    assert old_end.strftime('%d-%b-%Y') in det_html
     assert "max-width: 100%" in det_html
 
     # 3. Previous Course completion confirmation when creating a new course
@@ -3302,6 +3302,128 @@ def run_tests():
     pt_freeze.delete()
     pt_prev.delete()
     print("✓ Test 35 Passed: Schedule freezing (> 1 month), Admin-only edit permissions, actual treatment dates/status, and previous course confirmation fully verified.")
+
+    # -------------------------------------------------------------------------
+    # TEST 36: COMPACT SEARCH BOX, SEPARATE ACTUAL DETAILS COLUMN, CLUBBED TEXT REMOVAL, DYNAMIC MACHINE TYPES LOOKUP & TREATMENT MODE
+    # -------------------------------------------------------------------------
+    print("\n--- Running Test 36: Compact Search Box, Separate Actual Details Column, Clubbed Text Removal, Dynamic Machine Types Lookup & Treatment Mode ---")
+    MachineType.objects.filter(name="Proton Test Unit").delete()
+    Machine.objects.filter(name="Test IntraOp Machine").delete()
+    Patient.objects.filter(mr_no=9999038).delete()
+    c.force_login(admin_user)
+
+    # 1. Verify Compact Search Box (20ch) & Adjacent Search Button
+    resp_search = c.get('/patients/search/?q=Jayamma')
+    assert resp_search.status_code == 200
+    search_html = resp_search.content.decode('utf-8')
+    assert 'size="20"' in search_html
+    assert 'width: 22ch' in search_html
+    assert 'Search' in search_html
+
+    # 2. Verify MachineType reference model and tblMachineType in Lookup Manager
+    from apps.core.lookup_config import LOOKUP_CONFIG
+    assert 'machine_type' in LOOKUP_CONFIG
+    assert LOOKUP_CONFIG['machine_type']['table_name'] == 'tblMachineType'
+    assert MachineType.objects.filter(name='LINAC').exists()
+    assert MachineType.objects.filter(name='Brachytherapy').exists()
+
+    # Admin visits /lookups/machine_type/
+    resp_mt_list = c.get('/lookups/machine_type/')
+    assert resp_mt_list.status_code == 200
+    mt_html = resp_mt_list.content.decode('utf-8')
+    assert 'Radiotherapy Machine Types' in mt_html
+    assert 'tblMachineType' in mt_html
+
+    # Admin adds a new machine type via Lookup Manager
+    new_mt_name = "Proton Test Unit"
+    resp_add_mt = c.post('/lookups/machine_type/save/', {
+        'name_value': new_mt_name,
+        'display_order': '10',
+        'is_active': '1'
+    })
+    assert resp_add_mt.status_code == 302
+    assert MachineType.objects.filter(name=new_mt_name).exists()
+
+    # 3. Verify Machine Treatment Mode in tblMachine lookup
+    resp_mach_lookup = c.get('/lookups/machine/')
+    assert resp_mach_lookup.status_code == 200
+    mach_lookup_html = resp_mach_lookup.content.decode('utf-8')
+    assert 'Treatment Mode' in mach_lookup_html
+    assert new_mt_name in mach_lookup_html  # Dynamic Machine Type dropdown contains newly created MachineType!
+
+    # Admin creates a machine with treatment_mode
+    test_mach_name = "Test IntraOp Machine"
+    resp_add_mach = c.post('/lookups/machine/save/', {
+        'name_value': test_mach_name,
+        'secondary_value': 'IOP1',
+        'extra_value': new_mt_name,
+        'extra2_value': 'Others',
+        'display_order': '25',
+        'is_active': '1'
+    })
+    assert resp_add_mach.status_code == 302
+    test_mach = Machine.objects.get(name=test_mach_name)
+    assert test_mach.machine_type == new_mt_name
+    assert test_mach.treatment_mode == 'Others'
+
+    # 4. Verify Patient Detail: Separate Actual Details Column, Treatment Mode Header, and Removal of Clubbed Badge
+    pt_test36 = Patient.objects.create(
+        mr_no=9999038,
+        pt_name="Test36 ClubbedPatient",
+        age=52,
+        sex='Female',
+        phone_no='9888800038',
+        diagnosis='Ca Breast',
+        site_of_treatment='Breast',
+        primary_consultant=active_consultant
+    )
+    sched1 = TreatmentSchedule.objects.create(
+        patient=pt_test36,
+        treatment_type='Teletherapy',
+        date_of_start=date.today() + timedelta(days=5),
+        no_of_fractions=15,
+        dose_planned=Decimal('40.05'),
+        status='Scheduled',
+        machine=first_active_machine,
+        actual_start_date=date.today() + timedelta(days=5),
+        actual_treatment_status=TreatmentCompletionStatus.objects.filter(name='Completed').first()
+    )
+    sched2 = TreatmentSchedule.objects.create(
+        patient=pt_test36,
+        treatment_type='Brachytherapy',
+        date_of_start=date.today() + timedelta(days=25),
+        no_of_fractions=3,
+        status='Scheduled',
+        tagged_to=sched1
+    )
+    sched1.tagged_to = sched2
+    sched1.save()
+
+    resp_pt_detail = c.get(f'/patients/{pt_test36.id}/')
+    assert resp_pt_detail.status_code == 200
+    pt_detail_html = resp_pt_detail.content.decode('utf-8')
+
+    # Column headers check
+    assert 'Treatment Mode</th>' in pt_detail_html
+    assert 'Actual Treatment Details</th>' in pt_detail_html
+    assert 'Actions & Course Clubbing</th>' in pt_detail_html
+
+    # Treatment Mode values rendered
+    assert '📡 Teletherapy' in pt_detail_html
+    assert '☢️ Brachytherapy' in pt_detail_html
+
+    # Actual Treatment Details content rendered in its dedicated column
+    assert 'Record Status' in pt_detail_html or 'Edit Actual' in pt_detail_html
+
+    # Removal of "Clubbed with Course" text badge under course number, but bracket line is preserved
+    assert '🔗 Clubbed with #' not in pt_detail_html
+    assert 'border-left: 2px solid #000000;' in pt_detail_html  # Connecting line exists!
+
+    # Cleanup
+    pt_test36.delete()
+    test_mach.delete()
+    MachineType.objects.filter(name=new_mt_name).delete()
+    print("✓ Test 36 Passed: Compact search box, separate actual treatment details column, clubbed text badge removal, dynamic machine types lookup & treatment mode fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

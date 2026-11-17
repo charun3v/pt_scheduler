@@ -10,22 +10,23 @@
         <a href="{% url 'patient_register' %}" class="action-ribbon-btn btn-highlight">➕ Register New Patient</a>
     </div>
 
-    <!-- Search Form -->
-    <form method="GET" action="{% url 'patient_search' %}" style="display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap;">
-        <input type="text" name="q" value="{{ query }}" placeholder="Search by MR No, Patient Name, RT No, Diagnosis, Consultant..."
-               style="flex-grow: 1; min-width: 320px; padding: 8px 12px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+    <!-- Search Form (Compact ~20ch Search Box with Search Button directly adjacent) -->
+    <form method="GET" action="{% url 'patient_search' %}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap;">
+        <input type="text" name="q" value="{{ query }}" placeholder="Search (MR, Name, RT)..." size="20"
+               style="width: 22ch; max-width: 240px; padding: 7px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
 
-        <select name="status" style="padding: 8px 12px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+        <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 7px 16px; border-radius: 3px; font-weight: bold; cursor: pointer;">
+            Search
+        </button>
+
+        <select name="status" style="padding: 7px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
             <option value="">All Patients</option>
             <option value="scheduled" {% if status_filter == 'scheduled' %}selected{% endif %}>Scheduled Only</option>
             <option value="unscheduled" {% if status_filter == 'unscheduled' %}selected{% endif %}>Unscheduled Only</option>
         </select>
 
-        <button type="submit" style="background: #003366; color: #ffffff; border: 1px solid #002244; padding: 8px 18px; border-radius: 3px; font-weight: bold; cursor: pointer;">
-            Search
-        </button>
         {% if query or status_filter %}
-        <a href="{% url 'patient_search' %}" class="action-ribbon-btn" style="padding: 8px 14px;">Clear</a>
+        <a href="{% url 'patient_search' %}" class="action-ribbon-btn" style="padding: 7px 12px;">Clear</a>
         {% endif %}
     </form>
 

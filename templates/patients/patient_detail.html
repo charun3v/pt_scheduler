@@ -251,17 +251,18 @@
             <table class="courses-table">
                 <thead>
                     <tr>
-                        <th style="width: 120px;">Course / Tag</th>
-                        <th style="width: 95px;">Sim Date</th>
-                        <th style="width: 110px;">Start Date</th>
-                        <th style="width: 110px;">End Date</th>
-                        <th style="width: 105px;">Type</th>
-                        <th style="width: 95px;">Intent</th>
-                        <th style="width: 75px;">Dose</th>
-                        <th style="width: 75px;">Fractions</th>
-                        <th style="min-width: 130px;">Machine / Shift</th>
-                        <th style="width: 110px; text-align: center;">Status</th>
-                        <th style="min-width: 210px; text-align: center;">Actions & Course Clubbing</th>
+                        <th style="width: 110px;">Course / Tag</th>
+                        <th style="width: 90px;">Sim Date</th>
+                        <th style="width: 95px;">Start Date</th>
+                        <th style="width: 95px;">End Date</th>
+                        <th style="width: 115px;">Treatment Mode</th>
+                        <th style="width: 90px;">Intent</th>
+                        <th style="width: 70px;">Dose</th>
+                        <th style="width: 70px;">Fractions</th>
+                        <th style="min-width: 120px;">Machine / Shift</th>
+                        <th style="width: 100px; text-align: center;">Status</th>
+                        <th style="min-width: 160px; text-align: center;">Actual Treatment Details</th>
+                        <th style="min-width: 180px; text-align: center;">Actions & Course Clubbing</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -278,13 +279,6 @@
                             {% endif %}
 
                             <strong style="color: #003366;">Course #{{ s.id }}</strong>
-                            {% if s.tagged_to %}
-                                <div style="margin-top: 2px;">
-                                    <span class="badge-status badge-clubbed" style="background: #eef2ff; color: #1e40af; border: 1px solid #93c5fd; font-weight: 700; padding: 2px 8px; font-size: 10.5px;" title="Clubbed with Course #{{ s.tagged_to.id }} ({{ s.tagged_to.machine_display|default:s.tagged_to.treatment_type }})">
-                                        🔗 Clubbed with #{{ s.tagged_to.id }}
-                                    </span>
-                                </div>
-                            {% endif %}
                             {% if s.course_tag %}
                                 <span style="font-size: 10px; color: #57606a; display: block;">[{{ s.course_tag }}]</span>
                             {% endif %}
@@ -302,11 +296,6 @@
                             {% else %}
                                 <span style="color: #cf222e; font-style: italic;">Unscheduled</span>
                             {% endif %}
-                            {% if s.actual_start_date %}
-                                <div style="font-size: 10.5px; color: #047857; font-weight: 600; margin-top: 2px;" title="Actual Treatment Start Date">
-                                    Actual: {{ s.actual_start_date|date:"d-M-Y" }}
-                                </div>
-                            {% endif %}
                         </td>
 
                         <!-- Treatment End Date (Calculated skipping Sundays) -->
@@ -316,17 +305,14 @@
                             {% else %}
                                 <span style="color: #57606a;">-</span>
                             {% endif %}
-                            {% if s.actual_end_date %}
-                                <div style="font-size: 10.5px; color: #047857; font-weight: 600; margin-top: 2px;" title="Actual Treatment End Date">
-                                    Actual: {{ s.actual_end_date|date:"d-M-Y" }}
-                                </div>
-                            {% endif %}
                         </td>
 
-                        <!-- Treatment Type (Teletherapy / Brachytherapy) -->
+                        <!-- Treatment Mode (Teletherapy / Brachytherapy / Others) -->
                         <td>
                             {% if s.treatment_type == 'Brachytherapy' %}
-                                <span style="color: #b45309; font-weight: 600;">☢️ Brachy</span>
+                                <span style="color: #b45309; font-weight: 600;">☢️ Brachytherapy</span>
+                            {% elif s.treatment_type == 'Others' %}
+                                <span style="color: #4b5563; font-weight: 600;">⚙️ Others</span>
                             {% else %}
                                 <span style="color: #0369a1; font-weight: 600;">📡 Teletherapy</span>
                             {% endif %}
@@ -390,20 +376,6 @@
                                 <span class="badge-status badge-pending">{{ s.status }}</span>
                             {% endif %}
 
-                            {% if s.actual_treatment_status %}
-                                <div style="margin-top: 3px;">
-                                    {% if s.actual_treatment_status.is_completed %}
-                                        <span class="badge-status badge-completed" style="background: #dcfce7; color: #15803d; border-color: #86efac; font-size: 10px;" title="Actual Status: Completed">
-                                            🩺 {{ s.actual_treatment_status.name }}
-                                        </span>
-                                    {% else %}
-                                        <span class="badge-status" style="background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; font-size: 10px;" title="Actual Status: {{ s.actual_treatment_status.name }}{% if s.actual_status_notes %} ({{ s.actual_status_notes }}){% endif %}">
-                                            ⚠️ {{ s.actual_treatment_status.name }}
-                                        </span>
-                                    {% endif %}
-                                </div>
-                            {% endif %}
-
                             {% if s.is_frozen %}
                                 <div style="margin-top: 3px;">
                                     <span class="badge-status" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-size: 9.5px; font-weight: 700;" title="Schedule is frozen (> 1 month past scheduled date). Only Administrators can edit.">
@@ -413,21 +385,62 @@
                             {% endif %}
                         </td>
 
+                        <!-- Actual Treatment Details (Dedicated Column) -->
+                        <td style="text-align: center; vertical-align: middle;">
+                            {% if s.actual_treatment_status %}
+                                <div>
+                                    {% if s.actual_treatment_status.is_completed %}
+                                        <span class="badge-status badge-completed" style="background: #dcfce7; color: #15803d; border-color: #86efac; font-size: 10px; padding: 2px 6px;" title="Actual Status: Completed">
+                                            🩺 {{ s.actual_treatment_status.name }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge-status" style="background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; font-size: 10px; padding: 2px 6px;" title="Actual Status: {{ s.actual_treatment_status.name }}{% if s.actual_status_notes %} ({{ s.actual_status_notes }}){% endif %}">
+                                            ⚠️ {{ s.actual_treatment_status.name }}
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+
+                            {% if s.actual_start_date or s.actual_end_date %}
+                                <div style="font-size: 10.5px; color: #334155; margin-top: 3px; line-height: 1.3;">
+                                    {% if s.actual_start_date %}
+                                        <div><strong>Start:</strong> {{ s.actual_start_date|date:"d-M-Y" }}</div>
+                                    {% endif %}
+                                    {% if s.actual_end_date %}
+                                        <div><strong>End:</strong> {{ s.actual_end_date|date:"d-M-Y" }}</div>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+
+                            {% if s.actual_status_notes %}
+                                <div style="font-size: 9.5px; color: #64748b; font-style: italic; margin-top: 2px;" title="{{ s.actual_status_notes }}">
+                                    {{ s.actual_status_notes|truncatechars:25 }}
+                                </div>
+                            {% endif %}
+
+                            {% if not s.actual_treatment_status and not s.actual_start_date and not s.actual_end_date %}
+                                <span style="color: #94a3b8; font-style: italic; font-size: 11px;">Not recorded</span>
+                            {% endif %}
+
+                            {% if CAN_SCHEDULE_PATIENT %}
+                                {% if not s.is_frozen or is_admin_user %}
+                                <div style="margin-top: 4px;">
+                                    <button type="button" class="action-ribbon-btn" 
+                                            style="padding: 2px 7px; font-size: 10px; background: #ecfdf5; color: #065f46; border-color: #a7f3d0; font-weight: 600;"
+                                            onclick="openActualStatusModal({{ s.id }}, '{{ s.actual_start_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_treatment_status_id|default:'' }}', '{{ s.status }}', '{{ s.date_of_start|date:'Y-m-d'|default:'' }}', '{{ s.treatment_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_status_notes|default:''|escapejs }}');"
+                                            title="Record Actual Start Date, End Date, and Treatment Completion Status">
+                                        🩺 {% if s.actual_treatment_status or s.actual_start_date %}Edit Actual{% else %}Record Status{% endif %}
+                                    </button>
+                                </div>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+
                         <!-- Actions & Course Tagging / Clubbing -->
                         <td style="text-align: center;">
                             {% if CAN_SCHEDULE_PATIENT %}
                             <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
                                 <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: center;">
-                                    <!-- Actual Treatment Status Button -->
-                                    {% if not s.is_frozen or is_admin_user %}
-                                    <button type="button" class="action-ribbon-btn" 
-                                            style="padding: 2px 7px; font-size: 10.5px; background: #ecfdf5; color: #065f46; border-color: #a7f3d0; font-weight: 600;"
-                                            onclick="openActualStatusModal({{ s.id }}, '{{ s.actual_start_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_treatment_status_id|default:'' }}', '{{ s.status }}', '{{ s.date_of_start|date:'Y-m-d'|default:'' }}', '{{ s.treatment_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_status_notes|default:''|escapejs }}');"
-                                            title="Record Actual Start Date, End Date, and Treatment Completion Status">
-                                        🩺 Actual Treatment Status
-                                    </button>
-                                    {% endif %}
-
                                     {% if s.is_frozen and not is_admin_user %}
                                     <span style="font-size: 11px; color: #64748b; font-style: italic;">
                                         🔒 Frozen (Admin Only)

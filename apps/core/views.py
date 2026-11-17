@@ -749,9 +749,19 @@ def lookup_manager_view(request, category='machine'):
     model, cfg = get_lookup_model(category)
     default_id = get_default_lookup_id(category)
 
+    cfg = dict(cfg)
+    if category == 'machine':
+        from apps.scheduler.models import MachineType
+        active_types = list(MachineType.objects.filter(is_active=True).order_by('display_order', 'name').values_list('name', flat=True))
+        for fallback in ['LINAC', 'Brachytherapy', 'Orthovoltage', 'Intra Op', 'PBT']:
+            if fallback not in active_types:
+                active_types.append(fallback)
+        cfg['extra_choices'] = [(t, t) for t in active_types]
+
     raw_items = model.objects.all().order_by('display_order', cfg['name_field'])
     items = []
     default_item = None
+    extra2_field = cfg.get('extra2_field')
 
     for it in raw_items:
         is_def = (str(it.pk) == str(default_id)) if default_id is not None else False
@@ -760,6 +770,8 @@ def lookup_manager_view(request, category='machine'):
             'name': getattr(it, cfg['name_field']),
             'secondary': getattr(it, cfg['secondary_field']) if cfg.get('secondary_field') else None,
             'extra': getattr(it, cfg['extra_field']) if cfg.get('extra_field') else None,
+            'extra2': getattr(it, extra2_field) if extra2_field else None,
+            'treatment_mode': getattr(it, 'treatment_mode', None),
             'display_order': getattr(it, 'display_order', 1),
             'is_active': getattr(it, 'is_active', True),
             'is_default': is_def,
@@ -794,6 +806,7 @@ def lookup_save_view(request, category, item_id=None):
     name_field = cfg['name_field']
     sec_field = cfg.get('secondary_field')
     extra_field = cfg.get('extra_field')
+    extra2_field = cfg.get('extra2_field')
 
     if request.method == 'POST':
         if not item_id:
@@ -808,6 +821,9 @@ def lookup_save_view(request, category, item_id=None):
         name_val = request.POST.get('name_value', '').strip()
         sec_val = request.POST.get('secondary_value', '').strip() if sec_field else None
         extra_val = request.POST.get('extra_value', '').strip() if extra_field else None
+        extra2_val = request.POST.get('extra2_value', '').strip() if extra2_field else None
+        if not extra2_val and category == 'machine':
+            extra2_val = request.POST.get('treatment_mode', '').strip()
         order_val = int(request.POST.get('display_order') or 1)
         active_val = bool(request.POST.get('is_active'))
         is_default_checked = bool(request.POST.get('is_default'))
@@ -817,6 +833,11 @@ def lookup_save_view(request, category, item_id=None):
             return redirect('lookup_manager', category=category)
 
         if not item:
+            # Check unique name
+            if model.objects.filter(**{f"{name_field}__iexact": name_val}).exists():
+                messages.error(request, f"An option named '{name_val}' already exists in {cfg['title']}.")
+                return redirect('lookup_manager', category=category)
+
             # Create new option
             create_kwargs = {
                 name_field: name_val,
@@ -827,6 +848,10 @@ def lookup_save_view(request, category, item_id=None):
                 create_kwargs[sec_field] = sec_val
             if extra_field and extra_val:
                 create_kwargs[extra_field] = extra_val
+            if extra2_field and extra2_val:
+                create_kwargs[extra2_field] = extra2_val
+            elif category == 'machine':
+                create_kwargs['treatment_mode'] = 'Teletherapy'
 
             item = model.objects.create(**create_kwargs)
 
@@ -851,6 +876,10 @@ def lookup_save_view(request, category, item_id=None):
                 setattr(item, sec_field, sec_val)
             if extra_field and extra_val:
                 setattr(item, extra_field, extra_val)
+            if extra2_field and extra2_val:
+                setattr(item, extra2_field, extra2_val)
+            elif category == 'machine' and request.POST.get('treatment_mode'):
+                item.treatment_mode = request.POST.get('treatment_mode').strip()
             item.display_order = order_val
             item.is_active = active_val
             item.save()

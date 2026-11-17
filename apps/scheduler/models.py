@@ -13,8 +13,34 @@ MACHINE_TYPE_CHOICES = [
 ]
 
 
+class MachineType(models.Model):
+    """
+    Reference table for Radiotherapy Machine Types:
+    LINAC, Brachytherapy, Orthovoltage, Intra Op, PBT, etc.
+    Configurable via Dropdown Options & Reference Tables Manager (tblMachineType)
+    with dynamic drag-and-drop ordering and active toggle.
+    """
+    name = models.CharField(max_length=50, unique=True, verbose_name="Machine Type Name")
+    display_order = models.IntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        verbose_name = "Machine Type"
+        verbose_name_plural = "Machine Types"
+
+    def __str__(self):
+        return self.name
+
+
 class Machine(models.Model):
     """Linear Accelerators and Teletherapy Machines."""
+    TREATMENT_MODE_CHOICES = [
+        ('Teletherapy', 'Teletherapy'),
+        ('Brachytherapy', 'Brachytherapy'),
+        ('Others', 'Others'),
+    ]
+
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=20, unique=True, help_text="Short code e.g. LA1, LA2, DBX")
     machine_type = models.CharField(
@@ -23,6 +49,13 @@ class Machine(models.Model):
         default='LINAC',
         verbose_name="Machine Type",
         help_text="Machine category: LINAC, Brachytherapy, Orthovoltage, Intra Op, PBT"
+    )
+    treatment_mode = models.CharField(
+        max_length=50,
+        choices=TREATMENT_MODE_CHOICES,
+        default='Teletherapy',
+        verbose_name="Treatment Mode",
+        help_text="Modality category: Teletherapy, Brachytherapy, Others"
     )
     display_order = models.IntegerField(default=1)
     is_active = models.BooleanField(default=True)
@@ -211,6 +244,7 @@ class TreatmentSchedule(models.Model):
     TREATMENT_TYPE_CHOICES = [
         ('Teletherapy', 'Teletherapy (EBRT)'),
         ('Brachytherapy', 'Brachytherapy'),
+        ('Others', 'Others'),
     ]
 
     STATUS_CHOICES = [
