@@ -3861,6 +3861,35 @@ def run_tests():
     pt_41.delete()
     print("✓ Test 41 Passed: 'Teletherapy Emergency / Teletherapy Slot Assignment' heading, prominent MR No badge, date range clamping (>= today and < scheduled start date) & Teletherapy-only machines verified.")
 
+    # =========================================================================
+    # TEST 42: Consultant Starts (and Unit Starts, Simulations) Horizontally Compact Tables
+    # =========================================================================
+    print("\n--- Running Test 42: Consultant Starts & Reporting Tables Horizontally Compact Layout ---")
+    c.force_login(admin_user)
+
+    # 1. Consultant Workload Matrix
+    resp_cons_stats = c.get('/reports/consultant-stats/?year=2026')
+    assert resp_cons_stats.status_code == 200
+    cons_html = resp_cons_stats.content.decode('utf-8')
+    assert 'width: fit-content; max-width: 100%;' in cons_html, "Consultant stats container must use fit-content"
+    assert '<table id="consultantStatsTable" style="width: auto;' in cons_html, "Consultant stats table must use width: auto"
+    assert 'white-space: nowrap;' in cons_html
+
+    # 2. Clinical Unit Starts
+    resp_unit_stats = c.get('/reports/unit-stats/?year=2026')
+    assert resp_unit_stats.status_code == 200
+    unit_html = resp_unit_stats.content.decode('utf-8')
+    assert 'width: fit-content; max-width: 100%;' in unit_html, "Unit stats container must use fit-content"
+    assert '<table id="unitStatsTable" style="width: auto;' in unit_html, "Unit stats table must use width: auto"
+
+    # 3. Simulations Between Dates
+    resp_sim = c.get('/reports/simulations/')
+    assert resp_sim.status_code == 200
+    sim_html = resp_sim.content.decode('utf-8')
+    assert 'width: fit-content; max-width: 100%;' in sim_html, "Simulation report container must use fit-content"
+    assert 'style="width: auto;' in sim_html, "Simulation report table must use width: auto"
+    print("✓ Test 42 Passed: Consultant starts, Unit starts, and Simulation reports horizontal compactness verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

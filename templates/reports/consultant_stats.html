@@ -49,43 +49,45 @@
         </div>
     </div>
 
-    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-        <thead>
-            <tr style="background: #003366; color: #ffffff; text-align: right;">
-                <th style="padding: 8px; text-align: left;">Primary Consultant</th>
-                {% for m in months %}
-                    <th style="padding: 8px; width: 55px;">{{ m }}</th>
-                {% endfor %}
-                <th style="padding: 8px; background: #001f3f; width: 75px;">Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for r in data_rows %}
-            <tr style="border-bottom: 1px solid #eee; text-align: right;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
-                <td style="padding: 8px; text-align: left; font-weight: 600; color: #003366;">
-                    {{ r.consultant }}
-                </td>
-                {% for count in r.counts %}
-                    <td style="padding: 8px; {% if count > 0 %}font-weight: 500; color: #222;{% else %}color: #ccc;{% endif %}">
-                        {{ count|default:'-' }}
+    <div style="overflow-x: auto; width: fit-content; max-width: 100%;">
+        <table id="consultantStatsTable" style="width: auto; border-collapse: collapse; font-size: 11.5px; white-space: nowrap;">
+            <thead>
+                <tr style="background: #003366; color: #ffffff; text-align: center; height: 28px; white-space: nowrap;">
+                    <th style="padding: 4px 10px; text-align: left; min-width: 160px; white-space: nowrap;">Primary Consultant</th>
+                    {% for m in months %}
+                        <th style="padding: 4px 6px; width: 44px; min-width: 40px; text-align: center; white-space: nowrap;">{{ m }}</th>
+                    {% endfor %}
+                    <th style="padding: 4px 8px; background: #001f3f; width: 56px; min-width: 50px; text-align: center; white-space: nowrap;">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in data_rows %}
+                <tr style="border-bottom: 1px solid #e2e8f0; height: 26px; text-align: center; white-space: nowrap;" onmouseover="this.style.background='#fdfbee';" onmouseout="this.style.background='';">
+                    <td style="padding: 2px 10px; text-align: left; font-weight: 600; color: #003366; white-space: nowrap;">
+                        {{ r.consultant }}
                     </td>
+                    {% for count in r.counts %}
+                        <td style="padding: 2px 6px; text-align: center; {% if count > 0 %}font-weight: 500; color: #1e293b;{% else %}color: #cbd5e1;{% endif %} white-space: nowrap;">
+                            {{ count|default:'-' }}
+                        </td>
+                    {% endfor %}
+                    <td style="padding: 2px 8px; font-weight: bold; background: #f0f4f8; color: #003366; text-align: center; white-space: nowrap;">
+                        {{ r.total }}
+                    </td>
+                </tr>
                 {% endfor %}
-                <td style="padding: 8px; font-weight: bold; background: #f0f4f8; color: #003366;">
-                    {{ r.total }}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr style="background: #e2edfa; font-weight: bold; border-top: 2px solid #003366; text-align: right;">
-                <td style="padding: 10px; text-align: left; font-size: 13px; color: #003366;">Monthly Totals</td>
-                {% for mt in month_totals %}
-                    <td style="padding: 10px; font-size: 12px; color: #003366;">{{ mt }}</td>
-                {% endfor %}
-                <td style="padding: 10px; font-size: 14px; background: #cce0f5; color: #002244;">{{ grand_total }}</td>
-            </tr>
-        </tfoot>
-    </table>
+            </tbody>
+            <tfoot>
+                <tr style="background: #e2edfa; font-weight: bold; border-top: 2px solid #003366; height: 28px; text-align: center; white-space: nowrap;">
+                    <td style="padding: 4px 10px; text-align: left; font-size: 12px; color: #003366; white-space: nowrap;">Monthly Totals</td>
+                    {% for mt in month_totals %}
+                        <td style="padding: 4px 6px; font-size: 11.5px; color: #003366; text-align: center; white-space: nowrap;">{{ mt }}</td>
+                    {% endfor %}
+                    <td style="padding: 4px 8px; font-size: 13px; background: #cce0f5; color: #002244; text-align: center; white-space: nowrap;">{{ grand_total }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
 
 </div>
 {% endblock %}
