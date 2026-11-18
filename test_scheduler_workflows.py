@@ -4472,6 +4472,136 @@ def run_tests():
     pt_47.delete()
     print("✓ Test 47 Passed: Clinical Scheduling Refinements, EBRT Date Enforcement, Brachy Daily List & Applicator Editing fully verified.")
 
+    # --- Test 48: Brachytherapy Daily List Column Structure & Brachy Treatment Status Workflow ---
+    print("\n--- Running Test 48: Brachytherapy Daily List Column Structure & Brachy Treatment Status Workflow ---")
+    BrachytherapyAppointment.objects.filter(patient__mr_no=9999048).delete()
+    Patient.objects.filter(mr_no=9999048).delete()
+    pt_48 = Patient.objects.create(
+        mr_no=9999048,
+        pt_name="Test Patient 48",
+        rt_no="RT48",
+        age=58,
+        sex='F',
+        diagnosis="Endometrial Ca",
+        primary_consultant=cons,
+        unit="I"
+    )
+
+    app_type_obj = BrachyApplicator.objects.filter(is_active=True).first()
+    anest_obj = BrachyAnesthesia.objects.filter(is_active=True).first()
+
+    today_curr = timezone.localdate()
+    future_date = today_curr + timedelta(days=7)
+
+    # 1. Schedule 2 fractions for patient: Appt 1 today, Appt 2 in 7 days
+    appt1 = BrachytherapyAppointment.objects.create(
+        patient=pt_48,
+        fraction_number=1,
+        appointment_date=today_curr,
+        applicator_type=app_type_obj,
+        anesthesia_type=anest_obj,
+        status="Scheduled",
+        remarks="First session notes"
+    )
+    appt2 = BrachytherapyAppointment.objects.create(
+        patient=pt_48,
+        fraction_number=2,
+        appointment_date=future_date,
+        applicator_type=app_type_obj,
+        anesthesia_type=anest_obj,
+        status="Scheduled",
+        remarks="Second session notes"
+    )
+
+    # 2. Check Daily HTML Table for today_curr:
+    # Verifies separate columns: MR NO, Name (no RT number), Age / Sex, Brachy Treatment Status, Remarks / Notes as last column
+    resp_daily = client.get(f'/scheduler/brachytherapy/daily-list/?date={today_curr.strftime("%Y-%m-%d")}')
+    assert resp_daily.status_code == 200
+    daily_html = resp_daily.content.decode('utf-8')
+    assert "MR NO" in daily_html
+    assert "Age / Sex" in daily_html
+    assert "Brachy Treatment Status" in daily_html
+    assert "Remarks / Notes" in daily_html
+    assert "9999048" in daily_html
+    # RT number should NOT be displayed in table
+    assert "RT: RT48" not in daily_html
+    # Since today_curr <= today, status link should be active to record status
+    assert "Record Status" in daily_html or "App 1" in daily_html
+
+    # 3. Check Future Date Daily HTML:
+    # Status link should indicate upcoming
+    resp_future = client.get(f'/scheduler/brachytherapy/daily-list/?date={future_date.strftime("%Y-%m-%d")}')
+    assert resp_future.status_code == 200
+    future_html = resp_future.content.decode('utf-8')
+    assert "Upcoming" in future_html
+
+    # 4. Check Daily List API:
+    resp_api = client.get(f'/scheduler/brachytherapy/api/daily-list/?date={today_curr.strftime("%Y-%m-%d")}')
+    assert resp_api.status_code == 200
+    api_json = resp_api.json()
+    assert api_json['success'] is True
+    assert 'completion_statuses' in api_json
+    assert len(api_json['completion_statuses']) > 0
+    row_pt = next(r for r in api_json['appointments'] if r['id'] == appt1.id)
+    assert row_pt['mr_no'] == 9999048
+    assert row_pt['patient_name'] == "Test Patient 48"
+    assert row_pt['age_sex'] == "58/F"
+    assert row_pt['fraction'] == 1
+    assert row_pt['is_date_reached'] is True
+
+    # 5. Record Brachy Treatment Status to 'Completed' via API
+    comp_st = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
+    assert comp_st is not None
+
+    resp_status_update = client.post(f'/scheduler/brachytherapy/api/appointment/{appt1.id}/status/', {
+        'status_id': comp_st.id,
+        'remarks': 'App 1 successfully completed without complications'
+    })
+    assert resp_status_update.status_code == 200
+    res_json = resp_status_update.json()
+    assert res_json['success'] is True
+    assert res_json['status'] == 'Completed'
+    assert res_json['is_completed'] is True
+
+    # Refresh appointments from DB
+    appt1.refresh_from_db()
+    appt2.refresh_from_db()
+    assert appt1.status == 'Completed'
+    assert appt1.fraction_number == 1
+    assert appt1.remarks == 'App 1 successfully completed without complications'
+    # Next application is App 2 (App x+1)
+    assert appt2.fraction_number == 2
+
+    # 6. Test Incomplete scenario:
+    # If appt1 was marked Incomplete, next scheduled appointment stays as App 1
+    incomp_st = TreatmentCompletionStatus.objects.filter(is_completed=False).first()
+    resp_incomp = client.post(f'/scheduler/brachytherapy/api/appointment/{appt1.id}/status/', {
+        'status_id': incomp_st.id,
+        'remarks': 'Attempt aborted'
+    })
+    assert resp_incomp.status_code == 200
+    appt1.refresh_from_db()
+    appt2.refresh_from_db()
+    assert appt1.status == incomp_st.name
+    # Since App 1 was incomplete, the next scheduled application appt2 is App 1
+    assert appt2.fraction_number == 1
+
+    # Restore appt1 to Completed
+    client.post(f'/scheduler/brachytherapy/api/appointment/{appt1.id}/status/', {
+        'status_id': comp_st.id,
+        'remarks': 'Completed after retrial'
+    })
+    appt1.refresh_from_db()
+    appt2.refresh_from_db()
+    assert appt1.status == 'Completed'
+    assert appt2.fraction_number == 2
+
+    # Cleanup
+    appt1.delete()
+    appt2.delete()
+    pt_48.delete()
+    print("✓ Test 48 Passed: Brachytherapy Daily List Column Structure & Brachy Treatment Status Workflow fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

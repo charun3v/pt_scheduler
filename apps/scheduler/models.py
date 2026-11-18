@@ -468,7 +468,11 @@ class BrachytherapyAppointment(models.Model):
     )
     site_of_treatment = models.CharField(max_length=100, blank=True, null=True, verbose_name="Site of Treatment")
     remarks = models.TextField(blank=True, null=True, verbose_name="Additional Remarks")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Scheduled', verbose_name="Appointment Status")
+    status = models.CharField(max_length=50, default='Scheduled', verbose_name="Appointment Status")
+    completion_status = models.ForeignKey(
+        TreatmentCompletionStatus, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='brachy_appointments', verbose_name="Treatment Completion Status"
+    )
 
     # Audit & Consultant Authorization
     created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='created_brachy_appointments')

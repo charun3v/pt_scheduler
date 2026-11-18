@@ -1706,9 +1706,13 @@ def brachy_schedule_patient_view(request, patient_id):
             brachy_schedule.status = 'Scheduled'
             brachy_schedule.save()
 
+        # Determine starting application number for new bookings
+        last_appt = existing_appts.order_by('-fraction_number').first()
+        effective_existing_count = last_appt.fraction_number if last_appt else existing_appts.count()
+
         # Create BrachytherapyAppointment records
         created_appts = []
-        curr_frac = existing_appts.count() + 1
+        curr_frac = effective_existing_count + 1
         for p_date in parsed_dates:
             appt = BrachytherapyAppointment.objects.create(
                 schedule=brachy_schedule,
@@ -1726,6 +1730,8 @@ def brachy_schedule_patient_view(request, patient_id):
             )
             created_appts.append(appt)
             curr_frac += 1
+
+        recalculate_patient_brachy_fractions(patient)
 
         # Audit logging
         auth_note = f" (Authorized by Consultant {authorized_by.get_full_name() or authorized_by.username})" if is_consultant_authorized and authorized_by else ""
@@ -1777,7 +1783,7 @@ def brachy_schedule_patient_view(request, patient_id):
         'default_site': default_site,
         'default_site_not_in_sites': default_site_not_in_sites,
         'existing_appts': existing_appts,
-        'existing_appts_count': existing_appts.count(),
+        'existing_appts_count': existing_appts.order_by('-fraction_number').first().fraction_number if existing_appts.exists() else existing_appts.count(),
         'calendar': calendar_data,
         'user_is_consultant': user_is_consultant,
         'user_is_resident': user_is_res,
@@ -1788,12 +1794,45 @@ def brachy_schedule_patient_view(request, patient_id):
     return render(request, 'scheduler/brachy_schedule_patient.html', context)
 
 
+def recalculate_patient_brachy_fractions(patient):
+    """
+    Recalculates application / fraction numbers for all brachytherapy appointments of a patient.
+    Clinical Rule:
+    - If the selection is "Completed", that application (App x) is considered completed,
+      and the next application would be App (x+1).
+    - If an application is Incomplete, Defaulted, or Cancelled, it is NOT completed;
+      hence the next application attempt remains at that required application number.
+    """
+    appts = list(patient.brachy_appointments.all().order_by('appointment_date', 'id'))
+    completed_so_far = 0
+    for a in appts:
+        is_comp = (a.status == 'Completed') or (a.completion_status and a.completion_status.is_completed)
+        if is_comp:
+            completed_so_far += 1
+            if a.fraction_number != completed_so_far:
+                a.fraction_number = completed_so_far
+                a.save(update_fields=['fraction_number'])
+        elif a.status in ['Incomplete', 'Defaulted', 'Discontinued', 'Cancelled']:
+            # Non-completed application: stays as the application attempted
+            target = completed_so_far + 1
+            if a.fraction_number != target:
+                a.fraction_number = target
+                a.save(update_fields=['fraction_number'])
+        else:
+            # Scheduled / Upcoming
+            completed_so_far += 1
+            target = completed_so_far
+            if a.fraction_number != target:
+                a.fraction_number = target
+                a.save(update_fields=['fraction_number'])
+
+
 @login_required
 def brachy_daily_patients_view(request):
     """
     Renders the Daily Scheduled Patients List for a requested date.
-    Displays columns: SL No, Name, Diagnosis, Applicator type, Anesthesia type, Brachy Machine, Consultant, Unit.
-    Includes option to filter by date and edit applicator details later.
+    Displays columns: SL No, MR No, Name, Age/Sex, Diagnosis, Applicator type, Anesthesia type, Brachy Machine, Consultant, Unit, Brachy Treatment Status, Actions, Remarks/Notes.
+    Includes option to filter by date, edit applicator details, and record/update treatment status.
     """
     date_str = request.GET.get('date', '').strip()
     today = timezone.localdate()
@@ -1807,11 +1846,11 @@ def brachy_daily_patients_view(request):
                 continue
 
     appts = BrachytherapyAppointment.objects.filter(
-        appointment_date=target_date,
-        status__in=['Scheduled', 'Completed']
-    ).select_related(
+        appointment_date=target_date
+    ).exclude(status='Cancelled').select_related(
         'patient', 'patient__primary_consultant',
         'applicator_type', 'anesthesia_type',
+        'completion_status',
         'schedule', 'schedule__machine'
     ).order_by('fraction_number', 'patient__pt_name')
 
@@ -1821,6 +1860,9 @@ def brachy_daily_patients_view(request):
         is_active=True,
         treatment_mode='Brachytherapy'
     ).order_by('display_order', 'name')
+    completion_statuses = TreatmentCompletionStatus.objects.filter(is_active=True).order_by('display_order', 'name')
+
+    is_date_reached = (target_date <= today)
 
     rows = []
     for idx, a in enumerate(appts, 1):
@@ -1829,7 +1871,6 @@ def brachy_daily_patients_view(request):
             app_type_disp = a.applicator_type.applicator_type or a.applicator_type.name
 
         consultant_name = a.patient.primary_consultant.name if a.patient.primary_consultant else 'Unassigned'
-
         unit_disp = f"Unit {a.patient.unit}" if a.patient.unit else "Unit I"
 
         machine_name = 'Brachy Unit'
@@ -1837,6 +1878,10 @@ def brachy_daily_patients_view(request):
             machine_name = a.schedule.machine.name
         elif a.schedule and a.schedule.machine_display:
             machine_name = a.schedule.machine_display
+
+        status_disp = a.status
+        if a.completion_status:
+            status_disp = a.completion_status.name
 
         rows.append({
             'sl_no': idx,
@@ -1860,6 +1905,10 @@ def brachy_daily_patients_view(request):
             'fraction': a.fraction_number,
             'remarks': a.remarks or '',
             'status': a.status,
+            'status_display': status_disp,
+            'completion_status_id': a.completion_status_id,
+            'is_completed': (a.status == 'Completed') or (a.completion_status and a.completion_status.is_completed),
+            'is_date_reached': (a.appointment_date <= today),
         })
 
     context = {
@@ -1871,16 +1920,22 @@ def brachy_daily_patients_view(request):
         'applicators': applicators,
         'anesthesias': anesthesias,
         'brachy_machines': brachy_machines,
+        'completion_statuses': completion_statuses,
         'can_edit': can_schedule_patient(request.user),
+        'is_date_reached': is_date_reached,
+        'today_iso': today.isoformat(),
     }
 
     if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.GET.get('format') == 'json':
+        comp_statuses = list(completion_statuses.values('id', 'name', 'is_completed'))
         return JsonResponse({
             'success': True,
             'date_iso': target_date.isoformat(),
             'date_formatted': target_date.strftime('%d-%b-%Y'),
+            'is_date_reached': is_date_reached,
             'count': len(rows),
-            'appointments': rows
+            'appointments': rows,
+            'completion_statuses': comp_statuses,
         })
 
     return render(request, 'scheduler/brachy_daily_patients.html', context)
@@ -1904,11 +1959,11 @@ def brachy_daily_patients_api(request):
                 continue
 
     appts = BrachytherapyAppointment.objects.filter(
-        appointment_date=target_date,
-        status__in=['Scheduled', 'Completed']
-    ).select_related(
+        appointment_date=target_date
+    ).exclude(status='Cancelled').select_related(
         'patient', 'patient__primary_consultant',
         'applicator_type', 'anesthesia_type',
+        'completion_status',
         'schedule', 'schedule__machine'
     ).order_by('fraction_number', 'patient__pt_name')
 
@@ -1919,7 +1974,6 @@ def brachy_daily_patients_api(request):
             app_type_disp = a.applicator_type.applicator_type or a.applicator_type.name
 
         consultant_name = a.patient.primary_consultant.name if a.patient.primary_consultant else 'Unassigned'
-
         unit_disp = f"Unit {a.patient.unit}" if a.patient.unit else "Unit I"
 
         machine_name = 'Brachy Unit'
@@ -1927,6 +1981,10 @@ def brachy_daily_patients_api(request):
             machine_name = a.schedule.machine.name
         elif a.schedule and a.schedule.machine_display:
             machine_name = a.schedule.machine_display
+
+        status_disp = a.status
+        if a.completion_status:
+            status_disp = a.completion_status.name
 
         rows.append({
             'sl_no': idx,
@@ -1950,14 +2008,106 @@ def brachy_daily_patients_api(request):
             'fraction': a.fraction_number,
             'remarks': a.remarks or '',
             'status': a.status,
+            'status_display': status_disp,
+            'completion_status_id': a.completion_status_id,
+            'is_completed': (a.status == 'Completed') or (a.completion_status and a.completion_status.is_completed),
+            'is_date_reached': (a.appointment_date <= today),
         })
+
+    comp_statuses = list(
+        TreatmentCompletionStatus.objects.filter(is_active=True)
+        .order_by('display_order', 'name')
+        .values('id', 'name', 'is_completed')
+    )
 
     return JsonResponse({
         'success': True,
         'date_iso': target_date.isoformat(),
         'date_formatted': target_date.strftime('%d-%b-%Y'),
+        'is_date_reached': (target_date <= today),
         'count': len(rows),
-        'appointments': rows
+        'appointments': rows,
+        'completion_statuses': comp_statuses,
+    })
+
+
+@login_required
+def brachy_update_appointment_status_api(request, appointment_id):
+    """
+    API endpoint to record or update Brachytherapy Treatment Status for an appointment.
+    Dropdown options sourced from TreatmentCompletionStatus in reference lookup tables.
+    If 'Completed' is selected:
+      - Marks the appointment as Completed (App x).
+      - Re-indexes patient's brachytherapy fractions so the next application is App (x+1).
+    """
+    if not can_schedule_patient(request.user) and not can_edit_patient(request.user):
+        return JsonResponse({'success': False, 'error': "Access restricted. Scheduling permission required."}, status=403)
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': "Invalid request method."}, status=405)
+
+    appt = get_object_or_404(BrachytherapyAppointment, id=appointment_id)
+    status_id = request.POST.get('status_id')
+    status_name = request.POST.get('status_name')
+    remarks = request.POST.get('remarks')
+
+    status_obj = None
+    if status_id:
+        status_obj = TreatmentCompletionStatus.objects.filter(id=status_id).first()
+    if not status_obj and status_name:
+        status_obj = TreatmentCompletionStatus.objects.filter(name__iexact=status_name.strip()).first()
+
+    if not status_obj:
+        return JsonResponse({'success': False, 'error': "Please select a valid treatment completion status."}, status=400)
+
+    # Update appointment status
+    appt.completion_status = status_obj
+    if status_obj.is_completed:
+        appt.status = 'Completed'
+    else:
+        appt.status = status_obj.name
+
+    if remarks is not None:
+        appt.remarks = remarks.strip()
+
+    appt.save()
+
+    # Recalculate fractions so next application is App (x+1)
+    recalculate_patient_brachy_fractions(appt.patient)
+    appt.refresh_from_db()
+
+    # Update parent treatment schedule if present
+    if appt.schedule:
+        total_course_appts = appt.schedule.brachy_appointments.count()
+        completed_course_appts = appt.schedule.brachy_appointments.filter(status='Completed').count()
+        if total_course_appts > 0 and completed_course_appts == total_course_appts:
+            appt.schedule.status = 'Completed'
+            appt.schedule.actual_treatment_status = status_obj
+            first_appt = appt.schedule.brachy_appointments.order_by('appointment_date').first()
+            last_appt = appt.schedule.brachy_appointments.order_by('-appointment_date').first()
+            if first_appt:
+                appt.schedule.actual_start_date = first_appt.appointment_date
+            if last_appt:
+                appt.schedule.actual_end_date = last_appt.appointment_date
+            appt.schedule.save()
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="BRACHY_TREATMENT_STATUS_UPDATE",
+        mr_no=str(appt.patient.mr_no),
+        details=f"Recorded Brachytherapy treatment status '{status_obj.name}' for {appt.patient.pt_name} (MR: {appt.patient.mr_no}) on {appt.appointment_date.strftime('%d-%b-%Y')} - Application {appt.fraction_number}.",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': f"Brachytherapy status '{status_obj.name}' saved successfully for Application {appt.fraction_number}.",
+        'appointment_id': appt.id,
+        'status': appt.status,
+        'status_name': status_obj.name,
+        'is_completed': status_obj.is_completed,
+        'fraction_number': appt.fraction_number,
+        'remarks': appt.remarks or '',
     })
 
 
