@@ -1,3 +1,4 @@
+from datetime import datetime, date
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -28,10 +29,12 @@ def patient_register_view(request):
 
     consultants = Consultant.objects.filter(is_active=True).order_by('display_order', 'name')
     units = ClinicalUnit.objects.filter(is_active=True).order_by('display_order')
+    today_date = timezone.localdate().strftime('%Y-%m-%d')
 
     if request.method == 'POST':
         mr_no_raw = request.POST.get('mr_no', '').strip()
         pt_name = request.POST.get('pt_name', '').strip()
+        date_of_reg_raw = request.POST.get('date_of_registration', '').strip()
         rt_no = request.POST.get('rt_no', '').strip()
         age_raw = request.POST.get('age', '').strip()
         sex = request.POST.get('sex', '').strip()
@@ -49,6 +52,7 @@ def patient_register_view(request):
                 'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
+                'today_date': today_date,
             })
 
         if not rt_no:
@@ -58,6 +62,7 @@ def patient_register_view(request):
                 'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
+                'today_date': today_date,
             })
 
         if not phone_no:
@@ -67,6 +72,7 @@ def patient_register_view(request):
                 'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
+                'today_date': today_date,
             })
 
         is_ph_valid, ph_err = validate_field_value('phone_no', phone_no)
@@ -77,6 +83,7 @@ def patient_register_view(request):
                 'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
+                'today_date': today_date,
             })
 
         if not pt_name:
@@ -86,6 +93,7 @@ def patient_register_view(request):
                 'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
+                'today_date': today_date,
             })
 
         try:
@@ -97,6 +105,7 @@ def patient_register_view(request):
                 'units': units,
                 'sex_choices': SEX_CHOICES,
                 'form_data': request.POST,
+                'today_date': today_date,
             })
 
         # Check uniqueness of MR No
@@ -119,9 +128,19 @@ def patient_register_view(request):
         unit = request.POST.get('unit', 'I').strip() or 'I'
         consultant_obj = Consultant.objects.filter(id=consultant_id).first() if consultant_id else None
 
+        reg_date = None
+        if date_of_reg_raw:
+            try:
+                reg_date = datetime.strptime(date_of_reg_raw, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+        if not reg_date:
+            reg_date = timezone.localdate()
+
         patient = Patient.objects.create(
             mr_no=mr_no,
             pt_name=pt_name,
+            date_of_registration=reg_date,
             rt_no=rt_no,
             unit=unit,
             age=age,
@@ -138,7 +157,7 @@ def patient_register_view(request):
             user=request.user,
             action="PATIENT_REGISTER",
             mr_no=str(patient.mr_no),
-            details=f"Registered patient {patient.pt_name} (MR: {patient.mr_no})",
+            details=f"Registered patient {patient.pt_name} (MR: {patient.mr_no}, Reg Date: {patient.date_of_registration.strftime('%d-%m-%Y') if patient.date_of_registration else '-'})",
             ip_address=request.META.get('REMOTE_ADDR')
         )
 
@@ -155,6 +174,7 @@ def patient_register_view(request):
         'units': units,
         'sex_choices': SEX_CHOICES,
         'form_data': {},
+        'today_date': today_date,
     }
     return render(request, 'patients/patient_register.html', context)
 
@@ -219,6 +239,13 @@ def patient_edit_view(request, patient_id):
                 return redirect('patient_edit', patient_id=patient.id)
 
         # Other clinical fields
+        date_of_reg_raw = request.POST.get('date_of_registration', '').strip()
+        if date_of_reg_raw:
+            try:
+                patient.date_of_registration = datetime.strptime(date_of_reg_raw, '%Y-%m-%d').date()
+            except ValueError:
+                pass
+
         unit = request.POST.get('unit', '').strip()
         if unit:
             patient.unit = unit
@@ -313,7 +340,7 @@ def patient_detail_view(request, patient_id):
 
     # Clinical Tracking Milestones:
     # 1. Registered date
-    registered_date_display = patient.created_at.strftime("%d-%b-%Y") if patient.created_at else "-"
+    registered_date_display = patient.date_of_registration.strftime("%d-%b-%Y") if patient.date_of_registration else (patient.created_at.strftime("%d-%b-%Y") if patient.created_at else "-")
 
     # 2. Regular slot (EBRT) taken on
     reg_sched = next((s for s in raw_schedules if not s.is_emergency_slot and s.treatment_type == 'Teletherapy' and s.date_of_start), None)
@@ -408,7 +435,7 @@ def patient_search_view(request):
 
             # Clinical Tracking Milestones:
             # 1. Patient registered on:
-            p.registered_date_display = p.created_at.strftime("%d-%b-%Y") if p.created_at else "-"
+            p.registered_date_display = p.date_of_registration.strftime("%d-%b-%Y") if p.date_of_registration else (p.created_at.strftime("%d-%b-%Y") if p.created_at else "-")
 
             # 2. Regular slot (EBRT) taken on:
             reg_sched = next((s for s in schedules if not s.is_emergency_slot and s.treatment_type == 'Teletherapy' and s.date_of_start), None)

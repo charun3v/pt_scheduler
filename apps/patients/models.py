@@ -29,6 +29,7 @@ class Patient(models.Model):
     """
     mr_no = models.BigIntegerField(unique=True, db_index=True, verbose_name="Hospital / MR Number")
     pt_name = models.CharField(max_length=255, verbose_name="Patient Name")
+    date_of_registration = models.DateField(default=timezone.localdate, null=True, blank=True, verbose_name="Date of Registration")
     rt_no = models.CharField(max_length=100, blank=True, null=True, verbose_name="RT Number")
     unit = models.CharField(max_length=50, blank=True, null=True, default="I", verbose_name="Clinical Unit")
     age = models.PositiveIntegerField(blank=True, null=True, verbose_name="Age")
@@ -71,6 +72,14 @@ class Patient(models.Model):
     @property
     def consultant_display(self):
         return self.primary_consultant.name if self.primary_consultant else '-'
+
+    @property
+    def date_of_registration_display(self):
+        if self.date_of_registration:
+            return self.date_of_registration.strftime("%d-%m-%Y")
+        elif self.created_at:
+            return self.created_at.strftime("%d-%m-%Y")
+        return '-'
 
     @property
     def age_sex_display(self):

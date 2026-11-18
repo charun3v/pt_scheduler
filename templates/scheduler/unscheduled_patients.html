@@ -40,7 +40,7 @@
                 <td style="padding: 10px;">{{ p.diagnosis|truncatechars:35 }}</td>
                 <td style="padding: 10px;">{{ p.site_of_treatment }}</td>
                 <td style="padding: 10px;">{{ p.primary_consultant.name|default:'-' }}</td>
-                <td style="padding: 10px; color: #666;">{{ p.created_at|date:"d-M-Y" }}</td>
+                <td style="padding: 10px; color: #666;">{% if p.date_of_registration %}{{ p.date_of_registration|date:"d-M-Y" }}{% else %}{{ p.created_at|date:"d-M-Y" }}{% endif %}</td>
                 <td style="padding: 10px; text-align: center;">
                     {% if CAN_SCHEDULE_PATIENT %}
                     <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn btn-highlight" style="padding: 5px 12px; font-size: 11px;">

@@ -41,7 +41,16 @@
                     <label style="display: block; font-weight: bold; margin-bottom: 4px; color: #003366;">Patient Name: *</label>
                     <input type="text" name="pt_name" required placeholder="Full patient name"
                            value="{{ form_data.pt_name|default:'' }}"
-                           style="width: 100%; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                           style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px;">
+                </div>
+
+                <!-- Date of Registration (Default = Today) -->
+                <div>
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; color: #003366;">Date of Registration: *</label>
+                    <input type="date" name="date_of_registration" id="id_date_of_registration" required
+                           value="{{ form_data.date_of_registration|default:today_date }}"
+                           style="width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #707070; border-radius: 3px; font-size: 13px; background: #fff;">
+                    <span style="font-size: 11px; color: #666;">Registration date (default: today)</span>
                 </div>
 
                 <!-- RT Number (Mandatory) -->

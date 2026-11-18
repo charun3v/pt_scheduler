@@ -13,6 +13,7 @@ setup_test_environment()
 from django.test import Client
 from django.contrib.auth.models import User
 from django.db.models import Count, Q
+from django.utils import timezone
 from datetime import date, timedelta, datetime
 from decimal import Decimal
 from apps.core.models import Role, UserProfile, Consultant, FieldValidationConfig, AuditLog
@@ -3889,6 +3890,92 @@ def run_tests():
     assert 'width: fit-content; max-width: 100%;' in sim_html, "Simulation report container must use fit-content"
     assert 'style="width: auto;' in sim_html, "Simulation report table must use width: auto"
     print("✓ Test 42 Passed: Consultant starts, Unit starts, and Simulation reports horizontal compactness verified.")
+
+    # =========================================================================
+    # TEST 43: Patient Registration Date of Registration (Default = Today, Custom, & Edit)
+    # =========================================================================
+    print("\n--- Running Test 43: Patient Registration Date of Registration (Default = Today) ---")
+    c.force_login(res_user)
+    today_iso = timezone.localdate().isoformat()
+
+    # 1. GET /patients/register/ must include Date of Registration input with default = today
+    resp_reg_page = c.get('/patients/register/')
+    assert resp_reg_page.status_code == 200
+    reg_html = resp_reg_page.content.decode('utf-8')
+    assert 'name="date_of_registration"' in reg_html, "Registration form must have date_of_registration field"
+    assert f'value="{today_iso}"' in reg_html, f"Date of Registration must default to today ({today_iso})"
+    assert 'Date of Registration:' in reg_html
+
+    # 2. Register patient without explicitly passing date_of_registration -> defaults to today
+    test_mr_43a = 9999043
+    Patient.objects.filter(mr_no=test_mr_43a).delete()
+    cons = Consultant.objects.first()
+
+    resp_post_default = c.post('/patients/register/', {
+        'mr_no': str(test_mr_43a),
+        'pt_name': 'Default Reg Date Patient',
+        'rt_no': 'RT-TEST-43A',
+        'age': '48',
+        'sex': 'M',
+        'diagnosis': 'Ca Lung',
+        'primary_consultant': cons.id,
+        'phone_no': '9876543210',
+        'save_only': '1'
+    }, follow=True)
+    assert resp_post_default.status_code == 200
+    p_43a = Patient.objects.get(mr_no=test_mr_43a)
+    assert p_43a.date_of_registration == timezone.localdate(), "Date of registration must default to today"
+    assert p_43a.date_of_registration_display == timezone.localdate().strftime("%d-%m-%Y")
+
+    # 3. Register patient with custom date_of_registration (e.g. 5 days ago)
+    test_mr_43b = 9999044
+    Patient.objects.filter(mr_no=test_mr_43b).delete()
+    custom_reg_date = (timezone.localdate() - timedelta(days=5)).isoformat()
+
+    resp_post_custom = c.post('/patients/register/', {
+        'mr_no': str(test_mr_43b),
+        'pt_name': 'Custom Reg Date Patient',
+        'date_of_registration': custom_reg_date,
+        'rt_no': 'RT-TEST-43B',
+        'age': '55',
+        'sex': 'F',
+        'diagnosis': 'Ca Breast',
+        'primary_consultant': cons.id,
+        'phone_no': '9876543210',
+        'save_only': '1'
+    }, follow=True)
+    assert resp_post_custom.status_code == 200
+    p_43b = Patient.objects.get(mr_no=test_mr_43b)
+    assert p_43b.date_of_registration.isoformat() == custom_reg_date, "Custom date of registration must be saved"
+
+    # 4. Detail page reflects Date of Registration in Clinical Milestones
+    resp_detail = c.get(f'/patients/{p_43b.id}/')
+    assert resp_detail.status_code == 200
+    detail_html = resp_detail.content.decode('utf-8')
+    custom_disp = p_43b.date_of_registration.strftime("%d-%b-%Y")
+    assert f'Patient registered on:</strong> {custom_disp}' in detail_html, "Milestone banner must display the custom date of registration"
+
+    # 5. Edit patient date_of_registration
+    new_reg_date = (timezone.localdate() - timedelta(days=10)).isoformat()
+    resp_edit = c.post(f'/patients/{p_43b.id}/edit/', {
+        'pt_name': p_43b.pt_name,
+        'rt_no': p_43b.rt_no,
+        'phone_no': p_43b.phone_no,
+        'date_of_registration': new_reg_date,
+        'age': '56',
+        'diagnosis': p_43b.diagnosis,
+        'sex': p_43b.sex,
+        'unit': p_43b.unit,
+        'primary_consultant': cons.id,
+    }, follow=True)
+    assert resp_edit.status_code == 200
+    p_43b.refresh_from_db()
+    assert p_43b.date_of_registration.isoformat() == new_reg_date, "Edited date of registration must persist"
+
+    # Cleanup
+    p_43a.delete()
+    p_43b.delete()
+    print("✓ Test 43 Passed: Patient Registration Date of Registration (default=today, custom date, tracking milestone & edit) fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
