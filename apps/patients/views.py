@@ -43,7 +43,7 @@ def patient_register_view(request):
         phone_no = request.POST.get('phone_no', '').strip()
         alt_phone_no = request.POST.get('alt_phone_no', '').strip()
 
-        # Configurable field validations for MR No and Phone No
+        # Configurable field validations for MR No, RT No, and Phone No
         is_mr_valid, mr_err = validate_field_value('mr_no', mr_no_raw)
         if not is_mr_valid:
             messages.error(request, mr_err)
@@ -57,6 +57,17 @@ def patient_register_view(request):
 
         if not rt_no:
             messages.error(request, "RT Number is mandatory.")
+            return render(request, 'patients/patient_register.html', {
+                'consultants': consultants,
+                'units': units,
+                'sex_choices': SEX_CHOICES,
+                'form_data': request.POST,
+                'today_date': today_date,
+            })
+
+        is_rt_valid, rt_err = validate_field_value('rt_no', rt_no)
+        if not is_rt_valid:
+            messages.error(request, rt_err)
             return render(request, 'patients/patient_register.html', {
                 'consultants': consultants,
                 'units': units,
@@ -224,8 +235,14 @@ def patient_edit_view(request, patient_id):
         if not phone_no:
             messages.error(request, "Phone Number is mandatory.")
             return redirect('patient_edit', patient_id=patient.id)
+
         if not rt_no:
             messages.error(request, "RT Number is mandatory.")
+            return redirect('patient_edit', patient_id=patient.id)
+
+        is_rt_valid, rt_err = validate_field_value('rt_no', rt_no)
+        if not is_rt_valid:
+            messages.error(request, rt_err)
             return redirect('patient_edit', patient_id=patient.id)
 
         is_ph_valid, ph_err = validate_field_value('phone_no', phone_no)

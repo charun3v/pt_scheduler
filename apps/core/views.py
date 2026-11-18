@@ -1064,6 +1064,7 @@ def validation_config_view(request):
         return redirect('dashboard')
 
     mr_config = get_or_create_field_config('mr_no')
+    rt_config = get_or_create_field_config('rt_no')
     phone_config = get_or_create_field_config('phone_no')
 
     if request.method == 'POST':
@@ -1096,6 +1097,37 @@ def validation_config_view(request):
         mr_config.allow_blank = mr_allow_blank
         mr_config.custom_error_message = mr_custom_err or None
         mr_config.save()
+
+        # Update RT No configuration
+        if 'rt_validation_mode' in request.POST:
+            rt_mode = request.POST.get('rt_validation_mode', 'range')
+            rt_exact = request.POST.get('rt_exact_length')
+            rt_min = request.POST.get('rt_min_length')
+            rt_max = request.POST.get('rt_max_length')
+            rt_numeric = request.POST.get('rt_numeric_only') == '1'
+            rt_allow_blank = request.POST.get('rt_allow_blank') == '1'
+            rt_custom_err = request.POST.get('rt_custom_error_message', '').strip()
+
+            rt_config.validation_mode = rt_mode
+            if rt_exact is not None and rt_exact.strip().isdigit():
+                rt_config.exact_length = int(rt_exact.strip())
+            elif rt_mode == 'exact' and rt_exact == '':
+                rt_config.exact_length = None
+
+            if rt_min is not None and rt_min.strip().isdigit():
+                rt_config.min_length = int(rt_min.strip())
+            elif rt_mode == 'range' and rt_min == '':
+                rt_config.min_length = None
+
+            if rt_max is not None and rt_max.strip().isdigit():
+                rt_config.max_length = int(rt_max.strip())
+            elif rt_mode == 'range' and rt_max == '':
+                rt_config.max_length = None
+
+            rt_config.numeric_only = rt_numeric
+            rt_config.allow_blank = rt_allow_blank
+            rt_config.custom_error_message = rt_custom_err or None
+            rt_config.save()
 
         # Update Phone No configuration
         ph_mode = request.POST.get('ph_validation_mode', 'range')
@@ -1130,7 +1162,7 @@ def validation_config_view(request):
         AuditLog.objects.create(
             user=request.user,
             action="FIELD_VALIDATION_CONFIG_UPDATE",
-            details="Updated validation rules for MR Number and Phone Number.",
+            details="Updated validation rules for MR Number, RT Number, and Phone Number.",
             ip_address=request.META.get('REMOTE_ADDR')
         )
 
@@ -1139,6 +1171,7 @@ def validation_config_view(request):
 
     context = {
         'mr_config': mr_config,
+        'rt_config': rt_config,
         'phone_config': phone_config,
     }
     return render(request, 'core/validation_config.html', context)

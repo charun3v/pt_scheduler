@@ -14,6 +14,17 @@ DEFAULT_VALIDATION_RULES = {
         'custom_regex': None,
         'custom_error_message': 'MR Number must be numeric and between 4 and 10 digits.',
     },
+    'rt_no': {
+        'field_label': 'Radiation Therapy (RT) Number',
+        'validation_mode': 'range',
+        'exact_length': None,
+        'min_length': 1,
+        'max_length': 15,
+        'numeric_only': False,
+        'allow_blank': False,
+        'custom_regex': None,
+        'custom_error_message': 'RT Number is required and cannot exceed 15 characters.',
+    },
     'phone_no': {
         'field_label': 'Phone Number',
         'validation_mode': 'range',

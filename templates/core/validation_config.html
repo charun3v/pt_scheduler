@@ -114,7 +114,91 @@
                 </div>
 
 
-                <!-- SECTION 2: Phone Number Validation -->
+                <!-- SECTION 2: Radiation Therapy (RT) Number Validation -->
+                <div style="background: #ffffff; border: 1px solid #003366; border-radius: 4px; padding: 16px; margin-bottom: 20px;">
+                    <div style="font-weight: bold; color: #003366; font-size: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+                        <span>☢️ Radiation Therapy (RT) Number (<code>rt_no</code>)</span>
+                        <span style="font-size: 11px; color: #b71c1c; font-weight: bold;">[Clinical Registry Identifier]</span>
+                    </div>
+
+                    <!-- Validation Mode Radio Selection -->
+                    <div style="margin-bottom: 14px;">
+                        <label class="access-label" style="font-weight: bold; margin-bottom: 6px;">Character Length Mode:</label>
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 4px;">
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="rt_validation_mode" value="exact" id="rt_mode_exact"
+                                       {% if rt_config.validation_mode == 'exact' %}checked{% endif %}
+                                       onchange="toggleRtFields();">
+                                <strong>Exact Character Length</strong>
+                            </label>
+
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="rt_validation_mode" value="range" id="rt_mode_range"
+                                       {% if rt_config.validation_mode == 'range' %}checked{% endif %}
+                                       onchange="toggleRtFields();">
+                                <strong>Length Range (Min / Max)</strong>
+                            </label>
+
+                            <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                                <input type="radio" name="rt_validation_mode" value="any" id="rt_mode_any"
+                                       {% if rt_config.validation_mode == 'any' %}checked{% endif %}
+                                       onchange="toggleRtFields();">
+                                <strong>Any Length (No length restriction)</strong>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Mode Inputs Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; background: #f8fafc; padding: 12px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                        <!-- Exact Length -->
+                        <div id="rt_exact_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
+                            <label class="access-label" style="font-weight: bold;">Exact Characters:</label>
+                            <input type="number" name="rt_exact_length" id="rt_exact_length" min="1" max="50"
+                                   value="{% if rt_config.exact_length is not None %}{{ rt_config.exact_length }}{% endif %}" class="access-input" placeholder="e.g. 5" style="width: 100%; box-sizing: border-box;">
+                            <span style="font-size: 10.5px; color: #666;">e.g. Must be exactly 5 characters</span>
+                        </div>
+
+                        <!-- Min Length -->
+                        <div id="rt_min_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
+                            <label class="access-label" style="font-weight: bold;">Minimum Length:</label>
+                            <input type="number" name="rt_min_length" id="rt_min_length" min="1" max="50"
+                                   value="{% if rt_config.min_length is not None %}{{ rt_config.min_length }}{% endif %}" class="access-input" placeholder="e.g. 1" style="width: 100%; box-sizing: border-box;">
+                            <span style="font-size: 10.5px; color: #666;">Minimum characters required</span>
+                        </div>
+
+                        <!-- Max Length -->
+                        <div id="rt_max_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
+                            <label class="access-label" style="font-weight: bold;">Maximum Length:</label>
+                            <input type="number" name="rt_max_length" id="rt_max_length" min="1" max="50"
+                                   value="{% if rt_config.max_length is not None %}{{ rt_config.max_length }}{% endif %}" class="access-input" placeholder="e.g. 15" style="width: 100%; box-sizing: border-box;">
+                            <span style="font-size: 10.5px; color: #666;">Maximum characters allowed</span>
+                        </div>
+                    </div>
+
+                    <!-- Numeric and Blank Flags -->
+                    <div style="display: flex; gap: 24px; margin-bottom: 14px; padding: 8px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; color: #003366;">
+                            <input type="checkbox" name="rt_numeric_only" value="1" {% if rt_config.numeric_only %}checked{% endif %}>
+                            🔢 Allow ONLY Numbers (Digits 0-9)
+                        </label>
+
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666;">
+                            <input type="checkbox" name="rt_allow_blank" value="1" {% if rt_config.allow_blank %}checked{% endif %}>
+                            Allow Blank (RT Number is mandatory by default)
+                        </label>
+                    </div>
+
+                    <!-- Custom Error Message -->
+                    <div>
+                        <label class="access-label">Custom Error Message (Optional):</label>
+                        <input type="text" name="rt_custom_error_message" value="{{ rt_config.custom_error_message|default:'' }}"
+                               placeholder="e.g. RT Number is required and cannot exceed 15 characters."
+                               class="access-input" style="width: 100%;">
+                    </div>
+                </div>
+
+
+                <!-- SECTION 3: Phone Number Validation -->
                 <div style="background: #ffffff; border: 1px solid #003366; border-radius: 4px; padding: 16px; margin-bottom: 20px;">
                     <div style="font-weight: bold; color: #003366; font-size: 14px; border-bottom: 2px solid #003366; padding-bottom: 6px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
                         <span>📞 Phone / Contact Number (<code>phone_no</code>)</span>
@@ -255,6 +339,47 @@
         }
     }
 
+    function toggleRtFields() {
+        const isExact = document.getElementById('rt_mode_exact').checked;
+        const isRange = document.getElementById('rt_mode_range').checked;
+
+        const exactBox = document.getElementById('rt_exact_box');
+        const minBox = document.getElementById('rt_min_box');
+        const maxBox = document.getElementById('rt_max_box');
+
+        if (isExact) {
+            exactBox.style.opacity = '1';
+            exactBox.style.background = '#ffffff';
+            exactBox.style.border = '2px solid #003366';
+            minBox.style.opacity = '0.5';
+            minBox.style.background = '#f8fafc';
+            minBox.style.border = '1px solid #cbd5e1';
+            maxBox.style.opacity = '0.5';
+            maxBox.style.background = '#f8fafc';
+            maxBox.style.border = '1px solid #cbd5e1';
+        } else if (isRange) {
+            exactBox.style.opacity = '0.5';
+            exactBox.style.background = '#f8fafc';
+            exactBox.style.border = '1px solid #cbd5e1';
+            minBox.style.opacity = '1';
+            minBox.style.background = '#ffffff';
+            minBox.style.border = '2px solid #003366';
+            maxBox.style.opacity = '1';
+            maxBox.style.background = '#ffffff';
+            maxBox.style.border = '2px solid #003366';
+        } else {
+            exactBox.style.opacity = '0.4';
+            exactBox.style.background = '#f8fafc';
+            exactBox.style.border = '1px solid #cbd5e1';
+            minBox.style.opacity = '0.4';
+            minBox.style.background = '#f8fafc';
+            minBox.style.border = '1px solid #cbd5e1';
+            maxBox.style.opacity = '0.4';
+            maxBox.style.background = '#f8fafc';
+            maxBox.style.border = '1px solid #cbd5e1';
+        }
+    }
+
     function togglePhoneFields() {
         const isExact = document.getElementById('ph_mode_exact').checked;
         const isRange = document.getElementById('ph_mode_range').checked;
@@ -302,6 +427,10 @@
         const mrMin = document.getElementById('mr_min_length');
         const mrMax = document.getElementById('mr_max_length');
 
+        const rtExact = document.getElementById('rt_exact_length');
+        const rtMin = document.getElementById('rt_min_length');
+        const rtMax = document.getElementById('rt_max_length');
+
         const phExact = document.getElementById('ph_exact_length');
         const phMin = document.getElementById('ph_min_length');
         const phMax = document.getElementById('ph_max_length');
@@ -325,6 +454,25 @@
             });
         }
 
+        if (rtExact) {
+            rtExact.addEventListener('focus', function() {
+                document.getElementById('rt_mode_exact').checked = true;
+                toggleRtFields();
+            });
+        }
+        if (rtMin) {
+            rtMin.addEventListener('focus', function() {
+                document.getElementById('rt_mode_range').checked = true;
+                toggleRtFields();
+            });
+        }
+        if (rtMax) {
+            rtMax.addEventListener('focus', function() {
+                document.getElementById('rt_mode_range').checked = true;
+                toggleRtFields();
+            });
+        }
+
         if (phExact) {
             phExact.addEventListener('focus', function() {
                 document.getElementById('ph_mode_exact').checked = true;
@@ -345,6 +493,7 @@
         }
 
         toggleMrFields();
+        toggleRtFields();
         togglePhoneFields();
     });
 </script>

@@ -4151,6 +4151,152 @@ def run_tests():
     h_test.delete()
     print("✓ Test 45 Passed: Brachy dynamic 10-patient capacity & hospital holiday warnings fully verified.")
 
+    # =========================================================================
+    # TEST 46: Configurable RT Number Validation & Enforcement
+    # =========================================================================
+    print("\n--- Running Test 46: Configurable RT Number Validation & Enforcement ---")
+    c.force_login(admin_user)
+
+    # 1. Validation configuration page includes RT Number section
+    resp_v = c.get('/validations/')
+    assert resp_v.status_code == 200
+    v_html = resp_v.content.decode('utf-8')
+    assert 'Radiation Therapy (RT) Number' in v_html
+    assert 'rt_validation_mode' in v_html
+    assert 'rt_exact_length' in v_html
+    assert 'rt_min_length' in v_html
+    assert 'rt_max_length' in v_html
+
+    # 2. Configure RT Number to Exact 5 digits, Numeric only, with Custom Error Message
+    resp_v_post = c.post('/validations/', {
+        'mr_validation_mode': 'range',
+        'mr_min_length': '4',
+        'mr_max_length': '15',
+        'mr_numeric_only': '1',
+        'rt_validation_mode': 'exact',
+        'rt_exact_length': '5',
+        'rt_numeric_only': '1',
+        'rt_custom_error_message': 'RT Number must be exactly 5 numeric digits.',
+        'ph_validation_mode': 'range',
+        'ph_min_length': '10',
+        'ph_max_length': '15',
+        'ph_numeric_only': '1',
+        'ph_allow_blank': '1',
+    }, follow=True)
+    assert resp_v_post.status_code == 200
+    rt_cfg = FieldValidationConfig.objects.get(field_name='rt_no')
+    assert rt_cfg.validation_mode == 'exact'
+    assert rt_cfg.exact_length == 5
+    assert rt_cfg.numeric_only is True
+
+    # 3. Test Registration rejection with alphanumeric RT number
+    c.force_login(res_user)
+    test_mr_46 = 9999046
+    Patient.objects.filter(mr_no=test_mr_46).delete()
+    cons = Consultant.objects.first()
+
+    resp_reg_fail1 = c.post('/patients/register/', {
+        'mr_no': str(test_mr_46),
+        'pt_name': 'RT Validation Test Pt',
+        'rt_no': 'RT-1234',  # Alphanumeric when numeric-only is required
+        'age': '50',
+        'sex': 'M',
+        'diagnosis': 'Ca Larynx',
+        'primary_consultant': cons.id,
+        'phone_no': '9876543210',
+        'save_only': '1'
+    }, follow=True)
+    assert resp_reg_fail1.status_code == 200
+    assert "RT Number must be exactly 5 numeric digits." in resp_reg_fail1.content.decode('utf-8')
+    assert not Patient.objects.filter(mr_no=test_mr_46).exists()
+
+    # 4. Test Registration rejection with wrong length (e.g. 3 digits)
+    resp_reg_fail2 = c.post('/patients/register/', {
+        'mr_no': str(test_mr_46),
+        'pt_name': 'RT Validation Test Pt',
+        'rt_no': '123',  # 3 digits instead of 5
+        'age': '50',
+        'sex': 'M',
+        'diagnosis': 'Ca Larynx',
+        'primary_consultant': cons.id,
+        'phone_no': '9876543210',
+        'save_only': '1'
+    }, follow=True)
+    assert resp_reg_fail2.status_code == 200
+    assert "RT Number must be exactly 5 numeric digits." in resp_reg_fail2.content.decode('utf-8')
+    assert not Patient.objects.filter(mr_no=test_mr_46).exists()
+
+    # 5. Successful registration with valid RT number (5 digits)
+    resp_reg_ok = c.post('/patients/register/', {
+        'mr_no': str(test_mr_46),
+        'pt_name': 'RT Validation Test Pt',
+        'rt_no': '54321',  # Exactly 5 digits
+        'age': '50',
+        'sex': 'M',
+        'diagnosis': 'Ca Larynx',
+        'primary_consultant': cons.id,
+        'phone_no': '9876543210',
+        'save_only': '1'
+    }, follow=True)
+    assert resp_reg_ok.status_code == 200
+    pt_46 = Patient.objects.get(mr_no=test_mr_46)
+    assert pt_46.rt_no == '54321'
+
+    # 6. Test Patient Edit rejection on invalid RT number
+    resp_edit_fail = c.post(f'/patients/{pt_46.id}/edit/', {
+        'pt_name': pt_46.pt_name,
+        'rt_no': 'INVALID',
+        'phone_no': pt_46.phone_no,
+        'age': '50',
+        'diagnosis': pt_46.diagnosis,
+        'sex': pt_46.sex,
+        'unit': pt_46.unit,
+        'primary_consultant': cons.id,
+    }, follow=True)
+    assert resp_edit_fail.status_code == 200
+    assert "RT Number must be exactly 5 numeric digits." in resp_edit_fail.content.decode('utf-8')
+    pt_46.refresh_from_db()
+    assert pt_46.rt_no == '54321'  # Unchanged
+
+    # 7. Successful edit with valid 5-digit RT number
+    resp_edit_ok = c.post(f'/patients/{pt_46.id}/edit/', {
+        'pt_name': pt_46.pt_name,
+        'rt_no': '67890',
+        'phone_no': pt_46.phone_no,
+        'age': '50',
+        'diagnosis': pt_46.diagnosis,
+        'sex': pt_46.sex,
+        'unit': pt_46.unit,
+        'primary_consultant': cons.id,
+    }, follow=True)
+    assert resp_edit_ok.status_code == 200
+    pt_46.refresh_from_db()
+    assert pt_46.rt_no == '67890'
+
+    # 8. Reset RT validation to default Range mode (1 to 20 chars, alphanumeric allowed)
+    c.force_login(admin_user)
+    c.post('/validations/', {
+        'mr_validation_mode': 'range',
+        'mr_min_length': '4',
+        'mr_max_length': '15',
+        'mr_numeric_only': '1',
+        'rt_validation_mode': 'range',
+        'rt_min_length': '1',
+        'rt_max_length': '20',
+        'ph_validation_mode': 'range',
+        'ph_min_length': '10',
+        'ph_max_length': '15',
+        'ph_numeric_only': '1',
+        'ph_allow_blank': '1',
+    }, follow=True)
+    rt_cfg.refresh_from_db()
+    assert rt_cfg.validation_mode == 'range'
+    assert rt_cfg.numeric_only is False
+
+    # Cleanup
+    pt_46.delete()
+    print("✓ Test 46 Passed: Configurable RT Number Validation & Enforcement across Registration & Edit fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")
@@ -4158,6 +4304,7 @@ def run_tests():
 
 if __name__ == '__main__':
     orig_mr = list(FieldValidationConfig.objects.filter(field_name='mr_no').values())
+    orig_rt = list(FieldValidationConfig.objects.filter(field_name='rt_no').values())
     orig_ph = list(FieldValidationConfig.objects.filter(field_name='phone_no').values())
     try:
         run_tests()
@@ -4167,6 +4314,11 @@ if __name__ == '__main__':
             d.pop('id', None)
             d.pop('updated_at', None)
             FieldValidationConfig.objects.filter(field_name='mr_no').update(**d)
+        if orig_rt:
+            d = dict(orig_rt[0])
+            d.pop('id', None)
+            d.pop('updated_at', None)
+            FieldValidationConfig.objects.filter(field_name='rt_no').update(**d)
         if orig_ph:
             d = dict(orig_ph[0])
             d.pop('id', None)
