@@ -36,6 +36,7 @@ from apps.core.permissions import (
     can_print_schedules,
     get_four_months_ago
 )
+from apps.scheduler.views import get_month_calendar_data
 
 
 def run_tests():
@@ -3906,15 +3907,13 @@ def run_tests():
     c.force_login(res_user)
     today_iso = timezone.localdate().isoformat()
 
-    # 1. GET /patients/register/ must include Date of Registration input with default = today
+    # 1. GET /patients/register/ must NOT include Date of Registration input (cancelled per user request)
     resp_reg_page = c.get('/patients/register/')
     assert resp_reg_page.status_code == 200
     reg_html = resp_reg_page.content.decode('utf-8')
-    assert 'name="date_of_registration"' in reg_html, "Registration form must have date_of_registration field"
-    assert f'value="{today_iso}"' in reg_html, f"Date of Registration must default to today ({today_iso})"
-    assert 'Date of Registration:' in reg_html
+    assert 'name="date_of_registration"' not in reg_html, "Registration form should NOT have date_of_registration field (cancelled per user request)"
 
-    # 2. Register patient without explicitly passing date_of_registration -> defaults to today
+    # 2. Register patient without explicitly passing date_of_registration -> defaults to today automatically
     test_mr_43a = 9999043
     Patient.objects.filter(mr_no=test_mr_43a).delete()
     cons = Consultant.objects.first()
@@ -3935,7 +3934,7 @@ def run_tests():
     assert p_43a.date_of_registration == timezone.localdate(), "Date of registration must default to today"
     assert p_43a.date_of_registration_display == timezone.localdate().strftime("%d-%m-%Y")
 
-    # 3. Register patient with custom date_of_registration (e.g. 5 days ago)
+    # 3. Register patient with custom date_of_registration if passed in API/POST (e.g. 5 days ago)
     test_mr_43b = 9999044
     Patient.objects.filter(mr_no=test_mr_43b).delete()
     custom_reg_date = (timezone.localdate() - timedelta(days=5)).isoformat()
@@ -4033,6 +4032,124 @@ def run_tests():
     assert 'MR must be between 5 and 12 digits.' in recheck_html, "Custom error message must persist"
 
     print("✓ Test 44 Passed: Field Validation Configuration persists across Logout/Login.")
+
+    # =========================================================================
+    # TEST 45: Brachy Dynamic 10-Patient Daily Capacity & Holiday Warnings
+    # =========================================================================
+    print("\n--- Running Test 45: Brachy Dynamic 10-Patient Daily Capacity & Holiday Warnings ---")
+    c.force_login(admin_user)
+    
+    # 1. Test Holidays in Brachy Calendar
+    today = timezone.localdate()
+    test_holiday_date = today + timedelta(days=2)
+    Holiday.objects.filter(date=test_holiday_date).delete()
+    h_test = Holiday.objects.create(date=test_holiday_date, comment="Annual Hospital Foundation Day")
+
+    # Check get_month_calendar_data
+    cal_data = get_month_calendar_data(test_holiday_date.year, test_holiday_date.month, user=admin_user)
+    assert test_holiday_date.isoformat() in cal_data['holiday_map'], "Holiday map must contain the test holiday date"
+    assert cal_data['holiday_map'][test_holiday_date.isoformat()] == "Annual Hospital Foundation Day"
+
+    # Find the day object in calendar weeks
+    found_day = None
+    for week in cal_data['weeks']:
+        for d in week:
+            if d['date_iso'] == test_holiday_date.isoformat():
+                found_day = d
+                break
+        if found_day:
+            break
+    assert found_day is not None, "Test holiday date must be present in calendar weeks"
+    assert found_day['is_holiday'] is True, "Day must be marked as holiday"
+    assert found_day['holiday_comment'] == "Annual Hospital Foundation Day"
+
+    # Test brachy_calendar.html renders the holiday warning
+    resp_bcal = c.get(f'/scheduler/brachytherapy/calendar/?year={test_holiday_date.year}&month={test_holiday_date.month}')
+    assert resp_bcal.status_code == 200
+    bcal_html = resp_bcal.content.decode('utf-8')
+    assert 'is-holiday' in bcal_html, "Calendar HTML must include is-holiday class"
+    assert 'Annual Hospital Foundation Day' in bcal_html, "Holiday comment must be rendered in calendar warning"
+    assert 'Hospital Holiday Warning' in bcal_html
+
+    # Test month API returns holiday data
+    resp_api = c.get(f'/scheduler/brachytherapy/api/month/?year={test_holiday_date.year}&month={test_holiday_date.month}')
+    assert resp_api.status_code == 200
+    api_json = resp_api.json()
+    assert api_json['success'] is True
+    assert test_holiday_date.isoformat() in api_json['calendar']['holiday_map']
+
+    # 2. Test Up to 10 Patients per Brachy Day
+    # Create 11 test patients and 11 Brachy appointments on test_holiday_date
+    app_type = BrachyApplicator.objects.first()
+    anes_type = BrachyAnesthesia.objects.first()
+    brachy_mach = Machine.objects.filter(treatment_mode='Brachytherapy', is_active=True).first()
+    if not brachy_mach:
+        brachy_mach = Machine.objects.create(name="Test HDR Brachy", code="TEST-HDR", treatment_mode='Brachytherapy', is_active=True)
+
+    created_patients = []
+    created_appts = []
+    for i in range(1, 12):
+        mr = 8880000 + i
+        Patient.objects.filter(mr_no=mr).delete()
+        pt = Patient.objects.create(
+            mr_no=mr,
+            pt_name=f'Brachy Pt {i:02d}',
+            rt_no=f'RT-BR-{i:02d}',
+            diagnosis='Ca Cervix',
+            age=45 + i,
+            sex='F',
+            phone_no='9900112233',
+            created_by=admin_user
+        )
+        created_patients.append(pt)
+        sched = TreatmentSchedule.objects.create(
+            patient=pt,
+            machine=brachy_mach,
+            treatment_type='Brachytherapy',
+            date_of_start=test_holiday_date,
+            status='Scheduled'
+        )
+        appt = BrachytherapyAppointment.objects.create(
+            schedule=sched,
+            patient=pt,
+            fraction_number=1,
+            appointment_date=test_holiday_date,
+            applicator_type=app_type,
+            anesthesia_type=anes_type,
+            status='Scheduled',
+            created_by=admin_user
+        )
+        created_appts.append(appt)
+
+    # Re-fetch calendar HTML with 11 patients
+    resp_11 = c.get(f'/scheduler/brachytherapy/calendar/?year={test_holiday_date.year}&month={test_holiday_date.month}')
+    assert resp_11.status_code == 200
+    html_11 = resp_11.content.decode('utf-8')
+
+    # The first 10 patients must be present in the HTML pills
+    for i in range(1, 11):
+        assert f'Brachy Pt {i:02d}' in html_11, f"Patient {i} must be displayed in calendar"
+    # Patient 11 should be truncated to the modal (+1 more...)
+    assert '+1 more...' in html_11, "11th patient must trigger '+1 more...' pill"
+
+    # Patient schedule page also renders up to 10 patients and holiday warnings
+    test_pt = created_patients[0]
+    resp_sched = c.get(f'/scheduler/patient/{test_pt.id}/brachytherapy/?year={test_holiday_date.year}&month={test_holiday_date.month}')
+    assert resp_sched.status_code == 200
+    sched_html = resp_sched.content.decode('utf-8')
+    assert 'Annual Hospital Foundation Day' in sched_html
+    for i in range(1, 11):
+        assert f'Brachy Pt {i:02d}' in sched_html
+
+    # Cleanup
+    for appt in created_appts:
+        s = appt.schedule
+        appt.delete()
+        s.delete()
+    for pt in created_patients:
+        pt.delete()
+    h_test.delete()
+    print("✓ Test 45 Passed: Brachy dynamic 10-patient capacity & hospital holiday warnings fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

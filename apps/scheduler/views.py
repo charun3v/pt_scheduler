@@ -1296,6 +1296,13 @@ def get_month_calendar_data(year, month, user=None):
         'patient', 'applicator_type', 'anesthesia_type', 'created_by', 'schedule__machine'
     ).order_by('appointment_date', 'fraction_number', 'patient__pt_name')
 
+    # Hospital Holidays in visible calendar range
+    holidays = Holiday.objects.filter(
+        date__gte=first_date,
+        date__lte=last_date
+    )
+    holiday_map = {h.date.isoformat(): (h.comment or 'Hospital Holiday') for h in holidays}
+
     appts_by_date = {}
     for a in appts:
         d_str = a.appointment_date.isoformat()
@@ -1338,6 +1345,8 @@ def get_month_calendar_data(year, month, user=None):
         for d in week:
             d_str = d.isoformat()
             d_appts = appts_by_date.get(d_str, [])
+            is_hol = d_str in holiday_map
+            hol_comm = holiday_map.get(d_str, '')
             week_data.append({
                 'date_iso': d_str,
                 'date_formatted': d.strftime('%d-%b-%Y'),
@@ -1346,6 +1355,8 @@ def get_month_calendar_data(year, month, user=None):
                 'is_current_month': (d.month == month),
                 'is_today': (d == today),
                 'is_past': (d < today),
+                'is_holiday': is_hol,
+                'holiday_comment': hol_comm,
                 'appointments': d_appts,
                 'appointment_count': len(d_appts),
             })
@@ -1365,6 +1376,8 @@ def get_month_calendar_data(year, month, user=None):
         'month_name': calendar.month_name[month],
         'month_and_year': f"{calendar.month_name[month]} {year}".upper(),
         'weeks': weeks,
+        'holiday_map': holiday_map,
+        'holiday_map_json': json.dumps(holiday_map),
         'prev_year': prev_month_date.year,
         'prev_month': prev_month_date.month,
         'next_year': next_month_date.year,
