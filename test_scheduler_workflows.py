@@ -98,16 +98,26 @@ def run_tests():
     assert resp.status_code == 200, f"Admin should have access to lookups, got {resp.status_code}"
     print("✓ Test 2 Passed: SubAdmin is strictly blocked from validation and lookup URLs; Admin is granted access.")
 
-    # 3. Test Configurable Field Validation (MR No and Phone No)
+    # 3. Test Configurable Field Validation (MR No and Phone No) via Web Form and Validator
     print("\n--- Test 3: Configurable Field Validation Rules ---")
-    mr_cfg = get_or_create_field_config('mr_no')
-    # Set MR No rule to EXACT 7 digits, numeric only
-    mr_cfg.validation_mode = 'exact'
-    mr_cfg.exact_length = 7
-    mr_cfg.numeric_only = True
-    mr_cfg.allow_blank = False
-    mr_cfg.custom_error_message = "MR Number must be exactly 7 numeric digits."
-    mr_cfg.save()
+    c.force_login(admin_user)
+
+    # Test HTTP POST to /validations/ setting MR No to EXACT 7 digits
+    resp_v_post = c.post('/validations/', {
+        'mr_validation_mode': 'exact',
+        'mr_exact_length': '7',
+        'mr_numeric_only': '1',
+        'mr_custom_error_message': 'MR Number must be exactly 7 numeric digits.',
+        'ph_validation_mode': 'range',
+        'ph_min_length': '10',
+        'ph_max_length': '15',
+        'ph_numeric_only': '1',
+        'ph_allow_blank': '1',
+    }, follow=True)
+    assert resp_v_post.status_code == 200
+    mr_cfg = FieldValidationConfig.objects.get(field_name='mr_no')
+    assert mr_cfg.validation_mode == 'exact'
+    assert mr_cfg.exact_length == 7
 
     # Test invalid MR numbers against validator
     ok, err = validate_field_value('mr_no', '12345')  # 5 digits (expected 7)
@@ -120,26 +130,24 @@ def run_tests():
     ok, err = validate_field_value('mr_no', '7654321')  # exactly 7 digits
     assert ok is True, "7-digit numeric MR No should pass"
 
-    # Reset MR No rule to Range (4 to 15 digits) for standard institutional operation (e.g. 20260000123)
-    mr_cfg.validation_mode = 'range'
-    mr_cfg.min_length = 4
-    mr_cfg.max_length = 15
-    mr_cfg.numeric_only = True
-    mr_cfg.custom_error_message = "MR Number must be numeric and between 4 and 15 digits."
-    mr_cfg.save()
+    # Reset MR No rule to Range (4 to 15 digits) for test execution
+    c.post('/validations/', {
+        'mr_validation_mode': 'range',
+        'mr_min_length': '4',
+        'mr_max_length': '15',
+        'mr_numeric_only': '1',
+        'mr_custom_error_message': 'MR Number must be numeric and between 4 and 15 digits.',
+        'ph_validation_mode': 'range',
+        'ph_min_length': '10',
+        'ph_max_length': '15',
+        'ph_numeric_only': '1',
+        'ph_allow_blank': '1',
+    }, follow=True)
 
     ok, err = validate_field_value('mr_no', '9999001')
     assert ok is True
 
     # Test Phone Number validation
-    ph_cfg = get_or_create_field_config('phone_no')
-    ph_cfg.validation_mode = 'range'
-    ph_cfg.min_length = 10
-    ph_cfg.max_length = 15
-    ph_cfg.numeric_only = True
-    ph_cfg.allow_blank = True
-    ph_cfg.save()
-
     ok, err = validate_field_value('phone_no', '123')  # too short
     assert ok is False
     ok, err = validate_field_value('phone_no', '')  # blank allowed
@@ -3977,10 +3985,73 @@ def run_tests():
     p_43b.delete()
     print("✓ Test 43 Passed: Patient Registration Date of Registration (default=today, custom date, tracking milestone & edit) fully verified.")
 
+    # =========================================================================
+    # TEST 44: Field Validation Configuration Persistence across Logout/Login
+    # =========================================================================
+    print("\n--- Running Test 44: Field Validation Configuration Persistence across Logout/Login ---")
+    c.force_login(admin_user)
+
+    # 1. GET /validations/ verifies form rendering without disabled attributes
+    resp_v_get = c.get('/validations/')
+    assert resp_v_get.status_code == 200
+    v_html = resp_v_get.content.decode('utf-8')
+    assert 'name="mr_validation_mode"' in v_html
+    assert 'name="ph_validation_mode"' in v_html
+
+    # 2. POST custom Range settings (Min 5, Max 12)
+    resp_v_save = c.post('/validations/', {
+        'mr_validation_mode': 'range',
+        'mr_exact_length': '7',
+        'mr_min_length': '5',
+        'mr_max_length': '12',
+        'mr_numeric_only': '1',
+        'mr_custom_error_message': 'MR must be between 5 and 12 digits.',
+        'ph_validation_mode': 'range',
+        'ph_min_length': '10',
+        'ph_max_length': '14',
+        'ph_numeric_only': '1',
+        'ph_allow_blank': '1',
+        'ph_custom_error_message': 'Phone must be between 10 and 14 digits.',
+    }, follow=True)
+    assert resp_v_save.status_code == 200
+
+    mr_v = FieldValidationConfig.objects.get(field_name='mr_no')
+    assert mr_v.validation_mode == 'range'
+    assert mr_v.min_length == 5
+    assert mr_v.max_length == 12
+
+    # 3. User logs out
+    c.get('/logout/')
+
+    # 4. User logs back in
+    c.force_login(admin_user)
+    resp_v_recheck = c.get('/validations/')
+    assert resp_v_recheck.status_code == 200
+    recheck_html = resp_v_recheck.content.decode('utf-8')
+    assert 'value="5"' in recheck_html, "Min length 5 must persist after logout/login"
+    assert 'value="12"' in recheck_html, "Max length 12 must persist after logout/login"
+    assert 'MR must be between 5 and 12 digits.' in recheck_html, "Custom error message must persist"
+
+    print("✓ Test 44 Passed: Field Validation Configuration persists across Logout/Login.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")
 
 
 if __name__ == '__main__':
-    run_tests()
+    orig_mr = list(FieldValidationConfig.objects.filter(field_name='mr_no').values())
+    orig_ph = list(FieldValidationConfig.objects.filter(field_name='phone_no').values())
+    try:
+        run_tests()
+    finally:
+        if orig_mr:
+            d = dict(orig_mr[0])
+            d.pop('id', None)
+            d.pop('updated_at', None)
+            FieldValidationConfig.objects.filter(field_name='mr_no').update(**d)
+        if orig_ph:
+            d = dict(orig_ph[0])
+            d.pop('id', None)
+            d.pop('updated_at', None)
+            FieldValidationConfig.objects.filter(field_name='phone_no').update(**d)

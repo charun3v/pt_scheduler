@@ -1077,9 +1077,21 @@ def validation_config_view(request):
         mr_custom_err = request.POST.get('mr_custom_error_message', '').strip()
 
         mr_config.validation_mode = mr_mode
-        mr_config.exact_length = int(mr_exact) if mr_exact and mr_exact.strip().isdigit() else None
-        mr_config.min_length = int(mr_min) if mr_min and mr_min.strip().isdigit() else None
-        mr_config.max_length = int(mr_max) if mr_max and mr_max.strip().isdigit() else None
+        if mr_exact is not None and mr_exact.strip().isdigit():
+            mr_config.exact_length = int(mr_exact.strip())
+        elif mr_mode == 'exact' and mr_exact == '':
+            mr_config.exact_length = None
+
+        if mr_min is not None and mr_min.strip().isdigit():
+            mr_config.min_length = int(mr_min.strip())
+        elif mr_mode == 'range' and mr_min == '':
+            mr_config.min_length = None
+
+        if mr_max is not None and mr_max.strip().isdigit():
+            mr_config.max_length = int(mr_max.strip())
+        elif mr_mode == 'range' and mr_max == '':
+            mr_config.max_length = None
+
         mr_config.numeric_only = mr_numeric
         mr_config.allow_blank = mr_allow_blank
         mr_config.custom_error_message = mr_custom_err or None
@@ -1095,9 +1107,21 @@ def validation_config_view(request):
         ph_custom_err = request.POST.get('ph_custom_error_message', '').strip()
 
         phone_config.validation_mode = ph_mode
-        phone_config.exact_length = int(ph_exact) if ph_exact and ph_exact.strip().isdigit() else None
-        phone_config.min_length = int(ph_min) if ph_min and ph_min.strip().isdigit() else None
-        phone_config.max_length = int(ph_max) if ph_max and ph_max.strip().isdigit() else None
+        if ph_exact is not None and ph_exact.strip().isdigit():
+            phone_config.exact_length = int(ph_exact.strip())
+        elif ph_mode == 'exact' and ph_exact == '':
+            phone_config.exact_length = None
+
+        if ph_min is not None and ph_min.strip().isdigit():
+            phone_config.min_length = int(ph_min.strip())
+        elif ph_mode == 'range' and ph_min == '':
+            phone_config.min_length = None
+
+        if ph_max is not None and ph_max.strip().isdigit():
+            phone_config.max_length = int(ph_max.strip())
+        elif ph_mode == 'range' and ph_max == '':
+            phone_config.max_length = None
+
         phone_config.numeric_only = ph_numeric
         phone_config.allow_blank = ph_allow_blank
         phone_config.custom_error_message = ph_custom_err or None

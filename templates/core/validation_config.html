@@ -65,28 +65,28 @@
                     </div>
 
                     <!-- Mode Inputs Grid -->
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; background: #f8fafc; padding: 12px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; background: #f8fafc; padding: 12px; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <!-- Exact Length -->
-                        <div id="mr_exact_box">
+                        <div id="mr_exact_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
                             <label class="access-label" style="font-weight: bold;">Exact Characters:</label>
                             <input type="number" name="mr_exact_length" id="mr_exact_length" min="1" max="25"
-                                   value="{{ mr_config.exact_length|default:'' }}" class="access-input" placeholder="e.g. 7">
+                                   value="{% if mr_config.exact_length is not None %}{{ mr_config.exact_length }}{% endif %}" class="access-input" placeholder="e.g. 7" style="width: 100%; box-sizing: border-box;">
                             <span style="font-size: 10.5px; color: #666;">e.g. Must be exactly 7 digits</span>
                         </div>
 
                         <!-- Min Length -->
-                        <div id="mr_min_box">
+                        <div id="mr_min_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
                             <label class="access-label" style="font-weight: bold;">Minimum Length:</label>
                             <input type="number" name="mr_min_length" id="mr_min_length" min="1" max="25"
-                                   value="{{ mr_config.min_length|default:'4' }}" class="access-input" placeholder="e.g. 4">
+                                   value="{% if mr_config.min_length is not None %}{{ mr_config.min_length }}{% endif %}" class="access-input" placeholder="e.g. 4" style="width: 100%; box-sizing: border-box;">
                             <span style="font-size: 10.5px; color: #666;">Minimum characters required</span>
                         </div>
 
                         <!-- Max Length -->
-                        <div id="mr_max_box">
+                        <div id="mr_max_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
                             <label class="access-label" style="font-weight: bold;">Maximum Length:</label>
                             <input type="number" name="mr_max_length" id="mr_max_length" min="1" max="25"
-                                   value="{{ mr_config.max_length|default:'10' }}" class="access-input" placeholder="e.g. 10">
+                                   value="{% if mr_config.max_length is not None %}{{ mr_config.max_length }}{% endif %}" class="access-input" placeholder="e.g. 10" style="width: 100%; box-sizing: border-box;">
                             <span style="font-size: 10.5px; color: #666;">Maximum characters allowed</span>
                         </div>
                     </div>
@@ -149,28 +149,28 @@
                     </div>
 
                     <!-- Mode Inputs Grid -->
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; background: #f8fafc; padding: 12px; border-radius: 3px; border: 1px solid #e2e8f0;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 14px; background: #f8fafc; padding: 12px; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <!-- Exact Length -->
-                        <div id="ph_exact_box">
+                        <div id="ph_exact_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
                             <label class="access-label" style="font-weight: bold;">Exact Characters:</label>
                             <input type="number" name="ph_exact_length" id="ph_exact_length" min="1" max="25"
-                                   value="{{ phone_config.exact_length|default:'' }}" class="access-input" placeholder="e.g. 10">
+                                   value="{% if phone_config.exact_length is not None %}{{ phone_config.exact_length }}{% endif %}" class="access-input" placeholder="e.g. 10" style="width: 100%; box-sizing: border-box;">
                             <span style="font-size: 10.5px; color: #666;">e.g. Must be exactly 10 digits</span>
                         </div>
 
                         <!-- Min Length -->
-                        <div id="ph_min_box">
+                        <div id="ph_min_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
                             <label class="access-label" style="font-weight: bold;">Minimum Length:</label>
                             <input type="number" name="ph_min_length" id="ph_min_length" min="1" max="25"
-                                   value="{{ phone_config.min_length|default:'10' }}" class="access-input" placeholder="e.g. 10">
+                                   value="{% if phone_config.min_length is not None %}{{ phone_config.min_length }}{% endif %}" class="access-input" placeholder="e.g. 10" style="width: 100%; box-sizing: border-box;">
                             <span style="font-size: 10.5px; color: #666;">Minimum digits required</span>
                         </div>
 
                         <!-- Max Length -->
-                        <div id="ph_max_box">
+                        <div id="ph_max_box" style="padding: 8px; border-radius: 4px; transition: all 0.2s;">
                             <label class="access-label" style="font-weight: bold;">Maximum Length:</label>
                             <input type="number" name="ph_max_length" id="ph_max_length" min="1" max="25"
-                                   value="{{ phone_config.max_length|default:'15' }}" class="access-input" placeholder="e.g. 15">
+                                   value="{% if phone_config.max_length is not None %}{{ phone_config.max_length }}{% endif %}" class="access-input" placeholder="e.g. 15" style="width: 100%; box-sizing: border-box;">
                             <span style="font-size: 10.5px; color: #666;">Maximum digits allowed</span>
                         </div>
                     </div>
@@ -217,32 +217,133 @@
         const isExact = document.getElementById('mr_mode_exact').checked;
         const isRange = document.getElementById('mr_mode_range').checked;
 
-        document.getElementById('mr_exact_box').style.opacity = isExact ? '1' : '0.4';
-        document.getElementById('mr_exact_length').disabled = !isExact;
+        // Visual distinction without disabling inputs so user can seamlessly click and edit
+        const exactBox = document.getElementById('mr_exact_box');
+        const minBox = document.getElementById('mr_min_box');
+        const maxBox = document.getElementById('mr_max_box');
 
-        document.getElementById('mr_min_box').style.opacity = isRange ? '1' : '0.4';
-        document.getElementById('mr_min_length').disabled = !isRange;
-
-        document.getElementById('mr_max_box').style.opacity = isRange ? '1' : '0.4';
-        document.getElementById('mr_max_length').disabled = !isRange;
+        if (isExact) {
+            exactBox.style.opacity = '1';
+            exactBox.style.background = '#ffffff';
+            exactBox.style.border = '2px solid #003366';
+            minBox.style.opacity = '0.5';
+            minBox.style.background = '#f8fafc';
+            minBox.style.border = '1px solid #cbd5e1';
+            maxBox.style.opacity = '0.5';
+            maxBox.style.background = '#f8fafc';
+            maxBox.style.border = '1px solid #cbd5e1';
+        } else if (isRange) {
+            exactBox.style.opacity = '0.5';
+            exactBox.style.background = '#f8fafc';
+            exactBox.style.border = '1px solid #cbd5e1';
+            minBox.style.opacity = '1';
+            minBox.style.background = '#ffffff';
+            minBox.style.border = '2px solid #003366';
+            maxBox.style.opacity = '1';
+            maxBox.style.background = '#ffffff';
+            maxBox.style.border = '2px solid #003366';
+        } else {
+            exactBox.style.opacity = '0.4';
+            exactBox.style.background = '#f8fafc';
+            exactBox.style.border = '1px solid #cbd5e1';
+            minBox.style.opacity = '0.4';
+            minBox.style.background = '#f8fafc';
+            minBox.style.border = '1px solid #cbd5e1';
+            maxBox.style.opacity = '0.4';
+            maxBox.style.background = '#f8fafc';
+            maxBox.style.border = '1px solid #cbd5e1';
+        }
     }
 
     function togglePhoneFields() {
         const isExact = document.getElementById('ph_mode_exact').checked;
         const isRange = document.getElementById('ph_mode_range').checked;
 
-        document.getElementById('ph_exact_box').style.opacity = isExact ? '1' : '0.4';
-        document.getElementById('ph_exact_length').disabled = !isExact;
+        const exactBox = document.getElementById('ph_exact_box');
+        const minBox = document.getElementById('ph_min_box');
+        const maxBox = document.getElementById('ph_max_box');
 
-        document.getElementById('ph_min_box').style.opacity = isRange ? '1' : '0.4';
-        document.getElementById('ph_min_length').disabled = !isRange;
-
-        document.getElementById('ph_max_box').style.opacity = isRange ? '1' : '0.4';
-        document.getElementById('ph_max_length').disabled = !isRange;
+        if (isExact) {
+            exactBox.style.opacity = '1';
+            exactBox.style.background = '#ffffff';
+            exactBox.style.border = '2px solid #003366';
+            minBox.style.opacity = '0.5';
+            minBox.style.background = '#f8fafc';
+            minBox.style.border = '1px solid #cbd5e1';
+            maxBox.style.opacity = '0.5';
+            maxBox.style.background = '#f8fafc';
+            maxBox.style.border = '1px solid #cbd5e1';
+        } else if (isRange) {
+            exactBox.style.opacity = '0.5';
+            exactBox.style.background = '#f8fafc';
+            exactBox.style.border = '1px solid #cbd5e1';
+            minBox.style.opacity = '1';
+            minBox.style.background = '#ffffff';
+            minBox.style.border = '2px solid #003366';
+            maxBox.style.opacity = '1';
+            maxBox.style.background = '#ffffff';
+            maxBox.style.border = '2px solid #003366';
+        } else {
+            exactBox.style.opacity = '0.4';
+            exactBox.style.background = '#f8fafc';
+            exactBox.style.border = '1px solid #cbd5e1';
+            minBox.style.opacity = '0.4';
+            minBox.style.background = '#f8fafc';
+            minBox.style.border = '1px solid #cbd5e1';
+            maxBox.style.opacity = '0.4';
+            maxBox.style.background = '#f8fafc';
+            maxBox.style.border = '1px solid #cbd5e1';
+        }
     }
 
-    // Initialize field states on load
+    // Auto-select corresponding mode when user clicks or focuses into an input
     document.addEventListener('DOMContentLoaded', function() {
+        const mrExact = document.getElementById('mr_exact_length');
+        const mrMin = document.getElementById('mr_min_length');
+        const mrMax = document.getElementById('mr_max_length');
+
+        const phExact = document.getElementById('ph_exact_length');
+        const phMin = document.getElementById('ph_min_length');
+        const phMax = document.getElementById('ph_max_length');
+
+        if (mrExact) {
+            mrExact.addEventListener('focus', function() {
+                document.getElementById('mr_mode_exact').checked = true;
+                toggleMrFields();
+            });
+        }
+        if (mrMin) {
+            mrMin.addEventListener('focus', function() {
+                document.getElementById('mr_mode_range').checked = true;
+                toggleMrFields();
+            });
+        }
+        if (mrMax) {
+            mrMax.addEventListener('focus', function() {
+                document.getElementById('mr_mode_range').checked = true;
+                toggleMrFields();
+            });
+        }
+
+        if (phExact) {
+            phExact.addEventListener('focus', function() {
+                document.getElementById('ph_mode_exact').checked = true;
+                togglePhoneFields();
+            });
+        }
+        if (phMin) {
+            phMin.addEventListener('focus', function() {
+                document.getElementById('ph_mode_range').checked = true;
+                togglePhoneFields();
+            });
+        }
+        if (phMax) {
+            phMax.addEventListener('focus', function() {
+                document.getElementById('ph_mode_range').checked = true;
+                togglePhoneFields();
+            });
+        }
+
         toggleMrFields();
         togglePhoneFields();
     });
