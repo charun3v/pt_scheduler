@@ -45,7 +45,8 @@ def run_tests():
     print("==================================================")
 
     # Clean up test patients & test holidays
-    Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 9999021, 9999022, 9999031, 9999032, 7654321, 12345]).delete()
+    Patient.objects.filter(mr_no__in=[9999001, 9999002, 9999003, 9999018, 9999019, 9999020, 9999021, 9999022, 9999031, 9999032, 9999047, 7654321, 12345]).delete()
+    BrachyApplicator.objects.filter(name__startswith='Test Ring').delete()
     Holiday.objects.filter(date__in=[date(2026, 11, 20), date(2026, 11, 25)]).delete()
     User.objects.filter(username__in=['test_toggle_user', 'test_doc_prefix', 'test_new_reg_user', 'test_landing_user']).delete()
     from apps.core.models import PrintTemplateConfig, Designation
@@ -4299,6 +4300,177 @@ def run_tests():
     # Cleanup
     pt_46.delete()
     print("✓ Test 46 Passed: Configurable RT Number Validation & Enforcement across Registration & Edit fully verified.")
+
+    # -------------------------------------------------------------------------
+    # TEST 47: Clinical Scheduling Refinements, EBRT Date Enforcement, Brachy Daily List & Applicator Editing
+    # -------------------------------------------------------------------------
+    print("\n--- Running Test 47: Clinical Scheduling Refinements, EBRT Date Enforcement, Brachy Daily List & Applicator Editing ---")
+
+    # 1. Check schedule_patient.html for bold titles, 12ch phone width, and default None site of treatment
+    Patient.objects.filter(mr_no=9999047).delete()
+    pt_47 = Patient.objects.create(
+        mr_no=9999047,
+        pt_name="Test Patient 47",
+        sex="Female",
+        age=55,
+        phone_no="98765432101",
+        diagnosis="Cervix Ca",
+        unit="II"
+    )
+    admin_user = User.objects.filter(is_superuser=True).first()
+    client = Client()
+    client.force_login(admin_user)
+
+    resp_sched = client.get(f'/scheduler/patient/{pt_47.id}/')
+    assert resp_sched.status_code == 200
+    content_sched = resp_sched.content.decode('utf-8')
+
+    # Phone input width: 12ch
+    assert 'id="ptPhone"' in content_sched
+    assert 'width: 12ch' in content_sched
+
+    # Bold titles with strong tags
+    assert '<strong>MR No:</strong>' in content_sched
+    assert '<strong>Patient:</strong>' in content_sched
+    assert '<strong>Phone:</strong>' in content_sched
+    assert '<strong>Primary Consultant:</strong>' in content_sched
+    assert '<strong>Site of Treatment: *</strong>' in content_sched
+    assert '<strong>Diagnosis: *</strong>' in content_sched
+
+    # Default site of treatment is -- None --
+    assert '<option value="" selected>-- None --</option>' in content_sched
+
+    # 2. EBRT previous course actual start date >= simulation date
+    sim_dt = date(2026, 11, 10)
+    sched_prev = TreatmentSchedule.objects.create(
+        patient=pt_47,
+        treatment_type="Teletherapy",
+        date_of_sim=sim_dt,
+        date_of_start=date(2026, 11, 15),
+        status="Scheduled"
+    )
+
+    # Attempt to complete previous course with start date EARLIER than simulation date (should be blocked)
+    invalid_start_dt = date(2026, 11, 5) # Before Nov 10
+    resp_invalid = client.post(f'/scheduler/course/{sched_prev.id}/actual-status/', {
+        'is_completed': 'yes',
+        'actual_start_date': invalid_start_dt.strftime('%Y-%m-%d'),
+        'actual_end_date': '2026-11-25',
+    }, follow=True)
+    sched_prev.refresh_from_db()
+    assert sched_prev.actual_treatment_status is None, "Should reject start date < sim date for EBRT"
+
+    # Valid start date >= sim date (Nov 12 >= Nov 10)
+    valid_start_dt = date(2026, 11, 12)
+    resp_valid = client.post(f'/scheduler/course/{sched_prev.id}/actual-status/', {
+        'is_completed': 'yes',
+        'actual_start_date': valid_start_dt.strftime('%Y-%m-%d'),
+        'actual_end_date': '2026-11-25',
+    }, follow=True)
+    sched_prev.refresh_from_db()
+    assert sched_prev.status == 'Completed'
+    assert sched_prev.actual_start_date == valid_start_dt
+
+    # 3. Patient details font Calibri and bold titles, regular data
+    resp_detail = client.get(f'/patients/{pt_47.id}/')
+    assert resp_detail.status_code == 200
+    content_detail = resp_detail.content.decode('utf-8')
+    assert "font-family: Calibri" in content_detail
+
+    resp_brachy_sched = client.get(f'/scheduler/patient/{pt_47.id}/brachytherapy/')
+    assert resp_brachy_sched.status_code == 200
+    content_brachy_sched = resp_brachy_sched.content.decode('utf-8')
+    assert "font-family: Calibri" in content_brachy_sched
+    assert "Patient Registration Details" in content_brachy_sched
+
+    # 4. Applicator with Applicator Type & editing details later
+    BrachyApplicator.objects.filter(name__startswith='Test Ring').delete()
+    app_custom = BrachyApplicator.objects.create(
+        name="Test Ring & Tandem",
+        code="TRT",
+        applicator_type="Intracavitary",
+        color_code="#1976d2",
+        display_order=99
+    )
+    assert app_custom.applicator_type == "Intracavitary"
+
+    # Edit applicator details via lookup manager
+    resp_edit_app = client.post(f'/lookups/brachy_applicator/save/{app_custom.id}/', {
+        'name_value': 'Test Ring & Tandem Modified',
+        'secondary_value': 'TRTM',
+        'extra_value': 'Intracavitary + Interstitial',
+        'extra2_value': '#7b1fa2',
+        'display_order': 99,
+        'is_active': '1'
+    }, follow=True)
+    app_custom.refresh_from_db()
+    assert app_custom.name == 'Test Ring & Tandem Modified'
+    assert app_custom.applicator_type == 'Intracavitary + Interstitial'
+    assert app_custom.color_code == '#7b1fa2'
+
+    # 5. Calendar dates non-bold, Calibri
+    resp_cal = client.get('/scheduler/brachytherapy/calendar/')
+    assert resp_cal.status_code == 200
+    content_cal = resp_cal.content.decode('utf-8')
+    assert "font-family: Calibri" in content_cal
+    assert "font-weight: normal" in content_cal
+
+    # 6. Daily patient list for scheduled date with 8 columns
+    today_dt = date(2026, 11, 20)
+    anest_obj = BrachyAnesthesia.objects.first()
+    bm_obj = Machine.objects.filter(treatment_mode='Brachytherapy', is_active=True).first()
+    if not bm_obj:
+        bm_obj = Machine.objects.create(name="Test Brachy Machine", machine_type="Brachytherapy", treatment_mode="Brachytherapy")
+
+    appt = BrachytherapyAppointment.objects.create(
+        patient=pt_47,
+        fraction_number=1,
+        appointment_date=today_dt,
+        applicator_type=app_custom,
+        anesthesia_type=anest_obj,
+        status="Scheduled"
+    )
+
+    # API call for daily list
+    resp_api = client.get(f'/scheduler/brachytherapy/api/daily-list/?date={today_dt.strftime("%Y-%m-%d")}')
+    assert resp_api.status_code == 200
+    json_data = resp_api.json()
+    assert json_data['success'] is True
+    assert json_data['count'] >= 1
+    found_row = next((r for r in json_data['appointments'] if r['id'] == appt.id), None)
+    assert found_row is not None
+    assert found_row['patient_name'] == "Test Patient 47"
+    assert found_row['diagnosis'] == "Cervix Ca"
+    assert found_row['applicator_type'] == "Intracavitary + Interstitial"
+    assert found_row['unit'] == "Unit II"
+
+    # HTML page rendering for daily list
+    resp_daily_html = client.get(f'/scheduler/brachytherapy/daily-list/?date={today_dt.strftime("%Y-%m-%d")}')
+    assert resp_daily_html.status_code == 200
+    daily_content = resp_daily_html.content.decode('utf-8')
+    assert "SL No" in daily_content
+    assert "Applicator type" in daily_content
+    assert "Anesthesia type" in daily_content
+    assert "Brachy Machine" in daily_content
+    assert "Test Patient 47" in daily_content
+
+    # Edit appointment applicator details later via API
+    resp_edit_appt = client.post(f'/scheduler/brachytherapy/api/appointment/{appt.id}/edit/', {
+        'applicator_id': app_custom.id,
+        'remarks': 'Updated applicator details for fraction 1',
+        'appointment_date': today_dt.strftime('%Y-%m-%d')
+    })
+    assert resp_edit_appt.status_code == 200
+    assert resp_edit_appt.json()['success'] is True
+    appt.refresh_from_db()
+    assert appt.remarks == 'Updated applicator details for fraction 1'
+
+    # Cleanup
+    appt.delete()
+    app_custom.delete()
+    sched_prev.delete()
+    pt_47.delete()
+    print("✓ Test 47 Passed: Clinical Scheduling Refinements, EBRT Date Enforcement, Brachy Daily List & Applicator Editing fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

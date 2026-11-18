@@ -33,7 +33,7 @@
         font-size: 12px;
         text-transform: uppercase;
         color: #1b5e20;
-        font-weight: 700;
+        font-weight: 800;
         margin-right: 4px;
     }
     .summary-input {
@@ -165,11 +165,17 @@
             <div id="prev_yes_fields" style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center; background: #f0fdf4; padding: 10px 14px; border-radius: 4px; border: 1px solid #bbf7d0;">
                 <div>
                     <label style="font-size: 11.5px; font-weight: 600; color: #166534; margin-right: 4px;">Actual Start Date:</label>
-                    <input type="date" name="prev_actual_start_date" value="{% if latest_prev.actual_start_date %}{{ latest_prev.actual_start_date|date:'Y-m-d' }}{% elif latest_prev.date_of_start %}{{ latest_prev.date_of_start|date:'Y-m-d' }}{% endif %}" style="padding: 3px 8px; font-size: 12px; border: 1px solid #86efac; border-radius: 3px;">
+                    <input type="date" name="prev_actual_start_date" id="prev_actual_start_date"
+                           value="{% if latest_prev.actual_start_date %}{{ latest_prev.actual_start_date|date:'Y-m-d' }}{% elif latest_prev.date_of_start %}{{ latest_prev.date_of_start|date:'Y-m-d' }}{% endif %}"
+                           {% if latest_prev.date_of_sim and latest_prev.treatment_type == 'Teletherapy' or latest_prev.date_of_sim %}min="{{ latest_prev.date_of_sim|date:'Y-m-d' }}" data-sim="{{ latest_prev.date_of_sim|date:'Y-m-d' }}" data-mode="{{ latest_prev.treatment_type }}"{% endif %}
+                           style="padding: 3px 8px; font-size: 12px; border: 1px solid #86efac; border-radius: 3px;">
+                    {% if latest_prev.date_of_sim and latest_prev.treatment_type == 'Teletherapy' %}
+                    <span style="font-size: 11px; color: #166534; margin-left: 4px;">(Sim Date: {{ latest_prev.date_of_sim|date:'d-M-Y' }})</span>
+                    {% endif %}
                 </div>
                 <div>
                     <label style="font-size: 11.5px; font-weight: 600; color: #166534; margin-right: 4px;">Actual End Date:</label>
-                    <input type="date" name="prev_actual_end_date" value="{% if latest_prev.actual_end_date %}{{ latest_prev.actual_end_date|date:'Y-m-d' }}{% elif latest_prev.treatment_end_date %}{{ latest_prev.treatment_end_date|date:'Y-m-d' }}{% endif %}" style="padding: 3px 8px; font-size: 12px; border: 1px solid #86efac; border-radius: 3px;">
+                    <input type="date" name="prev_actual_end_date" id="prev_actual_end_date" value="{% if latest_prev.actual_end_date %}{{ latest_prev.actual_end_date|date:'Y-m-d' }}{% elif latest_prev.treatment_end_date %}{{ latest_prev.treatment_end_date|date:'Y-m-d' }}{% endif %}" style="padding: 3px 8px; font-size: 12px; border: 1px solid #86efac; border-radius: 3px;">
                 </div>
             </div>
             <!-- No fields -->
@@ -203,36 +209,36 @@
             <!-- Row 1: Core Identifiers & Demographics with Consultant on Far Right -->
             <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px;">
                 <div>
-                    <span class="summary-label">MR No:</span>
+                    <span class="summary-label"><strong>MR No:</strong></span>
                     <a href="{% url 'patient_detail' patient.id %}" target="_blank" style="color: #1b5e20; text-decoration: underline; font-weight: normal; font-size: 14px;" title="Open Patient Details in new tab">
                         {{ patient.mr_no }} ↗
                     </a>
                 </div>
                 <div>
-                    <span class="summary-label">Patient:</span>
+                    <span class="summary-label"><strong>Patient:</strong></span>
                     <span style="font-size: 14px; font-weight: normal; color: #0a3d0e;">{{ patient.pt_name }}</span>
                 </div>
                 <div>
-                    <span class="summary-label">RT No:</span>
+                    <span class="summary-label"><strong>RT No:</strong></span>
                     <span style="font-size: 14px; font-weight: normal; color: #0a3d0e;">{{ patient.rt_no|default:'-' }}</span>
                 </div>
                 <div>
-                    <span class="summary-label">Sex:</span>
+                    <span class="summary-label"><strong>Sex:</strong></span>
                     <span style="font-size: 13.5px; font-weight: normal;">{{ patient.sex }}</span>
                 </div>
                 <div style="display: inline-flex; align-items: center;">
-                    <label class="summary-label" for="ptAge">Age:</label>
+                    <label class="summary-label" for="ptAge"><strong>Age:</strong></label>
                     <input type="number" id="ptAge" name="age" value="{{ patient.age|default:'' }}" min="1" max="120"
                            class="summary-input" style="width: 55px; font-size: 13.5px; font-weight: normal;">
                 </div>
                 <div style="display: inline-flex; align-items: center;">
-                    <label class="summary-label" for="ptPhone">Phone:</label>
+                    <label class="summary-label" for="ptPhone"><strong>Phone:</strong></label>
                     <input type="text" id="ptPhone" name="phone_no" value="{{ patient.phone_no|default:'' }}"
-                           class="summary-input" style="width: 120px; font-size: 13.5px; font-weight: normal;">
+                           class="summary-input" style="width: 12ch; max-width: 12ch; font-size: 13.5px; font-weight: normal; box-sizing: border-box; padding: 2px 4px;">
                 </div>
                 <!-- Primary Consultant (Anchored to Far Right Extreme) -->
                 <div style="margin-left: auto; text-align: right; white-space: nowrap;">
-                    <span class="summary-label">Primary Consultant:</span>
+                    <span class="summary-label"><strong>Primary Consultant:</strong></span>
                     <span style="color: #1b5e20; font-size: 14px; font-weight: normal;">{{ patient.primary_consultant.name|default:'Unassigned' }}</span>
                 </div>
             </div>
@@ -240,16 +246,16 @@
             <!-- Row 2: Site of Treatment & Diagnosis (Clean, Simple, Mandatory) -->
             <div style="display: flex; align-items: center; gap: 14px;">
                 <div style="display: flex; align-items: center; min-width: 320px;">
-                    <label class="summary-label" for="top_site_dropdown" style="white-space: nowrap; font-size: 12.5px; font-weight: 700;">Site of Treatment: *</label>
+                    <label class="summary-label" for="top_site_dropdown" style="white-space: nowrap; font-size: 12.5px;"><strong>Site of Treatment: *</strong></label>
                     <select name="site_of_treatment" id="top_site_dropdown" required class="summary-input" style="flex: 1; font-size: 13.5px; font-weight: normal; border: 1.5px solid #1b5e20;">
-                        <option value="">-- Select Treatment Site --</option>
+                        <option value="" {% if not schedule or not schedule.site_of_treatment %}selected{% endif %}>-- None --</option>
                         {% for s in treatment_sites %}
-                            <option value="{{ s.name }}" {% if patient.site_of_treatment == s.name or schedule.site_of_treatment == s.name %}selected{% endif %}>{{ s.name }}</option>
+                            <option value="{{ s.name }}" {% if schedule and schedule.site_of_treatment == s.name %}selected{% endif %}>{{ s.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div style="display: flex; align-items: center; flex: 1;">
-                    <label class="summary-label" for="ptDiagnosis" style="white-space: nowrap; font-size: 12.5px; font-weight: 700;">Diagnosis: *</label>
+                    <label class="summary-label" for="ptDiagnosis" style="white-space: nowrap; font-size: 12.5px;"><strong>Diagnosis: *</strong></label>
                     <input type="text" id="ptDiagnosis" name="diagnosis" value="{{ patient.diagnosis }}" required
                            class="summary-input" style="width: 100%; font-size: 13.5px; font-weight: normal; border: 1.5px solid #2e7d32;">
                 </div>
@@ -870,6 +876,21 @@
 
     // Validation on Submit
     function validateScheduleSubmission() {
+        // Validate previous course actual start date >= simulation date (if previous course is EBRT)
+        const prevStartInput = document.getElementById('prev_actual_start_date');
+        const prevCompRadios = document.getElementsByName('prev_is_completed');
+        let prevIsYes = false;
+        for (let r of prevCompRadios) {
+            if (r.checked && r.value === 'yes') prevIsYes = true;
+        }
+        if (prevIsYes && prevStartInput && prevStartInput.dataset.sim && prevStartInput.value) {
+            if (prevStartInput.value < prevStartInput.dataset.sim) {
+                alert("Previous course Actual Start Date (" + prevStartInput.value + ") cannot be earlier than CT Simulation Date (" + prevStartInput.dataset.sim + ") for EBRT.");
+                prevStartInput.focus();
+                return false;
+            }
+        }
+
         // Site of Treatment is always strictly mandatory
         const siteVal = document.getElementById('top_site_dropdown')?.value.trim();
         if (!siteVal) {

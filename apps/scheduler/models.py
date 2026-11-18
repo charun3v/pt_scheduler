@@ -147,11 +147,30 @@ class TreatmentIntent(models.Model):
 
 class BrachyApplicator(models.Model):
     """
-    Reference table for Brachytherapy Applicator Types.
+    Reference table for Brachytherapy Applicators.
     Admin configurable via Reference Tables Manager with drag-and-drop ordering and custom colors.
+    Each applicator can be categorized under a clinical applicator type (e.g. Intracavitary, Interstitial, etc.).
     """
-    name = models.CharField(max_length=100, unique=True, verbose_name="Applicator Type Name")
+    APPLICATOR_TYPE_CHOICES = [
+        ('Intracavitary', 'Intracavitary'),
+        ('Interstitial', 'Interstitial'),
+        ('Intracavitary + Interstitial', 'Intracavitary + Interstitial'),
+        ('Intraluminal', 'Intraluminal'),
+        ('Surface mould', 'Surface mould'),
+        ('Cylindrical / Vaginal cylinder', 'Cylindrical / Vaginal cylinder'),
+        ('Permanent Implant', 'Permanent Implant'),
+        ('Others', 'Others'),
+    ]
+
+    name = models.CharField(max_length=100, unique=True, verbose_name="Applicator Name")
     code = models.CharField(max_length=50, blank=True, null=True, verbose_name="Applicator Code")
+    applicator_type = models.CharField(
+        max_length=100,
+        choices=APPLICATOR_TYPE_CHOICES,
+        default='Intracavitary',
+        verbose_name="Applicator Type",
+        help_text="Clinical applicator category: Intracavitary, Interstitial, Intraluminal, Surface mould, Cylindrical, etc."
+    )
     color_code = models.CharField(max_length=20, default="#1e88e5", verbose_name="Calendar Color")
     text_color = models.CharField(max_length=20, default="#ffffff", verbose_name="Text Color")
     display_order = models.IntegerField(default=1)
@@ -163,7 +182,7 @@ class BrachyApplicator(models.Model):
         verbose_name_plural = "Brachytherapy Applicators"
 
     def __str__(self):
-        return self.name
+        return f"{self.name} ({self.applicator_type})" if self.applicator_type and self.applicator_type != self.name else self.name
 
 
 class BrachyAnesthesia(models.Model):

@@ -112,6 +112,16 @@ def schedule_patient_view(request, patient_id):
                 prev_st_id = request.POST.get('prev_completion_status_id', '').strip()
                 prev_notes = request.POST.get('prev_status_notes', '').strip()
 
+                # EBRT constraint: actual start date must be >= CT simulation date
+                if prev_comp == 'yes' and prev_st_date and prev_s.date_of_sim and (prev_s.treatment_type == 'Teletherapy' or prev_s.date_of_sim):
+                    if prev_st_date < prev_s.date_of_sim:
+                        messages.error(
+                            request,
+                            f"Previous course Actual Start Date ({prev_st_date.strftime('%d-%b-%Y')}) "
+                            f"cannot be earlier than CT Simulation Date ({prev_s.date_of_sim.strftime('%d-%b-%Y')}) for EBRT."
+                        )
+                        return redirect('schedule_patient', patient_id=patient.id)
+
                 if prev_comp == 'yes':
                     comp_obj = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
                     if not comp_obj:
@@ -888,6 +898,16 @@ def update_actual_treatment_status_view(request, schedule_id):
 
         act_start = parse_d(actual_start_raw)
         act_end = parse_d(actual_end_raw)
+
+        # EBRT constraint: actual start date must be >= CT simulation date
+        if is_completed_val == 'yes' and act_start and schedule.date_of_sim and (schedule.treatment_type == 'Teletherapy' or schedule.date_of_sim):
+            if act_start < schedule.date_of_sim:
+                messages.error(
+                    request,
+                    f"Actual Start Date ({act_start.strftime('%d-%b-%Y')}) cannot be earlier than "
+                    f"CT Simulation Date ({schedule.date_of_sim.strftime('%d-%b-%Y')}) for EBRT."
+                )
+                return redirect('patient_detail', patient_id=patient.id)
 
         if is_completed_val == 'yes':
             comp_status = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
@@ -1766,5 +1786,253 @@ def brachy_schedule_patient_view(request, patient_id):
         'today': today,
     }
     return render(request, 'scheduler/brachy_schedule_patient.html', context)
+
+
+@login_required
+def brachy_daily_patients_view(request):
+    """
+    Renders the Daily Scheduled Patients List for a requested date.
+    Displays columns: SL No, Name, Diagnosis, Applicator type, Anesthesia type, Brachy Machine, Consultant, Unit.
+    Includes option to filter by date and edit applicator details later.
+    """
+    date_str = request.GET.get('date', '').strip()
+    today = timezone.localdate()
+    target_date = today
+    if date_str:
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d-%b-%Y'):
+            try:
+                target_date = datetime.strptime(date_str, fmt).date()
+                break
+            except ValueError:
+                continue
+
+    appts = BrachytherapyAppointment.objects.filter(
+        appointment_date=target_date,
+        status__in=['Scheduled', 'Completed']
+    ).select_related(
+        'patient', 'patient__primary_consultant',
+        'applicator_type', 'anesthesia_type',
+        'schedule', 'schedule__machine'
+    ).order_by('fraction_number', 'patient__pt_name')
+
+    applicators = BrachyApplicator.objects.filter(is_active=True).order_by('display_order', 'name')
+    anesthesias = BrachyAnesthesia.objects.filter(is_active=True).order_by('display_order', 'name')
+    brachy_machines = Machine.objects.filter(
+        is_active=True,
+        treatment_mode='Brachytherapy'
+    ).order_by('display_order', 'name')
+
+    rows = []
+    for idx, a in enumerate(appts, 1):
+        app_type_disp = '-'
+        if a.applicator_type:
+            app_type_disp = a.applicator_type.applicator_type or a.applicator_type.name
+
+        consultant_name = a.patient.primary_consultant.name if a.patient.primary_consultant else 'Unassigned'
+
+        unit_disp = f"Unit {a.patient.unit}" if a.patient.unit else "Unit I"
+
+        machine_name = 'Brachy Unit'
+        if a.schedule and a.schedule.machine:
+            machine_name = a.schedule.machine.name
+        elif a.schedule and a.schedule.machine_display:
+            machine_name = a.schedule.machine_display
+
+        rows.append({
+            'sl_no': idx,
+            'id': a.id,
+            'patient_id': a.patient.id,
+            'patient_name': a.patient.pt_name,
+            'mr_no': a.patient.mr_no,
+            'rt_no': a.patient.rt_no or '-',
+            'age_sex': a.patient.age_sex_display,
+            'diagnosis': a.patient.diagnosis or 'Not specified',
+            'applicator_name': a.applicator_type.name if a.applicator_type else 'Brachytherapy',
+            'applicator_id': a.applicator_type_id,
+            'applicator_type': app_type_disp,
+            'color': a.applicator_type.color_code if a.applicator_type else '#1976d2',
+            'anesthesia_name': a.anesthesia_type.name if a.anesthesia_type else '-',
+            'anesthesia_id': a.anesthesia_type_id,
+            'machine_name': machine_name,
+            'machine_id': a.schedule.machine_id if a.schedule else None,
+            'consultant': consultant_name,
+            'unit': unit_disp,
+            'fraction': a.fraction_number,
+            'remarks': a.remarks or '',
+            'status': a.status,
+        })
+
+    context = {
+        'target_date': target_date,
+        'date_iso': target_date.isoformat(),
+        'date_formatted': target_date.strftime('%d-%b-%Y'),
+        'rows': rows,
+        'count': len(rows),
+        'applicators': applicators,
+        'anesthesias': anesthesias,
+        'brachy_machines': brachy_machines,
+        'can_edit': can_schedule_patient(request.user),
+    }
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.GET.get('format') == 'json':
+        return JsonResponse({
+            'success': True,
+            'date_iso': target_date.isoformat(),
+            'date_formatted': target_date.strftime('%d-%b-%Y'),
+            'count': len(rows),
+            'appointments': rows
+        })
+
+    return render(request, 'scheduler/brachy_daily_patients.html', context)
+
+
+@login_required
+def brachy_daily_patients_api(request):
+    """
+    JSON API endpoint returning the list of patients scheduled for a date.
+    Query param: ?date=YYYY-MM-DD
+    """
+    date_str = request.GET.get('date', '').strip()
+    today = timezone.localdate()
+    target_date = today
+    if date_str:
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d-%b-%Y'):
+            try:
+                target_date = datetime.strptime(date_str, fmt).date()
+                break
+            except ValueError:
+                continue
+
+    appts = BrachytherapyAppointment.objects.filter(
+        appointment_date=target_date,
+        status__in=['Scheduled', 'Completed']
+    ).select_related(
+        'patient', 'patient__primary_consultant',
+        'applicator_type', 'anesthesia_type',
+        'schedule', 'schedule__machine'
+    ).order_by('fraction_number', 'patient__pt_name')
+
+    rows = []
+    for idx, a in enumerate(appts, 1):
+        app_type_disp = '-'
+        if a.applicator_type:
+            app_type_disp = a.applicator_type.applicator_type or a.applicator_type.name
+
+        consultant_name = a.patient.primary_consultant.name if a.patient.primary_consultant else 'Unassigned'
+
+        unit_disp = f"Unit {a.patient.unit}" if a.patient.unit else "Unit I"
+
+        machine_name = 'Brachy Unit'
+        if a.schedule and a.schedule.machine:
+            machine_name = a.schedule.machine.name
+        elif a.schedule and a.schedule.machine_display:
+            machine_name = a.schedule.machine_display
+
+        rows.append({
+            'sl_no': idx,
+            'id': a.id,
+            'patient_id': a.patient.id,
+            'patient_name': a.patient.pt_name,
+            'mr_no': a.patient.mr_no,
+            'rt_no': a.patient.rt_no or '-',
+            'age_sex': a.patient.age_sex_display,
+            'diagnosis': a.patient.diagnosis or 'Not specified',
+            'applicator_name': a.applicator_type.name if a.applicator_type else 'Brachytherapy',
+            'applicator_id': a.applicator_type_id,
+            'applicator_type': app_type_disp,
+            'color': a.applicator_type.color_code if a.applicator_type else '#1976d2',
+            'anesthesia_name': a.anesthesia_type.name if a.anesthesia_type else '-',
+            'anesthesia_id': a.anesthesia_type_id,
+            'machine_name': machine_name,
+            'machine_id': a.schedule.machine_id if a.schedule else None,
+            'consultant': consultant_name,
+            'unit': unit_disp,
+            'fraction': a.fraction_number,
+            'remarks': a.remarks or '',
+            'status': a.status,
+        })
+
+    return JsonResponse({
+        'success': True,
+        'date_iso': target_date.isoformat(),
+        'date_formatted': target_date.strftime('%d-%b-%Y'),
+        'count': len(rows),
+        'appointments': rows
+    })
+
+
+@login_required
+def brachy_edit_appointment_api(request, appointment_id):
+    """
+    API to update details of an individual Brachytherapy appointment (applicator, applicator type, anesthesia, machine, notes, date).
+    Permits clinicians to edit the details of each applicator appointment later.
+    """
+    if not can_schedule_patient(request.user) and not can_edit_patient(request.user):
+        return JsonResponse({'success': False, 'error': "Access restricted. Scheduling permission required."}, status=403)
+
+    appt = get_object_or_404(BrachytherapyAppointment, id=appointment_id)
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': "Invalid request method."}, status=405)
+
+    applicator_id = request.POST.get('applicator_id')
+    anesthesia_id = request.POST.get('anesthesia_id')
+    machine_id = request.POST.get('machine_id')
+    remarks = request.POST.get('remarks')
+    new_date_raw = request.POST.get('appointment_date')
+
+    updated_fields = []
+
+    if applicator_id:
+        app_obj = BrachyApplicator.objects.filter(id=applicator_id).first()
+        if app_obj:
+            appt.applicator_type = app_obj
+            updated_fields.append(f"Applicator: {app_obj.name}")
+
+    if anesthesia_id:
+        ana_obj = BrachyAnesthesia.objects.filter(id=anesthesia_id).first()
+        if ana_obj:
+            appt.anesthesia_type = ana_obj
+            updated_fields.append(f"Anaesthesia: {ana_obj.name}")
+
+    if remarks is not None:
+        appt.remarks = remarks.strip()
+        updated_fields.append("Remarks")
+
+    if new_date_raw:
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d-%b-%Y'):
+            try:
+                new_d = datetime.strptime(new_date_raw.strip(), fmt).date()
+                appt.appointment_date = new_d
+                updated_fields.append(f"Date: {new_d.strftime('%d-%b-%Y')}")
+                break
+            except ValueError:
+                continue
+
+    if machine_id and appt.schedule:
+        m_obj = Machine.objects.filter(id=machine_id, is_active=True).first()
+        if m_obj:
+            appt.schedule.machine = m_obj
+            appt.schedule.save(update_fields=['machine'])
+            updated_fields.append(f"Machine: {m_obj.name}")
+
+    appt.save()
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="BRACHY_APPOINTMENT_EDIT",
+        mr_no=str(appt.patient.mr_no),
+        details=f"Updated Brachy Appointment #{appt.id} (Fraction {appt.fraction_number}) for {appt.patient.pt_name}: {', '.join(updated_fields)}",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': f"Appointment #{appt.id} details updated successfully.",
+        'applicator_name': appt.applicator_type.name if appt.applicator_type else '-',
+        'applicator_type': (appt.applicator_type.applicator_type or appt.applicator_type.name) if appt.applicator_type else '-',
+        'anesthesia_name': appt.anesthesia_type.name if appt.anesthesia_type else '-',
+        'machine_name': appt.schedule.machine.name if (appt.schedule and appt.schedule.machine) else '-',
+    })
 
 
