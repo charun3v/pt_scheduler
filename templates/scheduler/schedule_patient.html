@@ -4,18 +4,24 @@
 
 {% block extra_head %}
 <style>
+    /* Horizontally Compact Centered Scheduler Window */
+    .scheduler-window-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
     /* Patient Registration Summary: Light green background with dark green border & accents */
     .patient-summary-simple {
         background: #e8f5e9;
         border: 2px solid #1b5e20;
         border-radius: 4px;
-        padding: 8px 12px;
-        margin-bottom: 10px;
-        font-size: 12px;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+        font-size: 13.5px;
         color: #0f3e12;
     }
     .summary-label {
-        font-size: 10px;
+        font-size: 11.5px;
         text-transform: uppercase;
         color: #1b5e20;
         font-weight: 700;
@@ -24,8 +30,8 @@
     .summary-input {
         border: 1px solid #2e7d32;
         border-radius: 3px;
-        padding: 2px 6px;
-        font-size: 12px;
+        padding: 3px 6px;
+        font-size: 13px;
         background: #ffffff;
         color: #0f3e12;
     }
@@ -113,7 +119,7 @@
 {% endblock %}
 
 {% block content %}
-<div style="max-width: 100%; margin: 0 auto;">
+<div class="scheduler-window-container">
 
     <!-- Form encapsulates registration editable fields and scheduling fields -->
     <form method="POST" id="scheduleForm" onsubmit="return validateScheduleSubmission();">
@@ -184,47 +190,47 @@
         <!-- PATIENT REGISTRATION SUMMARY: Light Green Background with Dark Green Border -->
         <div class="patient-summary-simple">
             <!-- Row 1: Core Identifiers & Demographics with Consultant on Far Right -->
-            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px;">
                 <div>
                     <span class="summary-label">MR No:</span>
-                    <a href="{% url 'patient_detail' patient.id %}" target="_blank" style="color: #1b5e20; text-decoration: underline; font-weight: bold;" title="Open Patient Details in new tab">
+                    <a href="{% url 'patient_detail' patient.id %}" target="_blank" style="color: #1b5e20; text-decoration: underline; font-weight: 800; font-size: 14.5px;" title="Open Patient Details in new tab">
                         {{ patient.mr_no }} ↗
                     </a>
                 </div>
                 <div>
                     <span class="summary-label">Patient:</span>
-                    <strong>{{ patient.pt_name }}</strong>
+                    <strong style="font-size: 14.5px; color: #0a3d0e;">{{ patient.pt_name }}</strong>
                 </div>
                 <div>
                     <span class="summary-label">RT No:</span>
-                    <span>{{ patient.rt_no|default:'-' }}</span>
+                    <strong style="font-size: 14px; color: #0a3d0e;">{{ patient.rt_no|default:'-' }}</strong>
                 </div>
                 <div>
                     <span class="summary-label">Sex:</span>
-                    <span>{{ patient.sex }}</span>
+                    <strong style="font-size: 13.5px;">{{ patient.sex }}</strong>
                 </div>
                 <div style="display: inline-flex; align-items: center;">
                     <label class="summary-label" for="ptAge">Age:</label>
                     <input type="number" id="ptAge" name="age" value="{{ patient.age|default:'' }}" min="1" max="120"
-                           class="summary-input" style="width: 50px;">
+                           class="summary-input" style="width: 55px; font-size: 13.5px; font-weight: bold;">
                 </div>
                 <div style="display: inline-flex; align-items: center;">
                     <label class="summary-label" for="ptPhone">Phone:</label>
                     <input type="text" id="ptPhone" name="phone_no" value="{{ patient.phone_no|default:'' }}"
-                           class="summary-input" style="width: 100px;">
+                           class="summary-input" style="width: 120px; font-size: 13.5px; font-weight: bold;">
                 </div>
                 <!-- Primary Consultant (Anchored to Far Right Extreme) -->
                 <div style="margin-left: auto; text-align: right; white-space: nowrap;">
                     <span class="summary-label">Primary Consultant:</span>
-                    <strong style="color: #1b5e20;">{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
+                    <strong style="color: #1b5e20; font-size: 14.5px; font-weight: 800;">{{ patient.primary_consultant.name|default:'Unassigned' }}</strong>
                 </div>
             </div>
 
-            <!-- Row 2: Site of Treatment & Diagnosis (Clean, Simple) -->
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="display: flex; align-items: center; min-width: 260px;">
-                    <label class="summary-label" for="top_site_dropdown" style="white-space: nowrap;">Site of Treatment: *</label>
-                    <select name="site_of_treatment" id="top_site_dropdown" required class="summary-input" style="flex: 1;">
+            <!-- Row 2: Site of Treatment & Diagnosis (Clean, Simple, Mandatory) -->
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="display: flex; align-items: center; min-width: 320px;">
+                    <label class="summary-label" for="top_site_dropdown" style="white-space: nowrap; font-size: 12.5px; font-weight: 800;">Site of Treatment: *</label>
+                    <select name="site_of_treatment" id="top_site_dropdown" required class="summary-input" style="flex: 1; font-size: 13.5px; font-weight: bold; border: 1.5px solid #1b5e20;">
                         <option value="">-- Select Treatment Site --</option>
                         {% for s in treatment_sites %}
                             <option value="{{ s.name }}" {% if patient.site_of_treatment == s.name or schedule.site_of_treatment == s.name %}selected{% endif %}>{{ s.name }}</option>
@@ -232,9 +238,9 @@
                     </select>
                 </div>
                 <div style="display: flex; align-items: center; flex: 1;">
-                    <label class="summary-label" for="ptDiagnosis" style="white-space: nowrap;">Diagnosis: *</label>
+                    <label class="summary-label" for="ptDiagnosis" style="white-space: nowrap; font-size: 12.5px; font-weight: 800;">Diagnosis: *</label>
                     <input type="text" id="ptDiagnosis" name="diagnosis" value="{{ patient.diagnosis }}" required
-                           class="summary-input" style="width: 100%;">
+                           class="summary-input" style="width: 100%; font-size: 13.5px; font-weight: bold; border: 1.5px solid #2e7d32;">
                 </div>
             </div>
         </div>
@@ -296,8 +302,8 @@
             </div>
 
             <div class="scheduler-body-compact">
-                <!-- PARAMETERS ROW 1: Simulation Date, Intent, Techniques (IMRT default, None default) -->
-                <div style="display: grid; grid-template-columns: 160px 160px 160px 160px 1fr; gap: 10px; margin-bottom: 8px;">
+                <!-- PARAMETERS ROW 1: Simulation Date, Intent, Techniques (IMRT default, None default), Simulated For (Compact 20ch) -->
+                <div style="display: grid; grid-template-columns: 145px 145px 145px 145px 20ch; gap: 10px; margin-bottom: 8px; justify-content: start;">
                     <div>
                         <label for="dateOfSim" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
                             CT Simulation Date: *
@@ -356,11 +362,11 @@
                         </select>
                     </div>
 
-                    <div>
-                        <label for="simulatedForSelect" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f;">
+                    <div style="width: 20ch; max-width: 20ch;">
+                        <label for="simulatedForSelect" style="display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; color: #24292f; white-space: nowrap;">
                             Simulated For:
                         </label>
-                        <select name="simulated_for" id="simulatedForSelect" class="form-control-compact">
+                        <select name="simulated_for" id="simulatedForSelect" class="form-control-compact" style="width: 20ch; max-width: 20ch; box-sizing: border-box;">
                             <option value="" {% if not schedule or not schedule.simulated_for_id %}selected{% endif %}>
                                 -- No Selection --
                             </option>
@@ -592,10 +598,10 @@
                             <tr>
                                 <th style="width: 38px; text-align: center;">Select</th>
                                 <th style="width: 140px;">Machine Name</th>
-                                <th style="width: 75px;">Type</th>
-                                <th style="min-width: 200px;">Earliest Available Date (Recommended)</th>
-                                <th style="min-width: 230px;">Custom Date & Shift Selection (After Recommended)</th>
-                                <th style="min-width: 200px;">Reason for Custom Date</th>
+                                <th style="width: 70px;">Type</th>
+                                <th style="width: 195px;">Earliest Available Date (Recommended)</th>
+                                <th style="width: 255px;">Custom Date & Shift Selection (After Recommended)</th>
+                                <th style="min-width: 220px;">Reason for Custom Date</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -853,9 +859,12 @@
 
     // Validation on Submit
     function validateScheduleSubmission() {
-        if (gFormAction === 'draft') {
-            // Saving as draft bypasses mandatory slot and machine requirements
-            return true;
+        // Site of Treatment is always strictly mandatory
+        const siteVal = document.getElementById('top_site_dropdown')?.value.trim();
+        if (!siteVal) {
+            alert("Site of Treatment is mandatory for scheduling.");
+            document.getElementById('top_site_dropdown')?.focus();
+            return false;
         }
 
         const isBrachy = document.getElementById('modalityBrachy')?.checked;
@@ -864,13 +873,12 @@
             return false;
         }
 
-        // Validate mandatory clinical parameters for Approve & Schedule:
-        const siteVal = document.getElementById('top_site_dropdown')?.value.trim();
-        if (!siteVal) {
-            alert("Site of Treatment is mandatory for scheduling.");
-            document.getElementById('top_site_dropdown')?.focus();
-            return false;
+        if (gFormAction === 'draft') {
+            // Saving as draft bypasses mandatory slot and machine requirements
+            return true;
         }
+
+        // Validate mandatory clinical parameters for Approve & Schedule:
 
         const diagnosisVal = document.getElementById('ptDiagnosis')?.value.trim();
         if (!diagnosisVal) {

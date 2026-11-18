@@ -147,6 +147,9 @@ def schedule_patient_view(request, patient_id):
         patient.age = int(float(age_raw)) if age_raw else None
         patient.diagnosis = request.POST.get('diagnosis', patient.diagnosis).strip()
         site_val = request.POST.get('site_of_treatment', patient.site_of_treatment or '').strip()
+        if not site_val:
+            messages.error(request, "Site of Treatment is mandatory.")
+            return redirect('schedule_patient', patient_id=patient.id)
         patient.site_of_treatment = site_val
 
         old_phone = patient.phone_no or ''
