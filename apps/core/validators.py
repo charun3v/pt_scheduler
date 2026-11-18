@@ -68,6 +68,7 @@ def validate_field_value(field_name: str, raw_value) -> tuple[bool, str | None]:
         return True, None
 
     val_str = str(raw_value).strip() if raw_value is not None else ""
+    unit_name = "digits" if cfg.numeric_only else "characters"
 
     # Check blank
     if not val_str:
@@ -92,15 +93,38 @@ def validate_field_value(field_name: str, raw_value) -> tuple[bool, str | None]:
 
     if cfg.validation_mode == 'exact':
         if cfg.exact_length and val_len != cfg.exact_length:
-            msg = cfg.custom_error_message or f"{cfg.field_label} must be exactly {cfg.exact_length} characters long (currently {val_len})."
+            if cfg.custom_error_message:
+                nums_in_msg = [int(n) for n in re.findall(r'\b\d+\b', cfg.custom_error_message)]
+                # If custom message contains numbers not matching exact length or mentions a range (multiple numbers), use dynamic message
+                if (nums_in_msg and cfg.exact_length not in nums_in_msg) or len(nums_in_msg) > 1:
+                    msg = f"{cfg.field_label} must be exactly {cfg.exact_length} {unit_name} (currently {val_len} {unit_name})."
+                else:
+                    msg = cfg.custom_error_message
+            else:
+                msg = f"{cfg.field_label} must be exactly {cfg.exact_length} {unit_name} (currently {val_len} {unit_name})."
             return False, msg
 
     elif cfg.validation_mode == 'range':
         if cfg.min_length and val_len < cfg.min_length:
-            msg = cfg.custom_error_message or f"{cfg.field_label} must be at least {cfg.min_length} characters long (currently {val_len})."
+            if cfg.custom_error_message:
+                nums_in_msg = [int(n) for n in re.findall(r'\b\d+\b', cfg.custom_error_message)]
+                if nums_in_msg and cfg.min_length not in nums_in_msg:
+                    msg = f"{cfg.field_label} must be at least {cfg.min_length} {unit_name} (currently {val_len} {unit_name})."
+                else:
+                    msg = cfg.custom_error_message
+            else:
+                msg = f"{cfg.field_label} must be at least {cfg.min_length} {unit_name} (currently {val_len} {unit_name})."
             return False, msg
+
         if cfg.max_length and val_len > cfg.max_length:
-            msg = cfg.custom_error_message or f"{cfg.field_label} cannot exceed {cfg.max_length} characters (currently {val_len})."
+            if cfg.custom_error_message:
+                nums_in_msg = [int(n) for n in re.findall(r'\b\d+\b', cfg.custom_error_message)]
+                if nums_in_msg and cfg.max_length not in nums_in_msg:
+                    msg = f"{cfg.field_label} cannot exceed {cfg.max_length} {unit_name} (currently {val_len} {unit_name})."
+                else:
+                    msg = cfg.custom_error_message
+            else:
+                msg = f"{cfg.field_label} cannot exceed {cfg.max_length} {unit_name} (currently {val_len} {unit_name})."
             return False, msg
 
     # Check custom regex if provided

@@ -106,10 +106,18 @@
 
                     <!-- Custom Error Message -->
                     <div>
-                        <label class="access-label">Custom Error Message (Optional):</label>
-                        <input type="text" name="mr_custom_error_message" value="{{ mr_config.custom_error_message|default:'' }}"
-                               placeholder="e.g. Hospital MR Number must be numeric and between 4 and 10 digits."
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label class="access-label" style="margin: 0; font-weight: bold;">Custom Error Message (Optional):</label>
+                            <button type="button" onclick="clearCustomMsg('mr_custom_msg')" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px; padding: 2px 8px; font-size: 11px; cursor: pointer; color: #003366;">
+                                🧹 Clear (Use Smart Default)
+                            </button>
+                        </div>
+                        <input type="text" name="mr_custom_error_message" id="mr_custom_msg" value="{{ mr_config.custom_error_message|default:'' }}"
+                               placeholder="Leave empty to use automatic smart message (e.g. Hospital / MR Number must be exactly 11 digits)"
                                class="access-input" style="width: 100%;">
+                        <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+                            💡 <em>Tip: Leaving this empty lets the system automatically generate dynamic, accurate messages (e.g. "Hospital / MR Number must be exactly 11 digits (currently 10 digits)").</em>
+                        </div>
                     </div>
                 </div>
 
@@ -190,10 +198,18 @@
 
                     <!-- Custom Error Message -->
                     <div>
-                        <label class="access-label">Custom Error Message (Optional):</label>
-                        <input type="text" name="rt_custom_error_message" value="{{ rt_config.custom_error_message|default:'' }}"
-                               placeholder="e.g. RT Number is required and cannot exceed 15 characters."
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label class="access-label" style="margin: 0; font-weight: bold;">Custom Error Message (Optional):</label>
+                            <button type="button" onclick="clearCustomMsg('rt_custom_msg')" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px; padding: 2px 8px; font-size: 11px; cursor: pointer; color: #003366;">
+                                🧹 Clear (Use Smart Default)
+                            </button>
+                        </div>
+                        <input type="text" name="rt_custom_error_message" id="rt_custom_msg" value="{{ rt_config.custom_error_message|default:'' }}"
+                               placeholder="Leave empty to use automatic smart message"
                                class="access-input" style="width: 100%;">
+                        <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+                            💡 <em>Tip: Leaving this empty lets the system automatically generate dynamic, accurate messages (e.g. "Radiation Therapy (RT) Number cannot exceed 4 characters").</em>
+                        </div>
                     </div>
                 </div>
 
@@ -274,10 +290,18 @@
 
                     <!-- Custom Error Message -->
                     <div>
-                        <label class="access-label">Custom Error Message (Optional):</label>
-                        <input type="text" name="ph_custom_error_message" value="{{ phone_config.custom_error_message|default:'' }}"
-                               placeholder="e.g. Phone number must be numeric and between 10 and 15 digits."
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label class="access-label" style="margin: 0; font-weight: bold;">Custom Error Message (Optional):</label>
+                            <button type="button" onclick="clearCustomMsg('ph_custom_msg')" style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px; padding: 2px 8px; font-size: 11px; cursor: pointer; color: #003366;">
+                                🧹 Clear (Use Smart Default)
+                            </button>
+                        </div>
+                        <input type="text" name="ph_custom_error_message" id="ph_custom_msg" value="{{ phone_config.custom_error_message|default:'' }}"
+                               placeholder="Leave empty to use automatic smart message"
                                class="access-input" style="width: 100%;">
+                        <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+                            💡 <em>Tip: Leaving this empty lets the system automatically generate dynamic, accurate messages (e.g. "Phone / Contact Number must be exactly 10 digits").</em>
+                        </div>
                     </div>
                 </div>
 
@@ -297,6 +321,14 @@
 
 {% block extra_js %}
 <script>
+    function clearCustomMsg(inputId) {
+        const el = document.getElementById(inputId);
+        if (el) {
+            el.value = '';
+            el.focus();
+        }
+    }
+
     function toggleMrFields() {
         const isExact = document.getElementById('mr_mode_exact').checked;
         const isRange = document.getElementById('mr_mode_range').checked;

@@ -131,13 +131,16 @@ def run_tests():
     ok, err = validate_field_value('mr_no', '7654321')  # exactly 7 digits
     assert ok is True, "7-digit numeric MR No should pass"
 
-    # Reset MR No rule to Range (4 to 15 digits) for test execution
+    # Reset MR No rule to Range (4 to 15 digits) and RT rule for test execution
     c.post('/validations/', {
         'mr_validation_mode': 'range',
         'mr_min_length': '4',
         'mr_max_length': '15',
         'mr_numeric_only': '1',
         'mr_custom_error_message': 'MR Number must be numeric and between 4 and 15 digits.',
+        'rt_validation_mode': 'range',
+        'rt_min_length': '1',
+        'rt_max_length': '25',
         'ph_validation_mode': 'range',
         'ph_min_length': '10',
         'ph_max_length': '15',
@@ -1344,11 +1347,11 @@ def run_tests():
     assert doc_user.profile.prefix == 'Mrs'
     assert doc_user.profile.display_name == 'Mrs Ananya Sharma'
 
-    # 3. Patient Registration: Clinical Unit (I, II, III)
+    # 3. Patient Registration: Clinical Unit (I, II, III) dropdown
     resp_reg_form = c.get('/patients/register/')
     assert resp_reg_form.status_code == 200
     reg_html = resp_reg_form.content.decode('utf-8')
-    assert 'unitList' in reg_html, "Unit datalist must be present in patient registration form"
+    assert 'name="unit"' in reg_html and '<select' in reg_html, "Unit select dropdown must be present in patient registration form"
 
     resp_reg_post = c.post('/patients/register/', {
         'mr_no': '9999021',
