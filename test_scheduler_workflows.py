@@ -4442,7 +4442,7 @@ def run_tests():
     assert found_row['patient_name'] == "Test Patient 47"
     assert found_row['diagnosis'] == "Cervix Ca"
     assert found_row['applicator_type'] == "Intracavitary + Interstitial"
-    assert found_row['unit'] == "Unit II"
+    assert found_row['unit'] == "II"
 
     # HTML page rendering for daily list
     resp_daily_html = client.get(f'/scheduler/brachytherapy/daily-list/?date={today_dt.strftime("%Y-%m-%d")}')
@@ -4546,6 +4546,7 @@ def run_tests():
     assert row_pt['mr_no'] == 9999048
     assert row_pt['patient_name'] == "Test Patient 48"
     assert row_pt['age_sex'] == "58/F"
+    assert row_pt['unit'] == "I"
     assert row_pt['fraction'] == 1
     assert row_pt['is_date_reached'] is True
 

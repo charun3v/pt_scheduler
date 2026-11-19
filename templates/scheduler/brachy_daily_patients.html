@@ -155,19 +155,19 @@
                     <tr>
                         <th style="width: 40px; text-align: center;">SL No</th>
                         <th style="width: 105px; text-align: center;">MR NO</th>
-                        <th style="min-width: 120px;">Name</th>
+                        <th style="width: 96px; min-width: 96px;">Name</th>
                         <th style="width: 65px; text-align: center;">Age / Sex</th>
-                        <th style="min-width: 120px;">Diagnosis</th>
+                        <th style="min-width: 115px;">Diagnosis</th>
                         <th style="min-width: 115px;">Applicator type</th>
-                        <th style="min-width: 110px;">Anesthesia type</th>
+                        <th style="width: 99px; min-width: 99px;">Anesthesia type</th>
                         <th style="min-width: 105px;">Brachy Machine</th>
-                        <th style="min-width: 115px;">Consultant</th>
-                        <th style="width: 65px; text-align: center;">Unit</th>
+                        <th style="width: 92px; min-width: 92px;">Consultant</th>
+                        <th style="width: 36px; text-align: center;">Unit</th>
                         <th style="min-width: 150px; text-align: center;">Brachy Treatment Status</th>
                         {% if can_edit %}
                         <th style="width: 65px; text-align: center;" class="no-print">Actions</th>
                         {% endif %}
-                        <th style="min-width: 130px;">Remarks / Notes</th>
+                        <th style="min-width: 250px;">Remarks / Notes</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -183,9 +183,9 @@
                             {{ r.mr_no }}
                         </td>
 
-                        <!-- 3. Name (Patient name only, no RT number) -->
-                        <td>
-                            <a href="{% url 'patient_detail' r.patient_id %}" target="_blank" style="color: #003366; text-decoration: underline; font-weight: 700; font-size: 13.5px;">
+                        <!-- 3. Name (Patient name only, reduced space by 20%) -->
+                        <td style="width: 96px; min-width: 96px; max-width: 110px; word-break: break-word;">
+                            <a href="{% url 'patient_detail' r.patient_id %}" target="_blank" style="color: #003366; text-decoration: underline; font-weight: 700; font-size: 13px;">
                                 {{ r.patient_name }}
                             </a>
                         </td>
@@ -212,8 +212,8 @@
                             {% endif %}
                         </td>
 
-                        <!-- 7. Anesthesia type -->
-                        <td id="disp_ana_{{ r.id }}" style="font-weight: normal; color: #1e293b;">
+                        <!-- 7. Anesthesia type (Reduced space by 10%) -->
+                        <td id="disp_ana_{{ r.id }}" style="width: 99px; min-width: 99px; max-width: 105px; word-break: break-word; font-weight: normal; color: #1e293b;">
                             {{ r.anesthesia_name }}
                         </td>
 
@@ -222,14 +222,14 @@
                             {{ r.machine_name }}
                         </td>
 
-                        <!-- 9. Consultant -->
-                        <td style="font-weight: normal; color: #1e293b;">
+                        <!-- 9. Consultant (Reduced space by 20%) -->
+                        <td style="width: 92px; min-width: 92px; max-width: 105px; word-break: break-word; font-weight: normal; color: #1e293b;">
                             {{ r.consultant }}
                         </td>
 
-                        <!-- 10. Unit -->
-                        <td style="text-align: center;">
-                            <span class="badge-unit">{{ r.unit }}</span>
+                        <!-- 10. Unit (Recorded as only I, II, etc. - no styling to reduce space) -->
+                        <td style="width: 36px; text-align: center; color: #1e293b; font-weight: 600;">
+                            {{ r.unit }}
                         </td>
 
                         <!-- 11. Brachy Treatment Status (Active/visible once current date reaches Brachy date) -->
@@ -270,8 +270,8 @@
                         </td>
                         {% endif %}
 
-                        <!-- 13. Remarks / Notes (Last Column) -->
-                        <td id="disp_remarks_{{ r.id }}" style="color: #475569; font-size: 12px; font-style: italic;">
+                        <!-- 13. Remarks / Notes (Enlarged size) -->
+                        <td id="disp_remarks_{{ r.id }}" style="color: #334155; font-size: 12px; line-height: 1.35; min-width: 250px;">
                             {{ r.remarks|default:"-" }}
                         </td>
                     </tr>

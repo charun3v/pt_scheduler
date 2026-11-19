@@ -1871,7 +1871,9 @@ def brachy_daily_patients_view(request):
             app_type_disp = a.applicator_type.applicator_type or a.applicator_type.name
 
         consultant_name = a.patient.primary_consultant.name if a.patient.primary_consultant else 'Unassigned'
-        unit_disp = f"Unit {a.patient.unit}" if a.patient.unit else "Unit I"
+        unit_disp = str(a.patient.unit).replace('Unit', '').strip() if a.patient.unit else "I"
+        if not unit_disp:
+            unit_disp = "I"
 
         machine_name = 'Brachy Unit'
         if a.schedule and a.schedule.machine:
@@ -1974,7 +1976,9 @@ def brachy_daily_patients_api(request):
             app_type_disp = a.applicator_type.applicator_type or a.applicator_type.name
 
         consultant_name = a.patient.primary_consultant.name if a.patient.primary_consultant else 'Unassigned'
-        unit_disp = f"Unit {a.patient.unit}" if a.patient.unit else "Unit I"
+        unit_disp = str(a.patient.unit).replace('Unit', '').strip() if a.patient.unit else "I"
+        if not unit_disp:
+            unit_disp = "I"
 
         machine_name = 'Brachy Unit'
         if a.schedule and a.schedule.machine:
