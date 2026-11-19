@@ -5,9 +5,11 @@
 {% block extra_head %}
 <style>
     .daily-container {
-        max-width: 1200px;
+        width: 100%;
+        max-width: 100%;
         margin: 0 auto;
-        padding: 10px 14px;
+        padding: 4px 6px;
+        box-sizing: border-box;
         font-family: Calibri, 'Segoe UI', Arial, sans-serif;
     }
     .daily-card {
@@ -16,6 +18,7 @@
         border-radius: 6px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         overflow: hidden;
+        width: 100%;
     }
     .daily-header {
         background: #003366;
@@ -30,21 +33,21 @@
     .daily-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 13px;
+        font-size: 12.5px;
     }
     .daily-table th {
         background: #f1f5f9;
         color: #0f172a;
         font-weight: 700;
-        font-size: 12px;
+        font-size: 11.5px;
         text-transform: uppercase;
-        padding: 8px 10px;
+        padding: 7px 8px;
         border-bottom: 2px solid #cbd5e1;
         border-right: 1px solid #e2e8f0;
         white-space: nowrap;
     }
     .daily-table td {
-        padding: 8px 10px;
+        padding: 6px 8px;
         border-bottom: 1px solid #e2e8f0;
         border-right: 1px solid #e2e8f0;
         vertical-align: middle;
@@ -150,21 +153,21 @@
             <table class="daily-table">
                 <thead>
                     <tr>
-                        <th style="width: 45px; text-align: center;">SL No</th>
-                        <th style="width: 110px; text-align: center;">MR NO</th>
-                        <th style="min-width: 140px;">Name</th>
-                        <th style="width: 75px; text-align: center;">Age / Sex</th>
-                        <th style="min-width: 130px;">Diagnosis</th>
-                        <th style="min-width: 130px;">Applicator type</th>
-                        <th style="min-width: 120px;">Anesthesia type</th>
-                        <th style="min-width: 110px;">Brachy Machine</th>
-                        <th style="min-width: 130px;">Consultant</th>
-                        <th style="width: 75px; text-align: center;">Unit</th>
-                        <th style="min-width: 160px; text-align: center;">Brachy Treatment Status</th>
+                        <th style="width: 40px; text-align: center;">SL No</th>
+                        <th style="width: 105px; text-align: center;">MR NO</th>
+                        <th style="min-width: 120px;">Name</th>
+                        <th style="width: 65px; text-align: center;">Age / Sex</th>
+                        <th style="min-width: 120px;">Diagnosis</th>
+                        <th style="min-width: 115px;">Applicator type</th>
+                        <th style="min-width: 110px;">Anesthesia type</th>
+                        <th style="min-width: 105px;">Brachy Machine</th>
+                        <th style="min-width: 115px;">Consultant</th>
+                        <th style="width: 65px; text-align: center;">Unit</th>
+                        <th style="min-width: 150px; text-align: center;">Brachy Treatment Status</th>
                         {% if can_edit %}
-                        <th style="width: 75px; text-align: center;" class="no-print">Actions</th>
+                        <th style="width: 65px; text-align: center;" class="no-print">Actions</th>
                         {% endif %}
-                        <th style="min-width: 140px;">Remarks / Notes</th>
+                        <th style="min-width: 130px;">Remarks / Notes</th>
                     </tr>
                 </thead>
                 <tbody>
