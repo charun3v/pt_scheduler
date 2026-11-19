@@ -346,7 +346,12 @@
 
                         <!-- Fractionation -->
                         <td>
-                            {% if s.no_of_fractions %}
+                            {% if s.treatment_type == 'Brachytherapy' %}
+                                <strong>{{ s.total_brachy_applications }}</strong> <span style="font-size: 10px; color: #57606a;">App{{ s.total_brachy_applications|pluralize }}</span>
+                                <div style="font-size: 10.5px; color: #0284c7; font-weight: 700; margin-top: 2px;">
+                                    {{ s.total_brachy_fractions_delivered }} Fr delivered
+                                </div>
+                            {% elif s.no_of_fractions %}
                                 <strong>{{ s.no_of_fractions }}</strong> <span style="font-size: 10px; color: #57606a;">Fr</span>
                             {% else %}
                                 <span style="color: #57606a;">-</span>
@@ -428,6 +433,12 @@
 
                             {% if not s.actual_treatment_status and not s.actual_start_date and not s.actual_end_date %}
                                 <span style="color: #94a3b8; font-style: italic; font-size: 11px;">Not recorded</span>
+                            {% endif %}
+
+                            {% if s.treatment_type == 'Brachytherapy' %}
+                                <div style="font-size: 10px; color: #003366; font-weight: 600; margin-top: 3px; background: #f0f9ff; padding: 2px 6px; border-radius: 3px; border: 1px solid #bae6fd; display: inline-block;">
+                                    Apps: <strong>{{ s.total_brachy_applications }}</strong> | Fr Delivered: <strong>{{ s.total_brachy_fractions_delivered }}</strong>
+                                </div>
                             {% endif %}
 
                             {% if CAN_SCHEDULE_PATIENT %}

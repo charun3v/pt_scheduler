@@ -284,6 +284,9 @@
                                                data-applicator="{{ appt.applicator }}"
                                                data-anesthesia="{{ appt.anesthesia }}"
                                                data-fraction="{{ appt.fraction }}"
+                                               data-fractions-treated="{{ appt.fractions_treated|default:1 }}"
+                                               data-total-apps="{{ appt.total_applications|default:0 }}"
+                                               data-fractions-delivered="{{ appt.fractions_delivered|default:0 }}"
                                                data-date="{{ appt.date }}"
                                                data-status="{{ appt.status }}"
                                                data-remarks="{{ appt.remarks }}">
@@ -319,6 +322,7 @@
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Applicator:</strong> <span id="tt_app"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Anaesthesia:</strong> <span id="tt_ana"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Scheduled:</strong> <span id="tt_date"></span> (<span id="tt_frac"></span>)</div>
+    <div style="font-size: 11px; margin-bottom: 2px;"><strong>Course:</strong> <span id="tt_course"></span></div>
     <div style="font-size: 11px; margin-bottom: 2px;"><strong>Status:</strong> <span id="tt_status"></span></div>
     <div id="tt_remarks_row" style="font-size: 11px; margin-top: 4px; color: #94a3b8; font-style: italic;"></div>
 </div>
@@ -512,6 +516,17 @@
                 </div>
             </div>
 
+            <!-- Number of Fractions Treated -->
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Number of fractions treated (in that application): *
+                </label>
+                <input type="number" id="cal_status_modal_fractions_treated" min="1" max="10" value="1" required style="width: 100%; padding: 7px 10px; font-size: 13.5px; border: 1.5px solid #0078d4; border-radius: 4px; font-family: Calibri, 'Segoe UI', Arial, sans-serif; box-sizing: border-box;">
+                <div style="font-size: 11px; color: #475569; margin-top: 3px;">
+                    Enter the number of fractions delivered in this application session (default: 1).
+                </div>
+            </div>
+
             <!-- Notes / Remarks -->
             <div style="margin-bottom: 16px;">
                 <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
@@ -668,6 +683,9 @@
                                data-applicator="${escapeHtml(appt.applicator)}"
                                data-anesthesia="${escapeHtml(appt.anesthesia)}"
                                data-fraction="${appt.fraction}"
+                               data-fractions-treated="${appt.fractions_treated || 1}"
+                               data-total-apps="${appt.total_applications || 0}"
+                               data-fractions-delivered="${appt.fractions_delivered || 0}"
                                data-date="${appt.date}"
                                data-status="${appt.status}"
                                data-remarks="${escapeHtml(appt.remarks)}">
@@ -703,6 +721,7 @@
         document.getElementById('tt_ana').textContent = el.dataset.anesthesia;
         document.getElementById('tt_date').textContent = el.dataset.date;
         document.getElementById('tt_frac').textContent = 'Application ' + el.dataset.fraction;
+        document.getElementById('tt_course').textContent = (el.dataset.totalApps || '0') + ' Applications (' + (el.dataset.fractionsDelivered || '0') + ' Fr delivered)';
         document.getElementById('tt_status').textContent = el.dataset.status;
 
         const remarksRow = document.getElementById('tt_remarks_row');
@@ -749,6 +768,9 @@
                 </div>
                 <div style="font-size: 11.5px; color: #1e293b; margin-top: 2px;">
                     Applicator: <span style="background: ${a.color}; color: #fff; padding: 1px 6px; border-radius: 3px; font-weight: bold; font-size: 10px;">${escapeHtml(a.applicator)}</span> | Anaesthesia: <strong>${escapeHtml(a.anesthesia)}</strong>
+                </div>
+                <div style="font-size: 11.5px; color: #003366; margin-top: 2px;">
+                    Course Progress: <strong>${a.total_applications || 0} Applications</strong> | <strong>${a.fractions_delivered || 0} Fr delivered</strong>
                 </div>
                 ${a.remarks ? `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 4px;">Notes: ${escapeHtml(a.remarks)}</div>` : ''}
             </a>`;
@@ -830,6 +852,7 @@
                             <th style="padding: 7px 8px; width: 105px; text-align: center;">MR NO</th>
                             <th style="padding: 7px 8px; text-align: left; width: 192px; min-width: 192px;">Name</th>
                             <th style="padding: 7px 8px; text-align: center; width: 75px;">Age / Sex</th>
+                            <th style="padding: 7px 8px; width: 75px; text-align: center; white-space: nowrap;">Fraction No</th>
                             <th style="padding: 7px 8px; text-align: left; min-width: 115px;">Diagnosis</th>
                             <th style="padding: 7px 8px; text-align: left; width: 135px; min-width: 135px; white-space: nowrap;">Applicator type</th>
                             <th style="padding: 7px 8px; text-align: left; width: 175px; min-width: 175px; white-space: nowrap;">Anesthesia type</th>
@@ -847,17 +870,17 @@
                 let statusHtml = '';
                 if (a.is_date_reached) {
                     if (a.is_completed) {
-                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', '${escapeHtml(a.status_display || a.status)}');"
+                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', '${escapeHtml(a.status_display || a.status)}', ${a.fractions_treated || 1});"
                                          style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 11px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="Click to view or edit status">
                                           ✅ App ${a.fraction}: Completed
                                       </a>`;
                     } else if (a.status === 'Scheduled') {
-                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', 'Scheduled');"
+                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', 'Scheduled', ${a.fractions_treated || 1});"
                                          style="background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 11px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="Current date has reached Brachy date - click to record status">
                                           ⚡ App ${a.fraction}: Record Status &rarr;
                                       </a>`;
                     } else {
-                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', '${escapeHtml(a.status_display || a.status)}');"
+                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', '${escapeHtml(a.status_display || a.status)}', ${a.fractions_treated || 1});"
                                          style="background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 11px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="Click to view or edit status">
                                           ⚠️ App ${a.fraction}: ${escapeHtml(a.status_display || a.status)}
                                       </a>`;
@@ -885,6 +908,11 @@
 
                     <!-- 4. Age / Sex -->
                     <td style="padding: 7px 8px; text-align: center; color: #334155; white-space: nowrap;">${escapeHtml(a.age_sex)}</td>
+
+                    <!-- 4b. Fraction No -->
+                    <td style="padding: 7px 8px; text-align: center; white-space: nowrap; font-weight: 700;">
+                        ${a.has_unfinalized_prev ? '<span style="font-size: 15px; color: #dc2626;" title="Complete the previous application details before finalising the list">⚠️</span>' : `<span style="color: #003366; font-size: 13px;">${a.fraction_no !== null ? a.fraction_no : '-'}</span>`}
+                    </td>
 
                     <!-- 5. Diagnosis -->
                     <td style="padding: 7px 8px; color: #1e293b;">${escapeHtml(a.diagnosis)}</td>
@@ -932,6 +960,13 @@
             });
 
             html += `</tbody></table></div>`;
+            if (data.has_incomplete_prev_appts) {
+                html += `
+                <div style="margin-top: 10px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 12px; color: #92400e; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 16px;">⚠️</span>
+                    <span><strong>Note:</strong> Complete the previous application details before finalising the list.</span>
+                </div>`;
+            }
             container.innerHTML = html;
         })
         .catch(err => {
@@ -939,7 +974,7 @@
         });
     }
 
-    function openCalBrachyStatusModal(apptId, ptName, mrNo, fraction, statusId, remarks, currentStatus) {
+    function openCalBrachyStatusModal(apptId, ptName, mrNo, fraction, statusId, remarks, currentStatus, fractionsTreated) {
         document.getElementById('cal_status_modal_appt_id').value = apptId;
         document.getElementById('cal_status_modal_patient_info').innerText = ptName + ' (MR: ' + mrNo + ')';
         document.getElementById('cal_status_modal_date_disp').innerText = document.getElementById('modalDateQueryInput').value;
@@ -947,6 +982,7 @@
         document.getElementById('cal_status_modal_app_help').innerText = 'App ' + fraction;
         document.getElementById('cal_status_modal_next_app_help').innerText = 'App ' + (parseInt(fraction) + 1);
         document.getElementById('cal_status_modal_remarks').value = remarks || '';
+        document.getElementById('cal_status_modal_fractions_treated').value = fractionsTreated || 1;
 
         const sel = document.getElementById('cal_status_modal_status_id');
         sel.innerHTML = '';
@@ -979,6 +1015,8 @@
         const formData = new FormData();
         formData.append('status_id', document.getElementById('cal_status_modal_status_id').value);
         formData.append('remarks', document.getElementById('cal_status_modal_remarks').value);
+        const fractionsTreated = document.getElementById('cal_status_modal_fractions_treated') ? document.getElementById('cal_status_modal_fractions_treated').value : 1;
+        formData.append('fractions_treated', fractionsTreated);
         formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
 
         fetch('/scheduler/brachytherapy/api/appointment/' + apptId + '/status/', {

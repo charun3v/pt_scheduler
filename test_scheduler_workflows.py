@@ -4811,6 +4811,194 @@ def run_tests():
     pt_50.delete()
     print("✓ Test 50 Passed: Schedule Status Priority, Completed Badge & Pending Prevention fully verified.")
 
+    # --- Test 51: Brachytherapy Active Course Application Continuation, Fractions Treated, Daily List Fraction No & Lock ---
+    print("\n--- Test 51: Brachytherapy Active Course Application Continuation, Fractions Treated, Daily List Fraction No & Lock ---")
+    Patient.objects.filter(mr_no=9999051).delete()
+
+    pt_51 = Patient.objects.create(
+        mr_no=9999051,
+        pt_name="Test51 BrachyPatient",
+        age=58,
+        sex="F",
+        unit="I",
+        phone_no="9876543210",
+        site_of_treatment="Pelvis",
+        diagnosis="CS Cx",
+        primary_consultant=active_consultant
+    )
+
+    app_type = BrachyApplicator.objects.first()
+    ana_type = BrachyAnesthesia.objects.first()
+    comp_status = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
+    if not comp_status:
+        comp_status = TreatmentCompletionStatus.objects.create(name="Completed", is_completed=True)
+
+    today = timezone.localdate()
+    d1 = today - timedelta(days=2)
+    d2 = today - timedelta(days=1)
+    d3 = today
+
+    # 1. Schedule initial 3 applications upfront
+    sched_51 = TreatmentSchedule.objects.create(
+        patient=pt_51,
+        treatment_type='Brachytherapy',
+        machine=brachy_mach_50,
+        applicator_type=app_type,
+        anesthesia_type=ana_type,
+        site_of_treatment="Pelvis",
+        date_of_start=d1,
+        date_of_end=d3,
+        no_of_fractions=3,
+        status='Scheduled',
+        created_by=admin_user
+    )
+
+    a1 = BrachytherapyAppointment.objects.create(
+        schedule=sched_51,
+        patient=pt_51,
+        fraction_number=1,
+        appointment_date=d1,
+        applicator_type=app_type,
+        anesthesia_type=ana_type,
+        site_of_treatment="Pelvis",
+        status='Scheduled',
+        created_by=admin_user
+    )
+    a2 = BrachytherapyAppointment.objects.create(
+        schedule=sched_51,
+        patient=pt_51,
+        fraction_number=2,
+        appointment_date=d2,
+        applicator_type=app_type,
+        anesthesia_type=ana_type,
+        site_of_treatment="Pelvis",
+        status='Scheduled',
+        created_by=admin_user
+    )
+    a3 = BrachytherapyAppointment.objects.create(
+        schedule=sched_51,
+        patient=pt_51,
+        fraction_number=3,
+        appointment_date=d3,
+        applicator_type=app_type,
+        anesthesia_type=ana_type,
+        site_of_treatment="Pelvis",
+        status='Scheduled',
+        created_by=admin_user
+    )
+
+    # 2. Daily List for d1 (App 1): fraction_no is 1, has_unfinalized_prev is False
+    client.force_login(admin_user)
+    resp_dl_d1 = client.get(f'/scheduler/brachytherapy/api/daily-list/?date={d1.isoformat()}')
+    assert resp_dl_d1.status_code == 200
+    data_d1 = resp_dl_d1.json()
+    pt51_row_d1 = next(r for r in data_d1['appointments'] if r['mr_no'] == 9999051)
+    assert pt51_row_d1['fraction_no'] == 1
+    assert pt51_row_d1['has_unfinalized_prev'] is False
+
+    # 3. Daily List for d2 (App 2): App 1 status NOT entered yet!
+    # Must show has_unfinalized_prev=True, fraction_no=None, has_incomplete_prev_appts=True
+    resp_dl_d2 = client.get(f'/scheduler/brachytherapy/api/daily-list/?date={d2.isoformat()}')
+    assert resp_dl_d2.status_code == 200
+    data_d2 = resp_dl_d2.json()
+    assert data_d2['has_incomplete_prev_appts'] is True
+    pt51_row_d2 = next(r for r in data_d2['appointments'] if r['mr_no'] == 9999051)
+    assert pt51_row_d2['has_unfinalized_prev'] is True
+    assert pt51_row_d2['fraction_no'] is None
+
+    # HTML view check for print block and warning legend
+    resp_dl_view = client.get(f'/scheduler/brachytherapy/daily-list/?date={d2.isoformat()}')
+    assert resp_dl_view.status_code == 200
+    html_dl = resp_dl_view.content.decode('utf-8')
+    assert "Complete the previous application details before finalising the list" in html_dl
+    assert "⚠️" in html_dl
+    assert "gHasIncompletePrevAppts = true" in html_dl
+
+    # 4. Record status of App 1 with fractions_treated = 2
+    resp_status_a1 = client.post(f'/scheduler/brachytherapy/api/appointment/{a1.id}/status/', {
+        'status_id': comp_status.id,
+        'fractions_treated': 2,
+        'remarks': 'Delivered 2 fractions in session 1'
+    })
+    assert resp_status_a1.status_code == 200
+    data_st_a1 = resp_status_a1.json()
+    assert data_st_a1['success'] is True
+    assert data_st_a1['fractions_treated'] == 2
+
+    a1.refresh_from_db()
+    assert a1.status == 'Completed'
+    assert a1.fractions_treated == 2
+
+    # Verify TreatmentSchedule total delivered fractions
+    sched_51.refresh_from_db()
+    assert sched_51.total_brachy_applications == 3
+    assert sched_51.total_brachy_fractions_delivered == 2
+
+    # Now check Daily List for d2 again: App 1 is finalized, so App 2 should be Fraction 3 (prev fractions: 2 + 1 = 3)
+    resp_dl_d2_after = client.get(f'/scheduler/brachytherapy/api/daily-list/?date={d2.isoformat()}')
+    assert resp_dl_d2_after.status_code == 200
+    data_d2_after = resp_dl_d2_after.json()
+    pt51_row_d2_after = next(r for r in data_d2_after['appointments'] if r['mr_no'] == 9999051)
+    assert pt51_row_d2_after['has_unfinalized_prev'] is False
+    assert pt51_row_d2_after['fraction_no'] == 3
+
+    # 5. Application Numbering Continuation in Active Course:
+    d4 = today + timedelta(days=1)
+    # Attempting to schedule next application while App 2 has arrived and has no status is blocked:
+    resp_sched_blocked = client.post(f'/scheduler/patient/{pt_51.id}/brachytherapy/', {
+        'selected_dates': json.dumps([d4.strftime('%Y-%m-%d')]),
+        'applicator_id': app_type.id,
+        'anesthesia_id': ana_type.id,
+        'machine_id': brachy_mach_50.id,
+        'site_of_treatment': 'Pelvis',
+        'remarks': 'Subsequent application booking'
+    }, follow=True)
+    blocked_html = resp_sched_blocked.content.decode('utf-8')
+    assert "Application status" in blocked_html or "Please record its completion status" in blocked_html
+
+    # Record status for App 2 and App 3
+    client.post(f'/scheduler/brachytherapy/api/appointment/{a2.id}/status/', {
+        'status_id': comp_status.id,
+        'fractions_treated': 1,
+        'remarks': 'App 2 completed'
+    })
+    client.post(f'/scheduler/brachytherapy/api/appointment/{a3.id}/status/', {
+        'status_id': comp_status.id,
+        'fractions_treated': 1,
+        'remarks': 'App 3 completed'
+    })
+
+    # Now booking a 4th application (Day 4) succeeds and continues from prev App no + 1 -> App 4
+    resp_sched_d4 = client.post(f'/scheduler/patient/{pt_51.id}/brachytherapy/', {
+        'selected_dates': json.dumps([d4.strftime('%Y-%m-%d')]),
+        'applicator_id': app_type.id,
+        'anesthesia_id': ana_type.id,
+        'machine_id': brachy_mach_50.id,
+        'site_of_treatment': 'Pelvis',
+        'remarks': 'Subsequent application booking'
+    }, follow=True)
+    assert resp_sched_d4.status_code == 200
+
+    a4 = BrachytherapyAppointment.objects.filter(patient=pt_51, appointment_date=d4).first()
+    assert a4 is not None
+    assert a4.fraction_number == 4, f"Expected App 4, got App {a4.fraction_number}"
+
+    # Verify Patient Details display total applications and fractions delivered
+    resp_pt_detail = client.get(f'/patients/{pt_51.id}/')
+    assert resp_pt_detail.status_code == 200
+    pt_detail_html = resp_pt_detail.content.decode('utf-8')
+    assert "Fr delivered" in pt_detail_html
+    assert "App" in pt_detail_html
+
+    # Cleanup
+    a1.delete()
+    a2.delete()
+    a3.delete()
+    a4.delete()
+    sched_51.delete()
+    pt_51.delete()
+    print("✓ Test 51 Passed: Active Course Numbering Continuation, Fractions Treated, Daily List Fraction No & Print Lock fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

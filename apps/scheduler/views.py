@@ -1349,6 +1349,9 @@ def get_month_calendar_data(year, month, user=None):
             'text_color': a.applicator_type.text_color if a.applicator_type else '#ffffff',
             'anesthesia': a.anesthesia_type.name if a.anesthesia_type else 'Not specified',
             'fraction': a.fraction_number,
+            'fractions_treated': a.fractions_treated or 1,
+            'total_applications': a.schedule.total_brachy_applications if a.schedule else a.patient.brachy_appointments.count(),
+            'fractions_delivered': a.schedule.total_brachy_fractions_delivered if a.schedule else sum(p.fractions_treated or 1 for p in a.patient.brachy_appointments.filter(status='Completed')),
             'date': a.appointment_date.strftime('%d-%b-%Y'),
             'date_iso': d_str,
             'status': a.status,
@@ -1525,10 +1528,15 @@ def brachy_schedule_patient_view(request, patient_id):
     default_site_not_in_sites = bool(default_site and default_site.lower() not in sites_names)
 
     # Existing active brachytherapy appointments for this patient
-    existing_appts = BrachytherapyAppointment.objects.filter(
-        patient=patient,
-        status='Scheduled'
-    ).select_related('applicator_type', 'anesthesia_type').order_by('appointment_date')
+    # As long as a Brachy course is active, a new application scheduled will be the prev App no + 1
+    course_appts = patient.brachy_appointments.all()
+    if existing_brachy:
+        course_appts = course_appts.filter(Q(schedule=existing_brachy) | Q(schedule__isnull=True))
+
+    last_appt_in_course = course_appts.order_by('-fraction_number').first()
+    prev_max_app_num = last_appt_in_course.fraction_number if last_appt_in_course else 0
+
+    existing_appts = course_appts.exclude(status='Cancelled').select_related('applicator_type', 'anesthesia_type').order_by('appointment_date')
 
     # Uncompleted previous brachytherapy appointments (status not entered for an appointment whose date has arrived)
     uncompleted_prev_appts = patient.brachy_appointments.filter(
@@ -1746,9 +1754,12 @@ def brachy_schedule_patient_view(request, patient_id):
             brachy_schedule.status = 'Scheduled'
             brachy_schedule.save()
 
-        # Determine starting application number for new bookings
-        last_appt = existing_appts.order_by('-fraction_number').first()
-        effective_existing_count = last_appt.fraction_number if last_appt else existing_appts.count()
+        # Determine starting application number for new bookings:
+        # As long as a Brachy course is active, a new application scheduled will be prev App no + 1
+        last_appt_in_course = patient.brachy_appointments.filter(
+            Q(schedule=brachy_schedule) | Q(schedule__isnull=True)
+        ).order_by('-fraction_number').first()
+        effective_existing_count = last_appt_in_course.fraction_number if last_appt_in_course else 0
 
         # Create BrachytherapyAppointment records
         created_appts = []
@@ -1835,7 +1846,9 @@ def brachy_schedule_patient_view(request, patient_id):
         'default_site': default_site,
         'default_site_not_in_sites': default_site_not_in_sites,
         'existing_appts': existing_appts,
-        'existing_appts_count': existing_appts.order_by('-fraction_number').first().fraction_number if existing_appts.exists() else existing_appts.count(),
+        'existing_appts_count': prev_max_app_num,
+        'total_applications_count': course_appts.count(),
+        'total_fractions_delivered': sum(a.fractions_treated or 1 for a in course_appts.filter(status='Completed')),
         'uncompleted_prev_appt': uncompleted_prev_appt,
         'completion_statuses': completion_statuses,
         'initial_remarks': initial_remarks,
@@ -1920,6 +1933,8 @@ def brachy_daily_patients_view(request):
 
     is_date_reached = (target_date <= today)
 
+    has_incomplete_prev_appts = False
+
     rows = []
     for idx, a in enumerate(appts, 1):
         app_type_disp = '-'
@@ -1950,6 +1965,33 @@ def brachy_daily_patients_view(request):
                 remarks_val = a.schedule.notes
         remarks_val = remarks_val or ''
 
+        # Fraction No calculation:
+        # For the first application, it is going to be 1.
+        # From the second application onwards it has to be calculated based on the number of fractions given in previous application(s).
+        # The number only appears when the previous application details have been entered and finalised.
+        # If not, the Fraction number will show a warning symbol with a legend below.
+        prior_appts = a.patient.brachy_appointments.filter(
+            Q(appointment_date__lt=a.appointment_date) |
+            Q(appointment_date=a.appointment_date, fraction_number__lt=a.fraction_number)
+        ).exclude(status='Cancelled').order_by('appointment_date', 'fraction_number')
+
+        if not prior_appts.exists() or a.fraction_number == 1:
+            fraction_no_disp = 1
+            has_unfinalized_prev = False
+        else:
+            unfinalized_prior = [
+                p for p in prior_appts
+                if not p.completion_status or (not p.completion_status.is_completed and p.status != 'Completed')
+            ]
+            if unfinalized_prior:
+                has_unfinalized_prev = True
+                fraction_no_disp = None
+                has_incomplete_prev_appts = True
+            else:
+                has_unfinalized_prev = False
+                total_prev_fractions = sum(p.fractions_treated or 1 for p in prior_appts)
+                fraction_no_disp = total_prev_fractions + 1
+
         rows.append({
             'sl_no': idx,
             'id': a.id,
@@ -1958,6 +2000,8 @@ def brachy_daily_patients_view(request):
             'mr_no': a.patient.mr_no,
             'rt_no': a.patient.rt_no or '-',
             'age_sex': a.patient.age_sex_display,
+            'fraction_no': fraction_no_disp,
+            'has_unfinalized_prev': has_unfinalized_prev,
             'diagnosis': a.patient.diagnosis or 'Not specified',
             'applicator_name': a.applicator_type.name if a.applicator_type else 'Brachytherapy',
             'applicator_id': a.applicator_type_id,
@@ -1970,6 +2014,7 @@ def brachy_daily_patients_view(request):
             'consultant': consultant_name,
             'unit': unit_disp,
             'fraction': a.fraction_number,
+            'fractions_treated': a.fractions_treated or 1,
             'remarks': remarks_val,
             'status': a.status,
             'status_display': status_disp,
@@ -1990,6 +2035,7 @@ def brachy_daily_patients_view(request):
         'completion_statuses': completion_statuses,
         'can_edit': can_schedule_patient(request.user),
         'is_date_reached': is_date_reached,
+        'has_incomplete_prev_appts': has_incomplete_prev_appts,
         'today_iso': today.isoformat(),
     }
 
@@ -2000,6 +2046,7 @@ def brachy_daily_patients_view(request):
             'date_iso': target_date.isoformat(),
             'date_formatted': target_date.strftime('%d-%b-%Y'),
             'is_date_reached': is_date_reached,
+            'has_incomplete_prev_appts': has_incomplete_prev_appts,
             'count': len(rows),
             'appointments': rows,
             'completion_statuses': comp_statuses,
@@ -2034,6 +2081,8 @@ def brachy_daily_patients_api(request):
         'schedule', 'schedule__machine'
     ).order_by('fraction_number', 'patient__pt_name')
 
+    has_incomplete_prev_appts = False
+
     rows = []
     for idx, a in enumerate(appts, 1):
         app_type_disp = '-'
@@ -2064,6 +2113,29 @@ def brachy_daily_patients_api(request):
                 remarks_val = a.schedule.notes
         remarks_val = remarks_val or ''
 
+        # Fraction No calculation:
+        prior_appts = a.patient.brachy_appointments.filter(
+            Q(appointment_date__lt=a.appointment_date) |
+            Q(appointment_date=a.appointment_date, fraction_number__lt=a.fraction_number)
+        ).exclude(status='Cancelled').order_by('appointment_date', 'fraction_number')
+
+        if not prior_appts.exists() or a.fraction_number == 1:
+            fraction_no_disp = 1
+            has_unfinalized_prev = False
+        else:
+            unfinalized_prior = [
+                p for p in prior_appts
+                if not p.completion_status or (not p.completion_status.is_completed and p.status != 'Completed')
+            ]
+            if unfinalized_prior:
+                has_unfinalized_prev = True
+                fraction_no_disp = None
+                has_incomplete_prev_appts = True
+            else:
+                has_unfinalized_prev = False
+                total_prev_fractions = sum(p.fractions_treated or 1 for p in prior_appts)
+                fraction_no_disp = total_prev_fractions + 1
+
         rows.append({
             'sl_no': idx,
             'id': a.id,
@@ -2072,6 +2144,8 @@ def brachy_daily_patients_api(request):
             'mr_no': a.patient.mr_no,
             'rt_no': a.patient.rt_no or '-',
             'age_sex': a.patient.age_sex_display,
+            'fraction_no': fraction_no_disp,
+            'has_unfinalized_prev': has_unfinalized_prev,
             'diagnosis': a.patient.diagnosis or 'Not specified',
             'applicator_name': a.applicator_type.name if a.applicator_type else 'Brachytherapy',
             'applicator_id': a.applicator_type_id,
@@ -2084,6 +2158,7 @@ def brachy_daily_patients_api(request):
             'consultant': consultant_name,
             'unit': unit_disp,
             'fraction': a.fraction_number,
+            'fractions_treated': a.fractions_treated or 1,
             'remarks': remarks_val,
             'status': a.status,
             'status_display': status_disp,
@@ -2103,6 +2178,7 @@ def brachy_daily_patients_api(request):
         'date_iso': target_date.isoformat(),
         'date_formatted': target_date.strftime('%d-%b-%Y'),
         'is_date_reached': (target_date <= today),
+        'has_incomplete_prev_appts': has_incomplete_prev_appts,
         'count': len(rows),
         'appointments': rows,
         'completion_statuses': comp_statuses,
@@ -2128,6 +2204,7 @@ def brachy_update_appointment_status_api(request, appointment_id):
     status_id = request.POST.get('status_id')
     status_name = request.POST.get('status_name')
     remarks = request.POST.get('remarks')
+    fractions_treated_raw = request.POST.get('fractions_treated')
 
     status_obj = None
     if status_id:
@@ -2147,6 +2224,14 @@ def brachy_update_appointment_status_api(request, appointment_id):
 
     if remarks is not None:
         appt.remarks = remarks.strip()
+
+    if fractions_treated_raw:
+        try:
+            f_val = int(fractions_treated_raw)
+            if f_val >= 1:
+                appt.fractions_treated = f_val
+        except (ValueError, TypeError):
+            pass
 
     appt.save()
 
@@ -2173,7 +2258,7 @@ def brachy_update_appointment_status_api(request, appointment_id):
         user=request.user,
         action="BRACHY_TREATMENT_STATUS_UPDATE",
         mr_no=str(appt.patient.mr_no),
-        details=f"Recorded Brachytherapy treatment status '{status_obj.name}' for {appt.patient.pt_name} (MR: {appt.patient.mr_no}) on {appt.appointment_date.strftime('%d-%b-%Y')} - Application {appt.fraction_number}.",
+        details=f"Recorded Brachytherapy treatment status '{status_obj.name}' (Fractions: {appt.fractions_treated}) for {appt.patient.pt_name} (MR: {appt.patient.mr_no}) on {appt.appointment_date.strftime('%d-%b-%Y')} - Application {appt.fraction_number}.",
         ip_address=request.META.get('REMOTE_ADDR')
     )
 
@@ -2185,6 +2270,7 @@ def brachy_update_appointment_status_api(request, appointment_id):
         'status_name': status_obj.name,
         'is_completed': status_obj.is_completed,
         'fraction_number': appt.fraction_number,
+        'fractions_treated': appt.fractions_treated or 1,
         'remarks': appt.remarks or '',
     })
 
@@ -2295,8 +2381,10 @@ def brachy_search_patients_api(request):
     results = []
     for p in patients_qs:
         appts = list(p.brachy_appointments.all().order_by('fraction_number'))
+        total_apps = len(appts)
+        fractions_del = sum(a.fractions_treated or 1 for a in appts if a.status == 'Completed' or (a.completion_status and a.completion_status.is_completed))
         if appts:
-            parts = []
+            parts = [f"Total: {total_apps} Apps, {fractions_del} Fr delivered"]
             for a in appts:
                 st_name = a.completion_status.name if a.completion_status else a.status
                 parts.append(f"App {a.fraction_number}: {st_name} ({a.appointment_date.strftime('%d-%b')})")

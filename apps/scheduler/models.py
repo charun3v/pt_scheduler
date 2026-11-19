@@ -436,6 +436,17 @@ class TreatmentSchedule(models.Model):
             return is_admin_only(user)
         return True
 
+    @property
+    def total_brachy_applications(self):
+        """Total applications associated with this brachytherapy course."""
+        return self.brachy_appointments.count()
+
+    @property
+    def total_brachy_fractions_delivered(self):
+        """Total fractions delivered across completed brachytherapy applications in this course."""
+        completed_appts = self.brachy_appointments.filter(status='Completed')
+        return sum(a.fractions_treated or 1 for a in completed_appts)
+
 
 class BrachytherapyAppointment(models.Model):
     """
@@ -472,6 +483,9 @@ class BrachytherapyAppointment(models.Model):
     completion_status = models.ForeignKey(
         TreatmentCompletionStatus, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='brachy_appointments', verbose_name="Treatment Completion Status"
+    )
+    fractions_treated = models.PositiveIntegerField(
+        default=1, verbose_name="Number of Fractions Treated in this Application"
     )
 
     # Audit & Consultant Authorization

@@ -303,6 +303,11 @@
                 <span style="color: #1e293b; font-weight: 700; text-transform: uppercase; font-size: 11.5px; margin-right: 6px;">Diagnosis:</span>
                 <span style="color: #0f172a; font-weight: normal;">{{ patient.diagnosis|default:"Not specified" }}</span>
             </div>
+
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1; display: flex; gap: 24px; align-items: center; flex-wrap: wrap; font-size: 13px;">
+                <span>📋 <strong>Total Applications in Course:</strong> <span style="font-weight: 800; color: #003366; background: #e0f2fe; padding: 2px 8px; border-radius: 4px;">{{ total_applications_count }}</span></span>
+                <span>⚡ <strong>Fractions Delivered:</strong> <span style="font-weight: 800; color: #15803d; background: #dcfce7; padding: 2px 8px; border-radius: 4px;">{{ total_fractions_delivered }}</span></span>
+            </div>
         </div>
     </div>
 
@@ -749,6 +754,16 @@
                 </div>
             </div>
 
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Number of fractions treated (in that application): *
+                </label>
+                <input type="number" id="prev_modal_fractions_treated" min="1" max="10" value="{{ uncompleted_prev_appt.fractions_treated|default:1 }}" style="width: 100%; padding: 8px 10px; font-size: 13.5px; border: 1.5px solid #0078d4; border-radius: 4px; font-weight: 600; box-sizing: border-box;">
+                <div style="font-size: 11.5px; color: #64748b; margin-top: 3px;">
+                    Enter the number of fractions delivered in this application session (default: 1).
+                </div>
+            </div>
+
             <div style="margin-bottom: 16px;">
                 <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
                     Remarks / notes for further application:
@@ -899,6 +914,17 @@
                 </select>
                 <div style="font-size: 11px; color: #475569; margin-top: 5px; line-height: 1.4; background: #fffbeb; padding: 6px 10px; border-radius: 4px; border: 1px solid #fef3c7;">
                     ℹ️ If <strong>Completed</strong> is selected, this application (<span id="cal_status_modal_app_help" style="font-weight: 700;">App x</span>) is considered completed and the next application will be <span id="cal_status_modal_next_app_help" style="font-weight: 700; color: #003366;">App (x+1)</span>.
+                </div>
+            </div>
+
+            <!-- Number of Fractions Treated -->
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Number of fractions treated (in that application): *
+                </label>
+                <input type="number" id="cal_status_modal_fractions_treated" min="1" max="10" value="1" required style="width: 100%; padding: 7px 10px; font-size: 13.5px; border: 1.5px solid #0078d4; border-radius: 4px; font-family: Calibri, 'Segoe UI', Arial, sans-serif; box-sizing: border-box;">
+                <div style="font-size: 11px; color: #475569; margin-top: 3px;">
+                    Enter the number of fractions delivered in this application session (default: 1).
                 </div>
             </div>
 
@@ -1516,6 +1542,7 @@
                             <th style="padding: 7px 8px; width: 105px; text-align: center;">MR NO</th>
                             <th style="padding: 7px 8px; text-align: left; width: 192px; min-width: 192px;">Name</th>
                             <th style="padding: 7px 8px; text-align: center; width: 75px;">Age / Sex</th>
+                            <th style="padding: 7px 8px; width: 75px; text-align: center; white-space: nowrap;">Fraction No</th>
                             <th style="padding: 7px 8px; text-align: left; min-width: 115px;">Diagnosis</th>
                             <th style="padding: 7px 8px; text-align: left; width: 135px; min-width: 135px; white-space: nowrap;">Applicator type</th>
                             <th style="padding: 7px 8px; text-align: left; width: 175px; min-width: 175px; white-space: nowrap;">Anesthesia type</th>
@@ -1533,17 +1560,17 @@
                 let statusHtml = '';
                 if (a.is_date_reached) {
                     if (a.is_completed) {
-                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', '${escapeHtml(a.status_display || a.status)}');"
+                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', '${escapeHtml(a.status_display || a.status)}', ${a.fractions_treated || 1});"
                                          style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 11px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="Click to view or edit status">
                                           ✅ App ${a.fraction}: Completed
                                       </a>`;
                     } else if (a.status === 'Scheduled') {
-                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', 'Scheduled');"
+                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', 'Scheduled', ${a.fractions_treated || 1});"
                                          style="background: #eff6ff; color: #1d4ed8; border: 1px solid #93c5fd; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 11px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="Current date has reached Brachy date - click to record status">
                                           ⚡ App ${a.fraction}: Record Status &rarr;
                                       </a>`;
                     } else {
-                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', '${escapeHtml(a.status_display || a.status)}');"
+                        statusHtml = `<a href="javascript:void(0)" onclick="openCalBrachyStatusModal(${a.id}, '${escapeHtml(a.patient_name)}', '${a.mr_no}', ${a.fraction}, '${a.completion_status_id || ''}', '${escapeHtml(a.remarks || '')}', '${escapeHtml(a.status_display || a.status)}', ${a.fractions_treated || 1});"
                                          style="background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 11px; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;" title="Click to view or edit status">
                                           ⚠️ App ${a.fraction}: ${escapeHtml(a.status_display || a.status)}
                                       </a>`;
@@ -1571,6 +1598,11 @@
 
                     <!-- 4. Age / Sex -->
                     <td style="padding: 7px 8px; text-align: center; color: #334155; white-space: nowrap;">${escapeHtml(a.age_sex)}</td>
+
+                    <!-- 4b. Fraction No -->
+                    <td style="padding: 7px 8px; text-align: center; white-space: nowrap; font-weight: 700;">
+                        ${a.has_unfinalized_prev ? '<span style="font-size: 15px; color: #dc2626;" title="Complete the previous application details before finalising the list">⚠️</span>' : `<span style="color: #003366; font-size: 13px;">${a.fraction_no !== null ? a.fraction_no : '-'}</span>`}
+                    </td>
 
                     <!-- 5. Diagnosis -->
                     <td style="padding: 7px 8px; color: #1e293b;">${escapeHtml(a.diagnosis)}</td>
@@ -1618,6 +1650,13 @@
             });
 
             html += `</tbody></table></div>`;
+            if (data.has_incomplete_prev_appts) {
+                html += `
+                <div style="margin-top: 10px; padding: 8px 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; font-size: 12px; color: #92400e; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 16px;">⚠️</span>
+                    <span><strong>Note:</strong> Complete the previous application details before finalising the list.</span>
+                </div>`;
+            }
             container.innerHTML = html;
         })
         .catch(err => {
@@ -1625,7 +1664,7 @@
         });
     }
 
-    function openCalBrachyStatusModal(apptId, ptName, mrNo, fraction, statusId, remarks, currentStatus) {
+    function openCalBrachyStatusModal(apptId, ptName, mrNo, fraction, statusId, remarks, currentStatus, fractionsTreated) {
         document.getElementById('cal_status_modal_appt_id').value = apptId;
         document.getElementById('cal_status_modal_patient_info').innerText = ptName + ' (MR: ' + mrNo + ')';
         document.getElementById('cal_status_modal_date_disp').innerText = document.getElementById('modalDateQueryInput').value;
@@ -1633,6 +1672,7 @@
         document.getElementById('cal_status_modal_app_help').innerText = 'App ' + fraction;
         document.getElementById('cal_status_modal_next_app_help').innerText = 'App ' + (parseInt(fraction) + 1);
         document.getElementById('cal_status_modal_remarks').value = remarks || '';
+        document.getElementById('cal_status_modal_fractions_treated').value = fractionsTreated || 1;
 
         const sel = document.getElementById('cal_status_modal_status_id');
         sel.innerHTML = '';
@@ -1665,6 +1705,8 @@
         const formData = new FormData();
         formData.append('status_id', document.getElementById('cal_status_modal_status_id').value);
         formData.append('remarks', document.getElementById('cal_status_modal_remarks').value);
+        const fractionsTreated = document.getElementById('cal_status_modal_fractions_treated') ? document.getElementById('cal_status_modal_fractions_treated').value : 1;
+        formData.append('fractions_treated', fractionsTreated);
         formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
 
         fetch('/scheduler/brachytherapy/api/appointment/' + apptId + '/status/', {
@@ -1765,6 +1807,8 @@
         const formData = new FormData();
         formData.append('status_id', statusId);
         formData.append('remarks', remarks);
+        const fractionsTreated = document.getElementById('prev_modal_fractions_treated') ? document.getElementById('prev_modal_fractions_treated').value : 1;
+        formData.append('fractions_treated', fractionsTreated);
         formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
 
         fetch('/scheduler/brachytherapy/api/appointment/' + apptId + '/status/', {
