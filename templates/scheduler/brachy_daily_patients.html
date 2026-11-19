@@ -155,11 +155,11 @@
                     <tr>
                         <th style="width: 40px; text-align: center;">SL No</th>
                         <th style="width: 105px; text-align: center;">MR NO</th>
-                        <th style="width: 96px; min-width: 96px;">Name</th>
+                        <th style="width: 192px; min-width: 192px;">Name</th>
                         <th style="width: 65px; text-align: center;">Age / Sex</th>
                         <th style="min-width: 115px;">Diagnosis</th>
-                        <th style="min-width: 115px;">Applicator type</th>
-                        <th style="width: 99px; min-width: 99px;">Anesthesia type</th>
+                        <th style="width: 135px; min-width: 135px; white-space: nowrap;">Applicator type</th>
+                        <th style="width: 175px; min-width: 175px; white-space: nowrap;">Anesthesia type</th>
                         <th style="min-width: 105px;">Brachy Machine</th>
                         <th style="width: 92px; min-width: 92px;">Consultant</th>
                         <th style="width: 36px; text-align: center;">Unit</th>
@@ -183,8 +183,8 @@
                             {{ r.mr_no }}
                         </td>
 
-                        <!-- 3. Name (Patient name only, reduced space by 20%) -->
-                        <td style="width: 96px; min-width: 96px; max-width: 110px; word-break: break-word;">
+                        <!-- 3. Name (Patient name doubled to 192px) -->
+                        <td style="width: 192px; min-width: 192px; max-width: 210px; word-break: break-word;">
                             <a href="{% url 'patient_detail' r.patient_id %}" target="_blank" style="color: #003366; text-decoration: underline; font-weight: 700; font-size: 13px;">
                                 {{ r.patient_name }}
                             </a>
@@ -200,20 +200,20 @@
                             {{ r.diagnosis }}
                         </td>
 
-                        <!-- 6. Applicator type -->
-                        <td>
+                        <!-- 6. Applicator type (Reduced to fit max width of options) -->
+                        <td style="width: 135px; min-width: 135px; white-space: nowrap;">
                             <span class="badge-app" style="background: {{ r.color }};" id="disp_app_{{ r.id }}">
                                 {{ r.applicator_name }}
                             </span>
                             {% if r.applicator_type and r.applicator_type != r.applicator_name %}
-                            <div style="font-size: 11px; color: #475569; margin-top: 2px;" id="disp_app_type_{{ r.id }}">
+                            <div style="font-size: 11px; color: #475569; margin-top: 2px; white-space: normal;" id="disp_app_type_{{ r.id }}">
                                 Type: <strong>{{ r.applicator_type }}</strong>
                             </div>
                             {% endif %}
                         </td>
 
-                        <!-- 7. Anesthesia type (Reduced space by 10%) -->
-                        <td id="disp_ana_{{ r.id }}" style="width: 99px; min-width: 99px; max-width: 105px; word-break: break-word; font-weight: normal; color: #1e293b;">
+                        <!-- 7. Anesthesia type (Increased to fit max width on single line) -->
+                        <td id="disp_ana_{{ r.id }}" style="width: 175px; min-width: 175px; white-space: nowrap; font-weight: normal; color: #1e293b;">
                             {{ r.anesthesia_name }}
                         </td>
 
