@@ -70,10 +70,16 @@
                 <td style="padding: 8px;">
                     {% if p.dashboard_schedule_status == 'Scheduled' %}
                         <span class="badge-success">Scheduled</span>
+                    {% elif p.dashboard_schedule_status == 'Completed' %}
+                        <span class="badge-info" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 11px;">Completed</span>
+                    {% elif p.dashboard_schedule_status == 'In Progress' %}
+                        <span class="badge-info" style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 11px;">In Progress</span>
                     {% elif p.dashboard_schedule_status == 'Emergency' or p.dashboard_schedule_status == 'Vacant' %}
                         <span class="badge-warning" style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-weight: bold;">🚨 {{ p.dashboard_schedule_status }}</span>
                     {% elif p.dashboard_schedule_status == 'Draft' %}
                         <span class="badge-warning">Draft</span>
+                    {% elif p.dashboard_schedule_status == 'Cancelled' %}
+                        <span class="badge-secondary" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 11px;">Cancelled</span>
                     {% else %}
                         <span class="badge-warning" style="background: #fff3cd; color: #856404; border: 1px solid #ffeeba;">Pending</span>
                     {% endif %}

@@ -232,24 +232,37 @@ def dashboard_view(request):
     # Annotate schedule status and schedule date for display
     for p in page_obj:
         scheds = list(p.schedules.all())
-        active_sched = None
-        for s in scheds:
-            if s.date_of_start:
-                active_sched = s
-                break
-        if not active_sched and scheds:
-            active_sched = scheds[0]
+        active_candidates = [
+            s for s in scheds
+            if (s.status in ('Scheduled', 'In Progress', 'Emergency', 'Vacant') or s.is_emergency_slot)
+        ]
+        draft_candidates = [s for s in scheds if s.status == 'Draft']
+        completed_candidates = [
+            s for s in scheds
+            if s.status == 'Completed' or (s.actual_treatment_status and s.actual_treatment_status.is_completed)
+        ]
+
+        if active_candidates:
+            active_sched = active_candidates[0]
+        elif draft_candidates:
+            active_sched = draft_candidates[0]
+        elif completed_candidates:
+            active_sched = completed_candidates[0]
+        elif scheds:
+            active_sched = next((s for s in scheds if s.date_of_start), scheds[0])
+        else:
+            active_sched = None
 
         if active_sched and active_sched.date_of_start:
-            p.dashboard_schedule_status = active_sched.status or 'Scheduled'
+            p.dashboard_schedule_status = active_sched.status or ('Emergency' if active_sched.is_emergency_slot else 'Scheduled')
             p.dashboard_schedule_date = active_sched.date_of_start.strftime("%d-%b-%Y")
             p.dashboard_machine = active_sched.machine.name if active_sched.machine else ''
             p.is_scheduled_active = True
         elif active_sched:
-            p.dashboard_schedule_status = 'Pending'
+            p.dashboard_schedule_status = active_sched.status or 'Pending'
             p.dashboard_schedule_date = 'Unscheduled'
             p.dashboard_machine = active_sched.machine.name if active_sched.machine else ''
-            p.is_scheduled_active = False
+            p.is_scheduled_active = (active_sched.status in ('Completed', 'In Progress'))
         else:
             p.dashboard_schedule_status = 'Pending'
             p.dashboard_schedule_date = 'Unscheduled'

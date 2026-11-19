@@ -4739,6 +4739,78 @@ def run_tests():
     pt_49.delete()
     print("✓ Test 49 Passed: Previous Application Status Enforcement, Remarks for Further Application & Double-Click Quick Scheduling fully verified.")
 
+    # ---------------------------------------------------------------------------
+    # Test 50: Patient Registry Search & Dashboard Schedule Status Resolution & Badge
+    # ---------------------------------------------------------------------------
+    print("\n--- Running Test 50: Schedule Status Priority, Completed Badge & Pending Prevention ---")
+    Patient.objects.filter(mr_no=9999050).delete()
+    cons_50 = Consultant.objects.filter(is_active=True).first()
+    pt_50 = Patient.objects.create(
+        mr_no=9999050,
+        pt_name="Test50 MultiCourse Patient",
+        age=55,
+        sex='F',
+        diagnosis="CS Cx",
+        primary_consultant=cons_50,
+        phone_no="9876543210"
+    )
+
+    comp_status_50, _ = TreatmentCompletionStatus.objects.get_or_create(
+        name='Completed',
+        defaults={'is_completed': True, 'display_order': 1}
+    )
+
+    # Course 1: Teletherapy (Completed) with date_of_start in future
+    la1_mach = Machine.objects.filter(treatment_mode='Teletherapy').first()
+    sched1_50 = TreatmentSchedule.objects.create(
+        patient=pt_50,
+        treatment_type='Teletherapy',
+        machine=la1_mach,
+        date_of_start=date(2026, 11, 19),
+        status='Completed',
+        actual_treatment_status=comp_status_50,
+        actual_start_date=date(2026, 2, 1),
+        actual_end_date=date(2026, 3, 8)
+    )
+
+    # Course 2: Brachytherapy (Scheduled) with earlier date_of_start
+    brachy_mach_50 = Machine.objects.filter(treatment_mode='Brachytherapy').first() or la1_mach
+    sched2_50 = TreatmentSchedule.objects.create(
+        patient=pt_50,
+        treatment_type='Brachytherapy',
+        machine=brachy_mach_50,
+        date_of_start=date(2026, 10, 30),
+        status='Scheduled'
+    )
+
+    # 1. Search must prioritize the active 'Scheduled' course over the 'Completed' course
+    resp_s50 = client.get('/patients/search/?q=9999050')
+    assert resp_s50.status_code == 200
+    s50_html = resp_s50.content.decode('utf-8')
+    assert "Test50 MultiCourse Patient" in s50_html
+    # Must show Scheduled badge, NOT Pending badge
+    assert '<span class="badge-success">Scheduled</span>' in s50_html
+    assert '<span class="badge-warning" style="background: #fff3cd; color: #856404; border: 1px solid #ffeeba;">Pending</span>' not in s50_html
+    assert "30-Oct-2026" in s50_html
+    assert brachy_mach_50.name in s50_html
+
+    # 2. When all courses are Completed, search must display Completed badge, NOT Pending
+    sched2_50.status = 'Completed'
+    sched2_50.actual_treatment_status = comp_status_50
+    sched2_50.save()
+
+    resp_s50_comp = client.get('/patients/search/?q=9999050')
+    assert resp_s50_comp.status_code == 200
+    s50_comp_html = resp_s50_comp.content.decode('utf-8')
+    assert "Completed" in s50_comp_html
+    assert '<span class="badge-warning" style="background: #fff3cd; color: #856404; border: 1px solid #ffeeba;">Pending</span>' not in s50_comp_html
+
+    # Cleanup
+    sched1_50.delete()
+    sched2_50.delete()
+    pt_50.delete()
+    print("✓ Test 50 Passed: Schedule Status Priority, Completed Badge & Pending Prevention fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

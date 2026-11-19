@@ -440,7 +440,27 @@ def patient_search_view(request):
     if page_obj:
         for p in page_obj:
             schedules = list(p.schedules.all())
-            active_sched = next((s for s in schedules if s.date_of_start), None) or (schedules[0] if schedules else None)
+            active_candidates = [
+                s for s in schedules
+                if (s.status in ('Scheduled', 'In Progress', 'Emergency', 'Vacant') or s.is_emergency_slot)
+            ]
+            draft_candidates = [s for s in schedules if s.status == 'Draft']
+            completed_candidates = [
+                s for s in schedules
+                if s.status == 'Completed' or (s.actual_treatment_status and s.actual_treatment_status.is_completed)
+            ]
+
+            if active_candidates:
+                active_sched = active_candidates[0]
+            elif draft_candidates:
+                active_sched = draft_candidates[0]
+            elif completed_candidates:
+                active_sched = completed_candidates[0]
+            elif schedules:
+                active_sched = next((s for s in schedules if s.date_of_start), schedules[0])
+            else:
+                active_sched = None
+
             if active_sched:
                 p.dashboard_schedule_status = active_sched.status or ('Emergency' if active_sched.is_emergency_slot else 'Scheduled')
                 p.dashboard_schedule_date = active_sched.date_of_start.strftime("%d-%b-%Y") if active_sched.date_of_start else ("Intended: " + active_sched.intended_start_date.strftime("%d-%b-%Y") if active_sched.intended_start_date else "Unscheduled")
