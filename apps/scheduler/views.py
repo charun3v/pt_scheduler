@@ -1561,8 +1561,6 @@ def brachy_schedule_patient_view(request, patient_id):
         is_active=True
     ).distinct().order_by('first_name', 'username')
 
-    today = timezone.localdate()
-
     if request.method == 'POST':
         is_ajax = (request.headers.get('x-requested-with') == 'XMLHttpRequest' or 
                    request.content_type == 'application/json' or
