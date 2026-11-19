@@ -11,6 +11,7 @@ urlpatterns = [
     path('brachytherapy/api/appointment/<int:appointment_id>/edit/', views.brachy_edit_appointment_api, name='brachy_edit_appointment_api'),
     path('brachytherapy/api/appointment/<int:appointment_id>/status/', views.brachy_update_appointment_status_api, name='brachy_update_appointment_status_api'),
     path('brachytherapy/api/month/', views.brachy_calendar_month_api, name='brachy_calendar_month_api'),
+    path('brachytherapy/api/patient-search/', views.brachy_search_patients_api, name='brachy_search_patients_api'),
     path('schedule/<int:schedule_id>/delete/', views.schedule_delete_view, name='schedule_delete'),
     path('course/<int:schedule_id>/tag/', views.tag_treatment_course_view, name='tag_treatment_course'),
     path('course/<int:schedule_id>/actual-status/', views.update_actual_treatment_status_view, name='update_actual_treatment_status'),

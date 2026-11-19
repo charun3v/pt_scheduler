@@ -389,9 +389,11 @@
 
                 <div style="margin-top: 14px;">
                     <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
-                        Additional Remarks / Theater Instructions
+                        Remarks / notes for further application
                     </label>
                     <input type="text" id="form_remarks"
+                           value="{{ initial_remarks|default:'' }}"
+                           oninput="if(document.getElementById('summary_remarks')) document.getElementById('summary_remarks').textContent = this.value || 'None';"
                            placeholder="Special catheter sizes, premedication, applicator packaging, source loading notes..."
                            style="width: 100%; padding: 8px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">
                 </div>
@@ -649,8 +651,8 @@
                 </div>
 
                 <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 12.5px;">
-                    <span style="color: #64748b; font-weight: 600; font-size: 11px;">REMARKS: </span>
-                    <span id="summary_remarks" style="font-style: italic; color: #475569;">None</span>
+                    <span style="color: #64748b; font-weight: 600; font-size: 11px;">REMARKS / NOTES FOR FURTHER APPLICATION: </span>
+                    <span id="summary_remarks" style="font-style: italic; color: #475569;">{{ initial_remarks|default:'None' }}</span>
                 </div>
             </div>
 
@@ -716,6 +718,56 @@
         </div>
     </div>
 </div>
+
+{% if uncompleted_prev_appt %}
+<!-- Modal: Previous Application Completion Status Required -->
+<div id="prevApptStatusModal" style="display: flex; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 16000; align-items: center; justify-content: center;">
+    <div style="background: #ffffff; border-radius: 8px; width: 520px; max-width: 95%; box-shadow: 0 10px 30px rgba(0,0,0,0.4); overflow: hidden; font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
+        <div style="background: #b91c1c; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 14.5px;">⚠️ Previous Application Completion Status Required</strong>
+        </div>
+        <div style="padding: 18px 20px;">
+            <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; font-size: 13px; color: #991b1b; line-height: 1.4;">
+                Patient <strong>{{ patient.pt_name }}</strong> (MR: {{ patient.mr_no }}) has previous
+                <strong>Application {{ uncompleted_prev_appt.fraction_number }}</strong> scheduled on <strong>{{ uncompleted_prev_appt.appointment_date|date:"d-M-Y" }}</strong>.
+                The application status has not been entered. Clinical protocol requires recording the completion status of the previous application before proceeding to schedule the next application.
+            </div>
+
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Select Status for Application {{ uncompleted_prev_appt.fraction_number }}: *
+                </label>
+                <select id="prev_modal_status_id" style="width: 100%; padding: 8px 10px; font-size: 13.5px; border: 1.5px solid #0078d4; border-radius: 4px; font-weight: 600;">
+                    {% for st in completion_statuses %}
+                        <option value="{{ st.id }}" {% if st.is_completed %}selected{% endif %}>
+                            {{ st.name }}{% if st.is_completed %} (Completed){% endif %}
+                        </option>
+                    {% endfor %}
+                </select>
+                <div style="font-size: 11.5px; color: #64748b; margin-top: 3px;">
+                    If marked "Completed", this application is finalized and the next application will be App {{ uncompleted_prev_appt.fraction_number|add:1 }}.
+                </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Remarks / notes for further application:
+                </label>
+                <textarea id="prev_modal_remarks" rows="2" placeholder="e.g. Procedure notes, applicator fit, anesthesia advice for further application..." style="width: 100%; padding: 7px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box;">{{ uncompleted_prev_appt.remarks|default:initial_remarks }}</textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #e2e8f0; padding-top: 14px;">
+                <a href="{% url 'patient_detail' patient.id %}" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 7px 14px; border-radius: 4px; font-weight: 600; font-size: 12.5px; text-decoration: none;">
+                    Cancel
+                </a>
+                <button type="button" id="btnSavePrevStatus" onclick="submitPrevApptStatus({{ uncompleted_prev_appt.id }})" style="background: #107c41; color: #ffffff; border: none; padding: 7px 18px; border-radius: 4px; font-weight: 700; font-size: 13px; cursor: pointer;">
+                    💾 Save Status & Proceed to Schedule
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Modal: View Patients Scheduled for a Date (Asks for Date) -->
 <div id="dateQueryModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 12000; justify-content: center; align-items: center;">
@@ -1377,7 +1429,11 @@
                 btn.disabled = false;
                 btn.innerHTML = '💾 Confirm & Book Brachytherapy Schedule';
                 alert("Error: " + (data.error || "Failed to save schedule."));
-                if (data.requires_authorization) {
+                if (data.requires_prev_status) {
+                    backToCalendar();
+                    const modal = document.getElementById('prevApptStatusModal');
+                    if (modal) modal.style.display = 'flex';
+                } else if (data.requires_authorization) {
                     backToCalendar();
                     document.getElementById('consultantAuthCard').style.display = 'block';
                     document.getElementById('consultant_id')?.focus();
@@ -1468,7 +1524,7 @@
                             <th style="padding: 7px 8px; text-align: center; width: 36px;">Unit</th>
                             <th style="padding: 7px 8px; text-align: center; min-width: 150px;">Brachy Treatment Status</th>
                             <th style="padding: 7px 8px; text-align: center; width: 70px;">Actions</th>
-                            <th style="padding: 7px 8px; text-align: left; min-width: 250px;">Remarks / Notes</th>
+                            <th style="padding: 7px 8px; text-align: left; min-width: 250px;">Remarks / notes for further application</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -1698,5 +1754,63 @@
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
     }
+
+    function submitPrevApptStatus(apptId) {
+        const statusId = document.getElementById('prev_modal_status_id').value;
+        const remarks = document.getElementById('prev_modal_remarks').value;
+        const btn = document.getElementById('btnSavePrevStatus');
+        btn.disabled = true;
+        btn.innerText = 'Saving...';
+
+        const formData = new FormData();
+        formData.append('status_id', statusId);
+        formData.append('remarks', remarks);
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        fetch('/scheduler/brachytherapy/api/appointment/' + apptId + '/status/', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerText = '💾 Save Status & Proceed to Schedule';
+            if (data.success) {
+                // Copy remarks into form if set
+                if (remarks && document.getElementById('form_remarks')) {
+                    document.getElementById('form_remarks').value = remarks;
+                    if (document.getElementById('summary_remarks')) {
+                        document.getElementById('summary_remarks').textContent = remarks;
+                    }
+                }
+                const modal = document.getElementById('prevApptStatusModal');
+                if (modal) modal.style.display = 'none';
+
+                // Reload page to refresh application counts and fractions cleanly
+                const currentUrl = new URL(window.location.href);
+                window.location.href = currentUrl.toString();
+            } else {
+                alert(data.error || 'Failed to update application status.');
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerText = '💾 Save Status & Proceed to Schedule';
+            alert('Error communicating with server.');
+        });
+    }
+
+    // Auto-select target date if passed in URL
+    document.addEventListener('DOMContentLoaded', function() {
+        {% if preselect_target_date %}
+            const tDate = "{{ preselect_target_date }}";
+            if (tDate) {
+                gSelectedDates.add(tDate);
+                refreshSelectedDateHighlights();
+                updateSelectedChips();
+            }
+        {% endif %}
+    });
 </script>
 {% endblock %}

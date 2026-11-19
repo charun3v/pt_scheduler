@@ -4603,6 +4603,142 @@ def run_tests():
     pt_48.delete()
     print("✓ Test 48 Passed: Brachytherapy Daily List Column Structure & Brachy Treatment Status Workflow fully verified.")
 
+    # --- Test 49: Previous Application Status Enforcement, Remarks for Further Application & Double-Click Quick Scheduling ---
+    print("\n--- Running Test 49: Previous Application Status Enforcement, Remarks for Further Application & Calendar Quick Scheduling ---")
+    BrachytherapyAppointment.objects.filter(patient__mr_no=9999049).delete()
+    Patient.objects.filter(mr_no=9999049).delete()
+    pt_49 = Patient.objects.create(
+        mr_no=9999049,
+        pt_name="Test Patient 49",
+        rt_no="RT49",
+        age=52,
+        sex='F',
+        diagnosis="Cervix Ca Stage IIB",
+        primary_consultant=cons,
+        unit="II"
+    )
+
+    app_type_obj = BrachyApplicator.objects.filter(is_active=True).first()
+    anest_obj = BrachyAnesthesia.objects.filter(is_active=True).first()
+    bm_obj = Machine.objects.filter(treatment_mode='Brachytherapy', is_active=True).first()
+    today_curr = timezone.localdate()
+    next_week_date = today_curr + timedelta(days=7)
+
+    # 1. Patient has App 1 scheduled on today_curr, but completion status is not entered
+    appt1_49 = BrachytherapyAppointment.objects.create(
+        patient=pt_49,
+        fraction_number=1,
+        appointment_date=today_curr,
+        applicator_type=app_type_obj,
+        anesthesia_type=anest_obj,
+        status="Scheduled",
+        remarks="App 1 tandem 6cm curvature 30deg"
+    )
+
+    # 2. GET Scheduling page for pt_49:
+    # System detects uncompleted previous application and prepares completion status modal
+    resp_sched_get = client.get(f'/scheduler/patient/{pt_49.id}/brachytherapy/')
+    assert resp_sched_get.status_code == 200
+    assert resp_sched_get.context['uncompleted_prev_appt'] is not None
+    assert resp_sched_get.context['uncompleted_prev_appt'].id == appt1_49.id
+    assert resp_sched_get.context['initial_remarks'] == "App 1 tandem 6cm curvature 30deg"
+    sched_html = resp_sched_get.content.decode('utf-8')
+    assert "Previous Application Completion Status Required" in sched_html
+    assert "Remarks / notes for further application" in sched_html
+
+    # 3. Attempting to schedule next application (App 2) without entering App 1 status MUST fail / require status
+    resp_attempt = client.post(f'/scheduler/patient/{pt_49.id}/brachytherapy/', json.dumps({
+        'selected_dates': [next_week_date.strftime('%Y-%m-%d')],
+        'applicator_id': app_type_obj.id,
+        'anesthesia_id': anest_obj.id,
+        'site_of_treatment': 'Cervix',
+        'remarks': 'Booking App 2',
+    }), content_type='application/json', HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+    assert resp_attempt.status_code == 400
+    attempt_json = resp_attempt.json()
+    assert attempt_json['success'] is False
+    assert attempt_json.get('requires_prev_status') is True
+    assert attempt_json.get('prev_appt_id') == appt1_49.id
+
+    # 4. Save completion status for App 1 with remarks for further application
+    comp_status_completed = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
+    resp_save_status = client.post(f'/scheduler/brachytherapy/api/appointment/{appt1_49.id}/status/', {
+        'status_id': comp_status_completed.id,
+        'remarks': 'App 1 completed successfully. Remarks: Use cylinder size 2.5cm for App 2'
+    })
+    assert resp_save_status.status_code == 200
+    assert resp_save_status.json()['success'] is True
+    appt1_49.refresh_from_db()
+    assert appt1_49.status == 'Completed'
+
+    # 5. Re-check GET Scheduling page:
+    # uncompleted_prev_appt is now None, remarks for further application carries forward
+    resp_sched_get2 = client.get(f'/scheduler/patient/{pt_49.id}/brachytherapy/')
+    assert resp_sched_get2.status_code == 200
+    assert resp_sched_get2.context['uncompleted_prev_appt'] is None
+    assert resp_sched_get2.context['initial_remarks'] == "App 1 completed successfully. Remarks: Use cylinder size 2.5cm for App 2"
+
+    # 6. Now schedule App 2 on next_week_date: succeeds and creates App 2
+    resp_book_app2 = client.post(f'/scheduler/patient/{pt_49.id}/brachytherapy/', json.dumps({
+        'selected_dates': [next_week_date.strftime('%Y-%m-%d')],
+        'applicator_id': app_type_obj.id,
+        'anesthesia_id': anest_obj.id,
+        'site_of_treatment': 'Cervix',
+        'remarks': resp_sched_get2.context['initial_remarks'],
+    }), content_type='application/json', HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+    assert resp_book_app2.status_code == 200
+    book_json = resp_book_app2.json()
+    assert book_json['success'] is True
+    appt2_49 = BrachytherapyAppointment.objects.filter(patient=pt_49, appointment_date=next_week_date).first()
+    assert appt2_49 is not None
+    assert appt2_49.fraction_number == 2
+    assert "Use cylinder size 2.5cm for App 2" in appt2_49.remarks
+
+    # 7. Check Brachy Daily List table header and rows for "Remarks / notes for further application"
+    resp_daily_list = client.get(f'/scheduler/brachytherapy/daily-list/?date={next_week_date.strftime("%Y-%m-%d")}')
+    assert resp_daily_list.status_code == 200
+    daily_list_html = resp_daily_list.content.decode('utf-8')
+    assert "Remarks / notes for further application" in daily_list_html
+    assert "Use cylinder size 2.5cm for App 2" in daily_list_html
+
+    # Check Brachy Daily API
+    resp_daily_api = client.get(f'/scheduler/brachytherapy/api/daily-list/?date={next_week_date.strftime("%Y-%m-%d")}')
+    assert resp_daily_api.status_code == 200
+    d_json = resp_daily_api.json()
+    assert d_json['success'] is True
+    found_row = next(r for r in d_json['appointments'] if r['id'] == appt2_49.id)
+    assert "Use cylinder size 2.5cm for App 2" in found_row['remarks']
+
+    # 8. Requirement 3: Double-click search API and workflow link
+    resp_search = client.get(f'/scheduler/brachytherapy/api/patient-search/?q=9999049&date={next_week_date.strftime("%Y-%m-%d")}')
+    assert resp_search.status_code == 200
+    search_json = resp_search.json()
+    assert search_json['success'] is True
+    assert len(search_json['patients']) >= 1
+    found_pt = next(p for p in search_json['patients'] if p['mr_no'] == 9999049)
+    assert found_pt['name'] == "Test Patient 49"
+    assert found_pt['unit'] == "II"
+    assert f"?target_date={next_week_date.strftime('%Y-%m-%d')}" in found_pt['schedule_url']
+
+    # Verify Calendar view has ondblclick for quick scheduling
+    resp_cal = client.get('/scheduler/brachytherapy/calendar/')
+    assert resp_cal.status_code == 200
+    cal_html = resp_cal.content.decode('utf-8')
+    assert "openQuickScheduleModal" in cal_html
+    assert "quickScheduleModal" in cal_html
+    assert "Remarks / notes for further application" in cal_html
+
+    # Verify target_date auto-selection on scheduling page
+    resp_target = client.get(f'/scheduler/patient/{pt_49.id}/brachytherapy/?target_date={next_week_date.strftime("%Y-%m-%d")}')
+    assert resp_target.status_code == 200
+    assert resp_target.context['preselect_target_date'] == next_week_date.strftime('%Y-%m-%d')
+
+    # Cleanup
+    appt1_49.delete()
+    appt2_49.delete()
+    pt_49.delete()
+    print("✓ Test 49 Passed: Previous Application Status Enforcement, Remarks for Further Application & Double-Click Quick Scheduling fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

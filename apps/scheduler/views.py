@@ -1503,6 +1503,7 @@ def brachy_schedule_patient_view(request, patient_id):
         return redirect('patient_detail', patient_id=patient_id)
 
     patient = get_object_or_404(Patient, id=patient_id)
+    today = timezone.localdate()
 
     existing_brachy = patient.schedules.filter(treatment_type='Brachytherapy').first()
     if existing_brachy and existing_brachy.is_frozen and not is_admin_only(request.user):
@@ -1528,6 +1529,24 @@ def brachy_schedule_patient_view(request, patient_id):
         patient=patient,
         status='Scheduled'
     ).select_related('applicator_type', 'anesthesia_type').order_by('appointment_date')
+
+    # Uncompleted previous brachytherapy appointments (status not entered for an appointment whose date has arrived)
+    uncompleted_prev_appts = patient.brachy_appointments.filter(
+        completion_status__isnull=True,
+        status='Scheduled',
+        appointment_date__lte=today
+    ).select_related('applicator_type', 'anesthesia_type').order_by('fraction_number', 'appointment_date')
+    uncompleted_prev_appt = uncompleted_prev_appts.first()
+
+    completion_statuses = TreatmentCompletionStatus.objects.filter(is_active=True).order_by('display_order', 'name')
+
+    # Latest remarks/notes for further application
+    initial_remarks = ""
+    last_with_rem = patient.brachy_appointments.exclude(remarks__isnull=True).exclude(remarks='').order_by('-appointment_date', '-id').first()
+    if last_with_rem and last_with_rem.remarks:
+        initial_remarks = last_with_rem.remarks
+    elif existing_brachy and existing_brachy.notes:
+        initial_remarks = existing_brachy.notes
 
     # User role privileges
     user_is_consultant = is_consultant_or_admin(request.user)
@@ -1659,6 +1678,29 @@ def brachy_schedule_patient_view(request, patient_id):
                     messages.error(request, err_msg)
                     return redirect('brachy_schedule_patient', patient_id=patient.id)
 
+        # Requirement 1: If patient already has a previous application whose date has arrived (<= today)
+        # and its status is not entered, ask/require completion status of previous application before scheduling next application.
+        uncompleted_prev = patient.brachy_appointments.filter(
+            completion_status__isnull=True,
+            status='Scheduled',
+            appointment_date__lte=today
+        ).order_by('fraction_number', 'appointment_date').first()
+
+        if uncompleted_prev:
+            err_msg = f"Application status for App {uncompleted_prev.fraction_number} ({uncompleted_prev.appointment_date.strftime('%d-%b-%Y')}) is not entered. Please record its completion status before scheduling subsequent applications."
+            if is_ajax:
+                return JsonResponse({
+                    'success': False,
+                    'error': err_msg,
+                    'requires_prev_status': True,
+                    'prev_appt_id': uncompleted_prev.id,
+                    'prev_fraction': uncompleted_prev.fraction_number,
+                    'prev_date': uncompleted_prev.appointment_date.strftime('%d-%b-%Y'),
+                    'prev_remarks': uncompleted_prev.remarks or initial_remarks or '',
+                }, status=400)
+            messages.error(request, err_msg)
+            return redirect('brachy_schedule_patient', patient_id=patient.id)
+
         # Selected Brachytherapy Machine
         machine_id = data.get('machine_id')
         machine_obj = None
@@ -1756,9 +1798,21 @@ def brachy_schedule_patient_view(request, patient_id):
         return redirect('patient_detail', patient_id=patient.id)
 
     # Initial GET rendering
+    target_date_str = request.GET.get('target_date', '').strip()
+    preselect_target_date = ''
+    if target_date_str:
+        try:
+            target_date_obj = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            preselect_target_date = target_date_str
+            if 'year' not in request.GET and 'month' not in request.GET:
+                year, month = target_date_obj.year, target_date_obj.month
+        except ValueError:
+            pass
+
     try:
-        year = int(request.GET.get('year', today.year))
-        month = int(request.GET.get('month', today.month))
+        if 'year' in request.GET or 'month' in request.GET or not preselect_target_date:
+            year = int(request.GET.get('year', today.year))
+            month = int(request.GET.get('month', today.month))
     except (ValueError, TypeError):
         year, month = today.year, today.month
 
@@ -1784,6 +1838,10 @@ def brachy_schedule_patient_view(request, patient_id):
         'default_site_not_in_sites': default_site_not_in_sites,
         'existing_appts': existing_appts,
         'existing_appts_count': existing_appts.order_by('-fraction_number').first().fraction_number if existing_appts.exists() else existing_appts.count(),
+        'uncompleted_prev_appt': uncompleted_prev_appt,
+        'completion_statuses': completion_statuses,
+        'initial_remarks': initial_remarks,
+        'preselect_target_date': preselect_target_date,
         'calendar': calendar_data,
         'user_is_consultant': user_is_consultant,
         'user_is_resident': user_is_res,
@@ -1885,6 +1943,15 @@ def brachy_daily_patients_view(request):
         if a.completion_status:
             status_disp = a.completion_status.name
 
+        remarks_val = a.remarks
+        if not remarks_val:
+            last_app_rem = a.patient.brachy_appointments.exclude(remarks__isnull=True).exclude(remarks='').order_by('-appointment_date', '-id').first()
+            if last_app_rem and last_app_rem.remarks:
+                remarks_val = last_app_rem.remarks
+            elif a.schedule and a.schedule.notes:
+                remarks_val = a.schedule.notes
+        remarks_val = remarks_val or ''
+
         rows.append({
             'sl_no': idx,
             'id': a.id,
@@ -1905,7 +1972,7 @@ def brachy_daily_patients_view(request):
             'consultant': consultant_name,
             'unit': unit_disp,
             'fraction': a.fraction_number,
-            'remarks': a.remarks or '',
+            'remarks': remarks_val,
             'status': a.status,
             'status_display': status_disp,
             'completion_status_id': a.completion_status_id,
@@ -1990,6 +2057,15 @@ def brachy_daily_patients_api(request):
         if a.completion_status:
             status_disp = a.completion_status.name
 
+        remarks_val = a.remarks
+        if not remarks_val:
+            last_app_rem = a.patient.brachy_appointments.exclude(remarks__isnull=True).exclude(remarks='').order_by('-appointment_date', '-id').first()
+            if last_app_rem and last_app_rem.remarks:
+                remarks_val = last_app_rem.remarks
+            elif a.schedule and a.schedule.notes:
+                remarks_val = a.schedule.notes
+        remarks_val = remarks_val or ''
+
         rows.append({
             'sl_no': idx,
             'id': a.id,
@@ -2010,7 +2086,7 @@ def brachy_daily_patients_api(request):
             'consultant': consultant_name,
             'unit': unit_disp,
             'fraction': a.fraction_number,
-            'remarks': a.remarks or '',
+            'remarks': remarks_val,
             'status': a.status,
             'status_display': status_disp,
             'completion_status_id': a.completion_status_id,
@@ -2188,5 +2264,71 @@ def brachy_edit_appointment_api(request, appointment_id):
         'anesthesia_name': appt.anesthesia_type.name if appt.anesthesia_type else '-',
         'machine_name': appt.schedule.machine.name if (appt.schedule and appt.schedule.machine) else '-',
     })
+
+
+@login_required
+def brachy_search_patients_api(request):
+    """
+    Search registered patients by Hospital / MR number or Name for direct scheduling from the Brachy calendar.
+    Accepts:
+      q: search string (e.g. 20260001 or 'Jayamma')
+      date or target_date: target date string 'YYYY-MM-DD'
+    """
+    if not can_schedule_patient(request.user) and not can_edit_patient(request.user):
+        return JsonResponse({'success': False, 'error': "Access restricted. Scheduling permission required."}, status=403)
+
+    query = request.GET.get('q', '').strip()
+    target_date = request.GET.get('date', '').strip() or request.GET.get('target_date', '').strip()
+
+    if not query:
+        return JsonResponse({'success': True, 'patients': []})
+
+    if query.isdigit():
+        patients_qs = Patient.objects.filter(Q(mr_no=int(query)) | Q(phone_no__icontains=query))
+    else:
+        patients_qs = Patient.objects.filter(
+            Q(pt_name__icontains=query) |
+            Q(diagnosis__icontains=query) |
+            Q(rt_no__icontains=query)
+        )
+
+    patients_qs = patients_qs.select_related('primary_consultant').prefetch_related('brachy_appointments__completion_status')[:15]
+
+    results = []
+    for p in patients_qs:
+        appts = list(p.brachy_appointments.all().order_by('fraction_number'))
+        if appts:
+            parts = []
+            for a in appts:
+                st_name = a.completion_status.name if a.completion_status else a.status
+                parts.append(f"App {a.fraction_number}: {st_name} ({a.appointment_date.strftime('%d-%b')})")
+            brachy_summary = " | ".join(parts)
+        else:
+            brachy_summary = "No Brachytherapy scheduled yet"
+
+        unit_str = str(p.unit).replace('Unit', '').strip() if p.unit else "I"
+        if not unit_str:
+            unit_str = "I"
+
+        sched_url = f"/scheduler/patient/{p.id}/brachytherapy/"
+        if target_date:
+            sched_url += f"?target_date={target_date}"
+
+        results.append({
+            'id': p.id,
+            'mr_no': p.mr_no,
+            'name': p.pt_name,
+            'rt_no': p.rt_no or '-',
+            'age_sex': p.age_sex_display,
+            'unit': unit_str,
+            'diagnosis': p.diagnosis or 'Not specified',
+            'consultant': p.primary_consultant.name if p.primary_consultant else 'Unassigned',
+            'brachy_summary': brachy_summary,
+            'has_uncompleted': any(a.completion_status is None and a.status == 'Scheduled' for a in appts),
+            'schedule_url': sched_url,
+        })
+
+    return JsonResponse({'success': True, 'patients': results})
+
 
 
