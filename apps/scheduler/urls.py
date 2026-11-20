@@ -7,6 +7,7 @@ urlpatterns = [
     path('patient/<int:patient_id>/brachytherapy/', views.brachy_schedule_patient_view, name='brachy_schedule_patient'),
     path('brachytherapy/calendar/', views.brachy_calendar_view, name='brachy_calendar'),
     path('brachytherapy/daily-list/', views.brachy_daily_patients_view, name='brachy_daily_patients'),
+    path('brachytherapy/daily-list/print/', views.brachy_ot_list_print_view, name='brachy_ot_list_print'),
     path('brachytherapy/api/daily-list/', views.brachy_daily_patients_api, name='brachy_daily_patients_api'),
     path('brachytherapy/api/appointment/<int:appointment_id>/edit/', views.brachy_edit_appointment_api, name='brachy_edit_appointment_api'),
     path('brachytherapy/api/appointment/<int:appointment_id>/status/', views.brachy_update_appointment_status_api, name='brachy_update_appointment_status_api'),

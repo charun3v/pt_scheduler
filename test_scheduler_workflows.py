@@ -5165,6 +5165,122 @@ def run_tests():
     pt_52.delete()
     print("✓ Test 52 Passed: Brachytherapy 1000 hrs Status Rule & Interactive Previous Application Completion Modal fully verified.")
 
+    # 53. Test Brachytherapy OT List 2x Half-A4 Printout & Template Settings
+    print("\n--- Test 53: Brachytherapy OT List 2x Half-A4 Printout & Template Settings ---")
+    today = timezone.localdate()
+    test_date_53 = today + timedelta(days=20)
+
+    BrachytherapyAppointment.objects.filter(patient__mr_no=9999053).delete()
+    Patient.objects.filter(mr_no=9999053).delete()
+
+    cons_53 = Consultant.objects.filter(is_active=True).first()
+    app_icbt = BrachyApplicator.objects.filter(name__icontains='Intracavitary').first() or BrachyApplicator.objects.first()
+    anes_spin = BrachyAnesthesia.objects.filter(name__icontains='Spinal').first() or BrachyAnesthesia.objects.first()
+
+    pt_53 = Patient.objects.create(
+        mr_no=9999053,
+        pt_name="SHIVARATHNAMMA",
+        age=48,
+        sex='F',
+        diagnosis="CA CERVIX",
+        primary_consultant=cons_53,
+        unit="III"
+    )
+
+    intent_obj = TreatmentIntent.objects.filter(is_active=True).first()
+    sched_53 = TreatmentSchedule.objects.create(
+        patient=pt_53,
+        treatment_type='Brachytherapy',
+        machine=brachy_mach_50,
+        applicator_type=app_icbt,
+        anesthesia_type=anes_spin,
+        site_of_treatment="Cervix",
+        date_of_start=test_date_53,
+        date_of_end=test_date_53 + timedelta(days=7),
+        intent=intent_obj,
+        no_of_fractions=3,
+        status='Scheduled',
+        created_by=admin_user
+    )
+
+    appt_53 = BrachytherapyAppointment.objects.create(
+        patient=pt_53,
+        schedule=sched_53,
+        appointment_date=test_date_53,
+        fraction_number=1,
+        applicator_type=app_icbt,
+        anesthesia_type=anes_spin,
+        status='Scheduled'
+    )
+
+    # 1. Test GET /scheduler/brachytherapy/daily-list/print/
+    resp_print = client.get(f'/scheduler/brachytherapy/daily-list/print/?date={test_date_53.isoformat()}')
+    assert resp_print.status_code == 200
+    print_html = resp_print.content.decode('utf-8')
+
+    # Verify 2x half-A4 dual-sheet elements
+    assert "topSheet" in print_html
+    assert "bottomSheet" in print_html
+    assert "TEAR / CUT ALONG LINE" in print_html
+    assert "KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY" in print_html
+    assert "DEPARTMENT OF RADIATION ONCOLOGY UNIT-III" in print_html
+    assert "OT LIST AS ON" in print_html
+    assert "SHIVARATHNAMMA" in print_html
+    assert "9999053" in print_html
+    assert "CA CERVIX" in print_html
+    assert "REQUIRED" in print_html  # Spinal Anaesthesia -> REQUIRED
+    assert "SESSION" in print_html   # e.g., ICBT 1ST SESSION or ICBT HDR 1ST SESSION
+    assert "COPY TO" in print_html
+    assert "Radiation Physics" in print_html
+    assert "contenteditable" in print_html
+
+    # 2. Test Print Template Settings GET for Brachy
+    resp_settings_get = client.get('/reports/print-template-settings/?template=brachy')
+    assert resp_settings_get.status_code == 200
+    settings_html = resp_settings_get.content.decode('utf-8')
+    assert "sectionBrachyFields" in settings_html
+    assert "Brachytherapy OT List" in settings_html
+
+    # 3. Test Print Template Settings POST to update Brachy OT configs
+    resp_settings_post = client.post('/reports/print-template-settings/', {
+        'active_template': 'brachy',
+        'brachy_ot_header_line_1': 'CUSTOM TEST ONCOLOGY CENTRE, BANGALORE.',
+        'brachy_ot_header_line_2': 'DEPARTMENT OF RADIOTHERAPY {unit}',
+        'brachy_ot_header_line_3': 'OT SURGERY LIST AS ON {date}',
+        'brachy_ot_copy_to': '1. Test Physicist\n2. Test OT Nurse',
+        'brachy_ot_default_signing_authority': 'DR. TEST CONSULTANT',
+        'brachy_ot_default_designation': 'PROFESSOR & HEAD',
+    }, follow=True)
+    assert resp_settings_post.status_code == 200
+
+    cfg = PrintTemplateConfig.get_active()
+    assert cfg.brachy_ot_header_line_1 == 'CUSTOM TEST ONCOLOGY CENTRE, BANGALORE.'
+    assert cfg.brachy_ot_default_signing_authority == 'DR. TEST CONSULTANT'
+
+    # Verify custom settings reflect on the print page
+    resp_print_custom = client.get(f'/scheduler/brachytherapy/daily-list/print/?date={test_date_53.isoformat()}')
+    assert resp_print_custom.status_code == 200
+    custom_print_html = resp_print_custom.content.decode('utf-8')
+    assert "CUSTOM TEST ONCOLOGY CENTRE, BANGALORE." in custom_print_html
+    assert "DR. TEST CONSULTANT" in custom_print_html
+    assert "1. Test Physicist" in custom_print_html
+
+    # 4. Test Reset to Defaults for Brachy
+    resp_reset = client.post('/reports/print-template-settings/', {
+        'action': 'reset_defaults',
+        'active_template': 'brachy'
+    }, follow=True)
+    assert resp_reset.status_code == 200
+    cfg.refresh_from_db()
+    assert cfg.brachy_ot_header_line_1 == 'KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY, BANGALORE.'
+    assert cfg.brachy_ot_default_signing_authority == 'DR. NAVEEN T'
+
+    # Cleanup
+    appt_53.delete()
+    sched_53.delete()
+    pt_53.delete()
+    print("✓ Test 53 Passed: Brachytherapy OT List 2x Half-A4 Printout & Template Settings fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

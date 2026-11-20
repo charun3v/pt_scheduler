@@ -363,9 +363,12 @@
                         Today
                     </button>
                 </div>
-                <div>
-                    <a id="btnModalFullPage" href="{% url 'brachy_daily_patients' %}" target="_blank" style="background: #107c41; color: #ffffff; text-decoration: none; padding: 6px 14px; border-radius: 4px; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
-                        🖨️ Open Full / Print View ↗
+                <div style="display: flex; gap: 8px;">
+                    <a id="btnModalFullPage" href="{% url 'brachy_daily_patients' %}" target="_blank" style="background: #0284c7; color: #ffffff; text-decoration: none; padding: 6px 12px; border-radius: 4px; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                        📋 Daily List ↗
+                    </a>
+                    <a id="btnModalPrintOT" href="{% url 'brachy_ot_list_print' %}" target="_blank" style="background: #107c41; color: #ffffff; text-decoration: none; padding: 6px 12px; border-radius: 4px; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                        🖨️ Print OT List (2x A4) ↗
                     </a>
                 </div>
             </div>
@@ -857,6 +860,10 @@
         const fullLink = document.getElementById('btnModalFullPage');
         if (fullLink) {
             fullLink.href = '/scheduler/brachytherapy/daily-list/?date=' + encodeURIComponent(targetDate);
+        }
+        const printOTLink = document.getElementById('btnModalPrintOT');
+        if (printOTLink) {
+            printOTLink.href = '/scheduler/brachytherapy/daily-list/print/?date=' + encodeURIComponent(targetDate);
         }
         container.innerHTML = '<div style="text-align: center; padding: 24px; color: #0284c7; font-size: 13px;">⏳ Loading patients scheduled for ' + escapeHtml(targetDate) + '...</div>';
 

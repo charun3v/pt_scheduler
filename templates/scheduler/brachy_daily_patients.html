@@ -687,7 +687,8 @@ function handlePrintDailyList() {
         alert("⚠️ Cannot open print preview:\n\nOne or more patients on this list have incomplete previous application details.\n\nComplete the previous application details before finalising the list.");
         return;
     }
-    window.print();
+    const printUrl = "{% url 'brachy_ot_list_print' %}?date=" + encodeURIComponent("{{ date_iso }}");
+    window.open(printUrl, '_blank');
 }
 
 function openBrachyStatusModal(apptId, ptName, mrNo, fraction, statusId, remarks, currentStatus, fractionsTreated) {

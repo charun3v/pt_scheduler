@@ -1,3 +1,4 @@
+from apps.reports.views import get_consultant_signing_options
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -14,9 +15,10 @@ from .models import (
     BrachyApplicator, BrachyAnesthesia, BrachytherapyAppointment, TreatmentCompletionStatus
 )
 import json
+import re
 import calendar
 from apps.patients.models import Patient, DEFAULT_SITES
-from apps.core.models import AuditLog
+from apps.core.models import AuditLog, PrintTemplateConfig, Designation
 from apps.core.permissions import (
     is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule,
     can_schedule_patient, can_view_pending_patients, is_consultant_or_admin, is_resident,
@@ -2494,3 +2496,156 @@ def brachy_search_patients_api(request):
 
 
 
+
+
+@login_required
+def brachy_ot_list_print_view(request):
+    """
+    Renders browser-optimised HTML print view of the Brachytherapy OT List.
+    Sample design:
+      - Printed as two lists (top and bottom) on an A4 paper with a cutting divider line.
+      - Institution header:
+          Line 1: KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY, BANGALORE.
+          Line 2: DEPARTMENT OF RADIATION ONCOLOGY UNIT-III (or dynamically selected Unit)
+          Line 3: OT LIST AS ON DD/MM/YYYY
+      - Table columns:
+          Sl. No | NAME | IP NO | DIAGNOSIS | PROCEDURE | ANAESTHESIA | CONSULTANT
+      - Inline editable template: user can edit any cell or header before printing.
+      - Real-time bidirectional synchronization between top and bottom halves.
+      - Footer:
+          Left: COPY TO (1-The Prof. & HOD., Radiation Physics, 2. THE PROF & HOD RADIATION PHYSICS, 3.S/N. Brachytherapy, 4.Office copy)
+          Right: Signing Authority and Designation (similar designs as EBRT list).
+    """
+    date_str = request.GET.get('date', '').strip()
+    today = timezone.localdate()
+    target_date = today
+    if date_str:
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d-%b-%Y'):
+            try:
+                target_date = datetime.strptime(date_str, fmt).date()
+                break
+            except ValueError:
+                continue
+
+    appts = BrachytherapyAppointment.objects.filter(
+        appointment_date=target_date
+    ).exclude(status='Cancelled').select_related(
+        'patient', 'patient__primary_consultant',
+        'applicator_type', 'anesthesia_type',
+        'completion_status',
+        'schedule', 'schedule__machine'
+    ).order_by('fraction_number', 'patient__pt_name')
+
+    config = PrintTemplateConfig.get_active()
+
+    # Unit resolution
+    unit_param = request.GET.get('unit', '').strip().upper()
+    if unit_param and unit_param != 'ALL':
+        clean_u = unit_param.replace('UNIT', '').replace('-', '').strip()
+        appts = [a for a in appts if str(a.patient.unit or '').replace('Unit', '').replace('-', '').strip() == clean_u]
+        unit_disp = f"UNIT-{clean_u}"
+    else:
+        units_present = list(set(str(a.patient.unit or '').replace('Unit', '').replace('-', '').strip() for a in appts if a.patient.unit))
+        if len(units_present) == 1 and units_present[0]:
+            unit_disp = f"UNIT-{units_present[0]}"
+        else:
+            unit_disp = "UNIT-III"
+
+    rows = []
+    for idx, a in enumerate(appts, 1):
+        pt_name = (a.patient.pt_name or '').strip().upper()
+        ip_no = str(a.patient.mr_no or '').strip()
+        diagnosis = (a.patient.diagnosis or 'CA CERVIX').strip().upper()
+
+        # Procedure acronym & session
+        app_name = ''
+        if a.applicator_type:
+            app_name = (a.applicator_type.applicator_type or a.applicator_type.name or '').strip().upper()
+
+        if 'INTERSTITIAL' in app_name:
+            proc = 'ISBT'
+        elif 'INTRACAVITARY' in app_name:
+            proc = 'ICBT'
+        elif 'CYLINDER' in app_name or 'VAGINAL' in app_name or 'SORBO' in app_name:
+            proc = 'IV SORBO'
+        elif app_name:
+            proc = app_name
+        else:
+            proc = 'BRACHYTHERAPY'
+
+        mach_name = ''
+        if a.schedule and a.schedule.machine:
+            mach_name = a.schedule.machine.name.upper()
+        elif a.schedule and a.schedule.machine_display:
+            mach_name = a.schedule.machine_display.upper()
+
+        if ('HDR' in mach_name or 'GAMMAMED' in mach_name or 'BEBIG' in mach_name or 'SAGINOVA' in mach_name) and proc in ['ICBT', 'ISBT']:
+            if 'HDR' not in proc:
+                proc = f"{proc} HDR"
+
+        frac = a.fraction_number or 1
+        if frac == 1:
+            ord_str = "1ST SESSION"
+        elif frac == 2:
+            ord_str = "2ND SESSION"
+        elif frac == 3:
+            ord_str = "3RD SESSION"
+        else:
+            ord_str = f"{frac}TH SESSION"
+
+        procedure_disp = f"{proc} {ord_str}"
+
+        # Anesthesia
+        ana_name = a.anesthesia_type.name.lower().strip() if a.anesthesia_type else ''
+        if not ana_name or 'none' in ana_name or 'local' in ana_name or ana_name == 'la' or 'not required' in ana_name:
+            anaesthesia_disp = "NOT REQUIRED"
+        else:
+            anaesthesia_disp = "REQUIRED"
+
+        # Consultant
+        cons_raw = a.patient.primary_consultant.name if a.patient.primary_consultant else 'UNASSIGNED'
+        cons_clean = re.sub(r'^(DR\.?|PROF\.?)\s*', '', cons_raw.strip(), flags=re.IGNORECASE).strip().upper()
+        consultant_disp = f"DR {cons_clean}"
+
+        rows.append({
+            'sl_no': idx,
+            'id': a.id,
+            'patient_name': pt_name,
+            'ip_no': ip_no,
+            'diagnosis': diagnosis,
+            'procedure': procedure_disp,
+            'anaesthesia': anaesthesia_disp,
+            'consultant': consultant_disp,
+            'unit': a.patient.unit or 'III',
+        })
+
+    target_date_formatted = target_date.strftime('%d/%m/%Y')
+    header_line_1 = config.brachy_ot_header_line_1
+    header_line_2 = (config.brachy_ot_header_line_2 or 'DEPARTMENT OF RADIATION ONCOLOGY {unit}').replace('{unit}', unit_disp)
+    header_line_3 = (config.brachy_ot_header_line_3 or 'OT LIST AS ON {date}').replace('{date}', target_date_formatted)
+
+    signing_authority = request.GET.get('signing_authority') or config.brachy_ot_default_signing_authority
+    designation = request.GET.get('designation') or config.brachy_ot_default_designation
+
+    consultant_options = get_consultant_signing_options(signing_authority)
+    designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
+
+    context = {
+        'target_date': target_date,
+        'target_date_iso': target_date.isoformat(),
+        'target_date_formatted': target_date_formatted,
+        'header_line_1': header_line_1,
+        'header_line_2': header_line_2,
+        'header_line_3': header_line_3,
+        'copy_to_text': config.brachy_ot_copy_to,
+        'signing_authority': signing_authority,
+        'designation': designation,
+        'department_line': config.brachy_ot_department_line,
+        'consultant_options': consultant_options,
+        'designations': designations,
+        'selected_unit': unit_disp,
+        'rows': rows,
+        'count': len(rows),
+        'config': config,
+    }
+    return render(request, 'scheduler/brachy_ot_list_print.html', context)

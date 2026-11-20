@@ -2164,7 +2164,7 @@ def print_template_settings_view(request):
     config = PrintTemplateConfig.get_active()
     active_template = request.GET.get('template') or request.POST.get('active_template') or 'regular'
     active_template = active_template.strip().lower()
-    if active_template not in ['regular', 'emergency']:
+    if active_template not in ['regular', 'emergency', 'brachy']:
         active_template = 'regular'
 
     if request.method == 'POST':
@@ -2211,6 +2211,19 @@ def print_template_settings_view(request):
             config.department_signature_line = "Department of Radiation Oncology"
             config.page_margin_cm = 2.5
             config.row_vertical_padding_pt = 2.7
+            if active_template == 'brachy':
+                config.brachy_ot_header_line_1 = 'KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY, BANGALORE.'
+                config.brachy_ot_header_line_2 = 'DEPARTMENT OF RADIATION ONCOLOGY UNIT-III'
+                config.brachy_ot_header_line_3 = 'OT LIST AS ON {date}'
+                config.brachy_ot_copy_to = (
+                    "1-The Prof. & HOD., Radiation Physics,\n"
+                    "2. THE PROF & HOD RADIATION PHYSICS\n"
+                    "3.S/N. Brachytherapy,\n"
+                    "4.Office copy"
+                )
+                config.brachy_ot_default_signing_authority = "DR. NAVEEN T"
+                config.brachy_ot_default_designation = "HOD & HOU RT III"
+                config.brachy_ot_department_line = "Department of Radiation Oncology"
             config.save()
 
             AuditLog.objects.create(
@@ -2238,6 +2251,14 @@ def print_template_settings_view(request):
         config.default_signing_authority = resolve_signing_authority(request.POST.get('default_signing_authority', config.default_signing_authority).strip())
         config.default_designation = request.POST.get('default_designation', config.default_designation).strip()
         config.department_signature_line = request.POST.get('department_signature_line', config.department_signature_line).strip()
+        if active_template == 'brachy':
+            config.brachy_ot_header_line_1 = request.POST.get('brachy_ot_header_line_1', config.brachy_ot_header_line_1).strip()
+            config.brachy_ot_header_line_2 = request.POST.get('brachy_ot_header_line_2', config.brachy_ot_header_line_2).strip()
+            config.brachy_ot_header_line_3 = request.POST.get('brachy_ot_header_line_3', config.brachy_ot_header_line_3).strip()
+            config.brachy_ot_copy_to = request.POST.get('brachy_ot_copy_to', config.brachy_ot_copy_to).strip()
+            config.brachy_ot_default_signing_authority = resolve_signing_authority(request.POST.get('brachy_ot_default_signing_authority', config.brachy_ot_default_signing_authority).strip())
+            config.brachy_ot_default_designation = request.POST.get('brachy_ot_default_designation', config.brachy_ot_default_designation).strip()
+            config.brachy_ot_department_line = request.POST.get('brachy_ot_department_line', config.brachy_ot_department_line).strip()
         try:
             config.page_margin_cm = float(request.POST.get('page_margin_cm', 2.5))
         except (ValueError, TypeError):
@@ -2255,12 +2276,18 @@ def print_template_settings_view(request):
             details=f"Updated printout template ({active_template}) headers, layout ({config.page_margin_cm}cm, {config.row_vertical_padding_pt}pt) and texts",
             ip_address=request.META.get('REMOTE_ADDR')
         )
-        template_label = "Regular Scheduler" if active_template == 'regular' else "Emergency Slot"
+        if active_template == 'regular':
+            template_label = "Regular Scheduler"
+        elif active_template == 'emergency':
+            template_label = "Emergency Slot"
+        else:
+            template_label = "Brachytherapy OT List" 
         messages.success(request, f"Printout template texts and layout for '{template_label}' successfully saved!")
         return redirect(f"{reverse('print_template_settings')}?template={active_template}")
 
     # Build consultant choices (real person names only) + Designations
-    consultant_options = get_consultant_signing_options(config.default_signing_authority)
+    current_signing_auth = config.brachy_ot_default_signing_authority if active_template == 'brachy' else config.default_signing_authority
+    consultant_options = get_consultant_signing_options(current_signing_auth)
     designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
 
     context = {

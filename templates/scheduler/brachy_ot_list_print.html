@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brachytherapy OT List (2x Half-A4) - {{ target_date_formatted }}</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Calibri, 'Segoe UI', Arial, Helvetica, sans-serif;
+            background: #e2e8f0;
+            color: #000000;
+            font-size: 10pt;
+            line-height: 1.25;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* Non-printing Control Toolbar */
+        .no-print-toolbar {
+            background: #003366;
+            color: #ffffff;
+            padding: 9px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 2000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            font-size: 12px;
+        }
+
+        .toolbar-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .toolbar-group label {
+            font-weight: 600;
+            color: #e2e8f0;
+            font-size: 11.5px;
+        }
+
+        .toolbar-group select, .toolbar-group input {
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #94a3b8;
+            font-size: 11.5px;
+            background: #ffffff;
+            color: #0f172a;
+            font-family: inherit;
+        }
+
+        .btn {
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+        }
+
+        .btn-print {
+            background: #107c41;
+            color: #ffffff;
+            border-color: #0b5c30;
+        }
+        .btn-print:hover {
+            background: #0b5c30;
+        }
+
+        .btn-sync {
+            background: #0284c7;
+            color: #ffffff;
+            border-color: #0369a1;
+        }
+        .btn-sync:hover {
+            background: #0369a1;
+        }
+
+        .btn-back {
+            background: rgba(255,255,255,0.15);
+            color: #ffffff;
+            border-color: rgba(255,255,255,0.3);
+        }
+        .btn-back:hover {
+            background: rgba(255,255,255,0.25);
+        }
+
+        /* Printable Sheet (Standard A4 Portrait) */
+        .print-sheet-wrapper {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 18px auto;
+            background: #ffffff;
+            padding: 8mm 12mm;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Half-sheet container (Top and Bottom) */
+        .ot-half-sheet {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 128mm;
+            max-height: 136mm;
+            padding: 2mm 0;
+            overflow: hidden;
+        }
+
+        /* Institution Header */
+        .ot-header {
+            text-align: center;
+            margin-bottom: 5px;
+        }
+
+        .ot-header-line1 {
+            font-size: 12.5pt;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            color: #000000;
+            margin-bottom: 2px;
+        }
+
+        .ot-header-line2 {
+            font-size: 11pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #000000;
+            margin-bottom: 2px;
+        }
+
+        .ot-header-line3 {
+            font-size: 11pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #000000;
+        }
+
+        .ot-header-line3 u {
+            text-underline-offset: 3px;
+        }
+
+        /* OT Patient Table */
+        .ot-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1.5px solid #000000;
+            margin: 5px 0 6px 0;
+        }
+
+        .ot-table th, .ot-table td {
+            border: 1px solid #000000;
+            padding: 3.5px 5px;
+            font-size: 9.5pt;
+            line-height: 1.22;
+            color: #000000;
+            vertical-align: middle;
+        }
+
+        .ot-table th {
+            background: #f8fafc;
+            font-weight: 800;
+            text-align: center;
+            font-size: 9pt;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+        }
+
+        .col-sl {
+            width: 32px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .col-name {
+            width: 24%;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .col-ip {
+            width: 14%;
+            text-align: center;
+            font-family: monospace, 'Courier New', Courier, sans-serif;
+            font-weight: 700;
+            font-size: 10pt;
+            letter-spacing: 0.3px;
+        }
+
+        .col-diag {
+            width: 18%;
+            text-transform: uppercase;
+        }
+
+        .col-proc {
+            width: 19%;
+            text-align: center;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .col-ana {
+            width: 12%;
+            text-align: center;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .col-cons {
+            width: 13%;
+            text-align: center;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        /* Footer (Copy to & Signatures) */
+        .ot-footer-grid {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-top: 4px;
+            padding-top: 2px;
+        }
+
+        .ot-copy-to {
+            font-size: 8.5pt;
+            line-height: 1.3;
+            color: #000000;
+            max-width: 58%;
+        }
+
+        .ot-copy-to-title {
+            font-weight: 800;
+            margin-bottom: 2px;
+            letter-spacing: 0.3px;
+        }
+
+        .ot-copy-to-lines {
+            white-space: pre-line;
+            font-size: 8.5pt;
+        }
+
+        .ot-signature-block {
+            text-align: center;
+            min-width: 190px;
+            max-width: 250px;
+            color: #000000;
+        }
+
+        .ot-sig-space {
+            height: 32px;
+        }
+
+        .ot-sig-name {
+            font-size: 10pt;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            margin-bottom: 1px;
+        }
+
+        .ot-sig-desig {
+            font-size: 8.5pt;
+            font-weight: 700;
+            margin-bottom: 1px;
+        }
+
+        .ot-sig-dept {
+            font-size: 8pt;
+            font-weight: normal;
+        }
+
+        /* Scissor Cut Line Divider */
+        .ot-cut-divider {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 6px 0;
+            color: #64748b;
+            font-size: 8.5pt;
+            user-select: none;
+        }
+
+        .ot-cut-line {
+            flex: 1;
+            border-top: 1.5px dashed #94a3b8;
+        }
+
+        .ot-cut-badge {
+            font-weight: 700;
+            letter-spacing: 1px;
+            padding: 1px 8px;
+            border-radius: 3px;
+            background: #f1f5f9;
+            border: 1px dashed #cbd5e1;
+            font-size: 8pt;
+        }
+
+        /* Inline Editable Highlighting on Hover */
+        [contenteditable="true"] {
+            outline: none;
+            transition: background 0.15s ease;
+            border-radius: 2px;
+        }
+
+        [contenteditable="true"]:hover {
+            background: rgba(254, 240, 138, 0.35);
+            cursor: text;
+        }
+
+        [contenteditable="true"]:focus {
+            background: #fef9c3;
+            box-shadow: 0 0 0 1px #eab308;
+        }
+
+        /* Print Media Styles */
+        @page {
+            size: A4 portrait;
+            margin: 6mm 10mm;
+        }
+
+        @media print {
+            body {
+                background: #ffffff !important;
+                color: #000000 !important;
+            }
+
+            .no-print-toolbar {
+                display: none !important;
+            }
+
+            .print-sheet-wrapper {
+                width: 100% !important;
+                min-height: 100% !important;
+                height: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
+            }
+
+            .ot-half-sheet {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                max-height: 136mm !important;
+            }
+
+            .ot-cut-divider {
+                color: #475569 !important;
+                margin: 4mm 0 !important;
+            }
+
+            .ot-cut-line {
+                border-top: 1px dashed #000000 !important;
+            }
+
+            .ot-cut-badge {
+                background: #ffffff !important;
+                border-color: #000000 !important;
+                color: #000000 !important;
+            }
+
+            [contenteditable="true"]:hover, [contenteditable="true"]:focus {
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Non-print action toolbar -->
+    <div class="no-print-toolbar">
+        <div style="display: flex; align-items: center; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 16px;">☢️</span>
+                <span style="font-weight: 800; font-size: 13.5px; letter-spacing: 0.3px;">Brachytherapy OT List Printout (2x Half-A4)</span>
+            </div>
+
+            <div class="toolbar-group">
+                <label for="signingAuthoritySelect">Signing Authority:</label>
+                <select id="signingAuthoritySelect" onchange="updateSigningAuthority(this.value)">
+                    {% for doc in consultant_options %}
+                    <option value="{{ doc }}" {% if doc == signing_authority %}selected{% endif %}>{{ doc }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="toolbar-group">
+                <label for="designationSelect">Designation:</label>
+                <select id="designationSelect" onchange="updateDesignation(this.value)">
+                    {% for desig in designations %}
+                    <option value="{{ desig.name }}" {% if desig.name == designation %}selected{% endif %}>{{ desig.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="toolbar-group">
+                <label for="unitSelect">Clinical Unit:</label>
+                <select id="unitSelect" onchange="updateUnitHeader(this.value)">
+                    <option value="UNIT-III" {% if selected_unit == 'UNIT-III' %}selected{% endif %}>Unit III</option>
+                    <option value="UNIT-I" {% if selected_unit == 'UNIT-I' %}selected{% endif %}>Unit I</option>
+                    <option value="UNIT-II" {% if selected_unit == 'UNIT-II' %}selected{% endif %}>Unit II</option>
+                    <option value="ALL" {% if selected_unit == 'ALL' %}selected{% endif %}>All Units</option>
+                </select>
+            </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 11px; background: rgba(255,255,255,0.18); padding: 3px 8px; border-radius: 3px; color: #f8fafc;" title="Click any cell or text on the sheet to edit directly before printing">
+                ✏️ All cells inline-editable &amp; auto-synced
+            </span>
+            <button type="button" onclick="syncTopToBottom()" class="btn btn-sync" title="Ensure both top and bottom copies match">
+                🔄 Sync Top &amp; Bottom
+            </button>
+            <button type="button" onclick="window.print()" class="btn btn-print">
+                🖨️ Print Now (Ctrl+P)
+            </button>
+            <a href="{% url 'brachy_daily_patients' %}?date={{ target_date_iso }}" class="btn btn-back">
+                ⬅️ Back to Daily List
+            </a>
+        </div>
+    </div>
+
+    <!-- Printable Sheet Container (Holds Top Half + Cut Divider + Bottom Half) -->
+    <div class="print-sheet-wrapper">
+
+        <!-- ============================================================== -->
+        <!-- TOP HALF LIST (First A5 / Half-A4 Copy) -->
+        <!-- ============================================================== -->
+        <div class="ot-half-sheet top-half" id="topSheet">
+            <div>
+                <!-- Institutional Header -->
+                <div class="ot-header">
+                    <div class="ot-header-line1" contenteditable="true" data-sync="header-line1">{{ header_line_1 }}</div>
+                    <div class="ot-header-line2" contenteditable="true" data-sync="header-line2">{{ header_line_2 }}</div>
+                    <div class="ot-header-line3" contenteditable="true" data-sync="header-line3">OT LIST AS ON <u>{{ target_date_formatted }}</u></div>
+                </div>
+
+                <!-- Patient OT Table -->
+                <table class="ot-table">
+                    <thead>
+                        <tr>
+                            <th class="col-sl">Sl.<br>No</th>
+                            <th class="col-name">NAME</th>
+                            <th class="col-ip">IP NO</th>
+                            <th class="col-diag">DIAGNOSIS</th>
+                            <th class="col-proc">PROCEDURE</th>
+                            <th class="col-ana">ANAESTHESIA</th>
+                            <th class="col-cons">CONSULTANT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in rows %}
+                        <tr>
+                            <td class="col-sl">{{ r.sl_no }}</td>
+                            <td class="col-name" contenteditable="true" data-sync="r-{{ forloop.counter }}-name">{{ r.patient_name }}</td>
+                            <td class="col-ip" contenteditable="true" data-sync="r-{{ forloop.counter }}-ip">{{ r.ip_no }}</td>
+                            <td class="col-diag" contenteditable="true" data-sync="r-{{ forloop.counter }}-diag">{{ r.diagnosis }}</td>
+                            <td class="col-proc" contenteditable="true" data-sync="r-{{ forloop.counter }}-proc">{{ r.procedure }}</td>
+                            <td class="col-ana" contenteditable="true" data-sync="r-{{ forloop.counter }}-ana">{{ r.anaesthesia }}</td>
+                            <td class="col-cons" contenteditable="true" data-sync="r-{{ forloop.counter }}-cons">{{ r.consultant }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">
+                                No brachytherapy patients scheduled for {{ target_date_formatted }}.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer: Copy To & Signature -->
+            <div class="ot-footer-grid">
+                <div class="ot-copy-to">
+                    <div class="ot-copy-to-title">COPY TO</div>
+                    <div class="ot-copy-to-lines" contenteditable="true" data-sync="copy-to">{{ copy_to_text }}</div>
+                </div>
+
+                <div class="ot-signature-block">
+                    <div class="ot-sig-space"></div>
+                    <div class="ot-sig-name" contenteditable="true" data-sync="sig-name">{{ signing_authority }}</div>
+                    <div class="ot-sig-desig" contenteditable="true" data-sync="sig-desig">{{ designation }}</div>
+                    {% if department_line %}
+                    <div class="ot-sig-dept" contenteditable="true" data-sync="sig-dept">{{ department_line }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- CUTTING DIVIDER LINE (Mid-A4 Horizontal Split) -->
+        <!-- ============================================================== -->
+        <div class="ot-cut-divider">
+            <div class="ot-cut-line"></div>
+            <span class="ot-cut-badge">✂ - - - - - - - - - - - - - - - - TEAR / CUT ALONG LINE - - - - - - - - - - - - - - - - ✂</span>
+            <div class="ot-cut-line"></div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- BOTTOM HALF LIST (Second A5 / Half-A4 Copy) -->
+        <!-- ============================================================== -->
+        <div class="ot-half-sheet bottom-half" id="bottomSheet">
+            <div>
+                <!-- Institutional Header -->
+                <div class="ot-header">
+                    <div class="ot-header-line1" contenteditable="true" data-sync="header-line1">{{ header_line_1 }}</div>
+                    <div class="ot-header-line2" contenteditable="true" data-sync="header-line2">{{ header_line_2 }}</div>
+                    <div class="ot-header-line3" contenteditable="true" data-sync="header-line3">OT LIST AS ON <u>{{ target_date_formatted }}</u></div>
+                </div>
+
+                <!-- Patient OT Table -->
+                <table class="ot-table">
+                    <thead>
+                        <tr>
+                            <th class="col-sl">Sl.<br>No</th>
+                            <th class="col-name">NAME</th>
+                            <th class="col-ip">IP NO</th>
+                            <th class="col-diag">DIAGNOSIS</th>
+                            <th class="col-proc">PROCEDURE</th>
+                            <th class="col-ana">ANAESTHESIA</th>
+                            <th class="col-cons">CONSULTANT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in rows %}
+                        <tr>
+                            <td class="col-sl">{{ r.sl_no }}</td>
+                            <td class="col-name" contenteditable="true" data-sync="r-{{ forloop.counter }}-name">{{ r.patient_name }}</td>
+                            <td class="col-ip" contenteditable="true" data-sync="r-{{ forloop.counter }}-ip">{{ r.ip_no }}</td>
+                            <td class="col-diag" contenteditable="true" data-sync="r-{{ forloop.counter }}-diag">{{ r.diagnosis }}</td>
+                            <td class="col-proc" contenteditable="true" data-sync="r-{{ forloop.counter }}-proc">{{ r.procedure }}</td>
+                            <td class="col-ana" contenteditable="true" data-sync="r-{{ forloop.counter }}-ana">{{ r.anaesthesia }}</td>
+                            <td class="col-cons" contenteditable="true" data-sync="r-{{ forloop.counter }}-cons">{{ r.consultant }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 18px; color: #64748b; font-style: italic;">
+                                No brachytherapy patients scheduled for {{ target_date_formatted }}.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Footer: Copy To & Signature -->
+            <div class="ot-footer-grid">
+                <div class="ot-copy-to">
+                    <div class="ot-copy-to-title">COPY TO</div>
+                    <div class="ot-copy-to-lines" contenteditable="true" data-sync="copy-to">{{ copy_to_text }}</div>
+                </div>
+
+                <div class="ot-signature-block">
+                    <div class="ot-sig-space"></div>
+                    <div class="ot-sig-name" contenteditable="true" data-sync="sig-name">{{ signing_authority }}</div>
+                    <div class="ot-sig-desig" contenteditable="true" data-sync="sig-desig">{{ designation }}</div>
+                    {% if department_line %}
+                    <div class="ot-sig-dept" contenteditable="true" data-sync="sig-dept">{{ department_line }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Real-time synchronization between Top and Bottom halves
+        document.addEventListener('DOMContentLoaded', () => {
+            const topSheet = document.getElementById('topSheet');
+            const bottomSheet = document.getElementById('bottomSheet');
+
+            function syncAll(source, target) {
+                const sourceElements = source.querySelectorAll('[data-sync]');
+                sourceElements.forEach(src => {
+                    const key = src.getAttribute('data-sync');
+                    const tgt = target.querySelector(`[data-sync="${key}"]`);
+                    if (tgt && tgt !== src) {
+                        tgt.innerHTML = src.innerHTML;
+                    }
+                });
+            }
+
+            topSheet.addEventListener('input', (e) => {
+                const key = e.target.getAttribute('data-sync');
+                if (key) {
+                    const tgt = bottomSheet.querySelector(`[data-sync="${key}"]`);
+                    if (tgt && tgt !== e.target) {
+                        tgt.innerHTML = e.target.innerHTML;
+                    }
+                }
+            });
+
+            bottomSheet.addEventListener('input', (e) => {
+                const key = e.target.getAttribute('data-sync');
+                if (key) {
+                    const tgt = topSheet.querySelector(`[data-sync="${key}"]`);
+                    if (tgt && tgt !== e.target) {
+                        tgt.innerHTML = e.target.innerHTML;
+                    }
+                }
+            });
+        });
+
+        function syncTopToBottom() {
+            const topSheet = document.getElementById('topSheet');
+            const bottomSheet = document.getElementById('bottomSheet');
+            const sourceElements = topSheet.querySelectorAll('[data-sync]');
+            sourceElements.forEach(src => {
+                const key = src.getAttribute('data-sync');
+                const tgt = bottomSheet.querySelector(`[data-sync="${key}"]`);
+                if (tgt) {
+                    tgt.innerHTML = src.innerHTML;
+                }
+            });
+            alert("✓ Top and Bottom lists are now in 100% identical sync!");
+        }
+
+        function updateSigningAuthority(val) {
+            document.querySelectorAll('[data-sync="sig-name"]').forEach(el => {
+                el.innerText = val.toUpperCase();
+            });
+        }
+
+        function updateDesignation(val) {
+            document.querySelectorAll('[data-sync="sig-desig"]').forEach(el => {
+                el.innerText = val;
+            });
+        }
+
+        function updateUnitHeader(val) {
+            let unitText = val;
+            if (val === 'ALL') {
+                unitText = 'ALL UNITS';
+            }
+            const newHeader = 'DEPARTMENT OF RADIATION ONCOLOGY ' + unitText;
+            document.querySelectorAll('[data-sync="header-line2"]').forEach(el => {
+                el.innerText = newHeader;
+            });
+        }
+    </script>
+</body>
+</html>

@@ -33,7 +33,7 @@
                 <span>Select Print Template to View & Configure:</span>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
                 <!-- Template 1: Regular Scheduler -->
                 <div id="cardRegular" onclick="switchPrintTemplate('regular', event)"
                      style="padding: 14px 18px; border-radius: 8px; border: 2px solid {% if active_template == 'regular' %}#003366{% else %}#cbd5e1{% endif %}; background: {% if active_template == 'regular' %}#eff6ff{% else %}#ffffff{% endif %}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: all 0.15s ease;">
@@ -74,6 +74,28 @@
                     <div>
                         <span id="badgeEmergency" style="display: inline-block; font-size: 11px; padding: 4px 10px; border-radius: 4px; font-weight: bold; {% if active_template == 'emergency' %}background: #b91c1c; color: #ffffff;{% else %}background: #e2e8f0; color: #475569;{% endif %}">
                             {% if active_template == 'emergency' %}✓ Active Template{% else %}Click to Configure{% endif %}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Template 3: Brachytherapy OT List -->
+                <div id="cardBrachy" onclick="switchPrintTemplate('brachy', event)"
+                     style="padding: 14px 18px; border-radius: 8px; border: 2px solid {% if active_template == 'brachy' %}#15803d{% else %}#cbd5e1{% endif %}; background: {% if active_template == 'brachy' %}#f0fdf4{% else %}#ffffff{% endif %}; cursor: pointer; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: all 0.15s ease;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 28px;">☢️</span>
+                        <div>
+                            <div style="font-weight: 800; font-size: 14px; color: #15803d;">Brachytherapy OT List</div>
+                            <div style="font-size: 11px; color: #475569; margin-top: 2px;">
+                                2x Half-A4 Format (Top &amp; Bottom) &bull; Official Operation Theater List
+                            </div>
+                            <div style="margin-top: 4px; font-size: 10px; color: #166534; font-weight: bold;">
+                                Dual-copy A4 sheet with tear line, procedure tags &amp; anesthesia
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="badgeBrachy" style="display: inline-block; font-size: 11px; padding: 4px 10px; border-radius: 4px; font-weight: bold; {% if active_template == 'brachy' %}background: #15803d; color: #ffffff;{% else %}background: #e2e8f0; color: #475569;{% endif %}">
+                            {% if active_template == 'brachy' %}✓ Active Template{% else %}Click to Configure{% endif %}
                         </span>
                     </div>
                 </div>
@@ -121,6 +143,23 @@
                 <a href="{% url 'print_emergency_schedule_pdf' %}?machines=all&modality=Teletherapy" target="_blank"
                    class="action-ribbon-btn" style="background: #b91c1c; color: #fff; border-color: #991b1b; font-weight: bold; font-size: 11px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px;" title="Download sample emergency vector PDF in new tab">
                     📄 Download Test PDF
+                </a>
+            </div>
+        </div>
+
+        <!-- Brachytherapy OT List Banner -->
+        <div id="bannerBrachy" style="display: {% if active_template == 'brachy' %}flex{% else %}none{% endif %}; justify-content: space-between; align-items: center; background: #dcfce7; border: 1px solid #86efac; padding: 10px 16px; border-radius: 6px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">☢️</span>
+                <div>
+                    <strong style="color: #166534; font-size: 13px;">Currently Editing: Brachytherapy OT List Print Template (2x Half-A4)</strong>
+                    <div style="font-size: 11px; color: #15803d;">Controls printouts triggered from the Brachytherapy Daily List (/scheduler/brachytherapy/daily-list/print/)</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <a href="{% url 'brachy_ot_list_print' %}" target="_blank"
+                   class="action-ribbon-btn" style="background: #15803d; color: #fff; border-color: #166534; font-weight: bold; font-size: 11px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 4px;" title="Open live Brachy OT 2x half-A4 print sheet in new tab">
+                    👁️ Preview Brachy OT Printout
                 </a>
             </div>
         </div>
@@ -251,6 +290,68 @@
                     <span style="font-size: 11px; color: #64748b;">Default: <code>Emergency/Vacant Slot list</code> or <code>Urgent &amp; Emergency Slot Allocation List</code></span>
                 </div>
             </div>
+
+            <!-- SECTION: Brachytherapy OT List Specific Texts -->
+            <div id="sectionBrachyFields" style="display: {% if active_template == 'brachy' %}block{% else %}none{% endif %}; background: #ffffff; border: 1px solid #86efac; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="font-weight: bold; font-size: 13px; color: #15803d; margin-bottom: 14px; border-bottom: 2px solid #15803d; padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>☢️</span>
+                    <span>Brachytherapy OT List Printout Texts (2x Half-A4 Format)</span>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Brachy OT Header Line 1 (Institution Name): *
+                    </label>
+                    <input type="text" name="brachy_ot_header_line_1" id="input_brachy_ot_header_line_1" value="{{ config.brachy_ot_header_line_1 }}" required
+                           style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                    <span style="font-size: 11px; color: #64748b;">Default: KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY, BANGALORE.</span>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Brachy OT Header Line 2 (Department &amp; Unit): *
+                    </label>
+                    <input type="text" name="brachy_ot_header_line_2" id="input_brachy_ot_header_line_2" value="{{ config.brachy_ot_header_line_2 }}" required
+                           style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                    <span style="font-size: 11px; color: #64748b;">Use {unit} to dynamically substitute the selected clinical unit (e.g. UNIT-III)</span>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Brachy OT Header Line 3 (Document Title &amp; Date): *
+                    </label>
+                    <input type="text" name="brachy_ot_header_line_3" id="input_brachy_ot_header_line_3" value="{{ config.brachy_ot_header_line_3 }}" required
+                           style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                    <span style="font-size: 11px; color: #64748b;">Use {date} to dynamically insert the scheduled date (e.g. OT LIST AS ON {date})</span>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                        Brachy OT Copy To Recipients List (One per line): *
+                    </label>
+                    <textarea name="brachy_ot_copy_to" id="input_brachy_ot_copy_to" rows="4" required
+                              style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-family: monospace;">{{ config.brachy_ot_copy_to }}</textarea>
+                    <span style="font-size: 11px; color: #64748b;">Displays in the bottom-left footer of each half-sheet</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            Brachy Default Signing Authority: *
+                        </label>
+                        <input type="text" name="brachy_ot_default_signing_authority" id="input_brachy_ot_default_signing_authority" value="{{ config.brachy_ot_default_signing_authority }}" required list="consultantList"
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
+                            Brachy Default Designation: *
+                        </label>
+                        <input type="text" name="brachy_ot_default_designation" id="input_brachy_ot_default_designation" value="{{ config.brachy_ot_default_designation }}" required list="designationList"
+                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
+                    </div>
+                </div>
+            </div>
+
 
             <!-- SECTION 3: Clinical Notes & Compliance Directives -->
             <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
@@ -572,7 +673,12 @@
         const prevEm = document.getElementById('previewEmergencySheet');
         const prevTag = document.getElementById('previewTag');
 
-        if (isRegular) {
+        const cardBrachy = document.getElementById('cardBrachy');
+        const badgeBrachy = document.getElementById('badgeBrachy');
+        const bannerBrachy = document.getElementById('bannerBrachy');
+        const secBrachy = document.getElementById('sectionBrachyFields');
+
+        if (tmpl === 'regular') {
             // Cards
             cardReg.style.borderColor = '#003366';
             cardReg.style.background = '#eff6ff';
@@ -586,12 +692,22 @@
             badgeEm.style.color = '#475569';
             badgeEm.innerText = 'Click to Configure';
 
+            if (cardBrachy) {
+                cardBrachy.style.borderColor = '#cbd5e1';
+                cardBrachy.style.background = '#ffffff';
+                badgeBrachy.style.background = '#e2e8f0';
+                badgeBrachy.style.color = '#475569';
+                badgeBrachy.innerText = 'Click to Configure';
+            }
+
             // Banners & Sections
             bannerReg.style.display = 'flex';
             bannerEm.style.display = 'none';
+            if (bannerBrachy) bannerBrachy.style.display = 'none';
 
             secReg.style.display = 'block';
             secEm.style.display = 'none';
+            if (secBrachy) secBrachy.style.display = 'none';
 
             // Preview
             prevReg.style.display = 'block';
@@ -599,7 +715,7 @@
             prevTag.style.background = '#e0f2fe';
             prevTag.style.color = '#0369a1';
             prevTag.innerText = 'Regular Scheduler';
-        } else {
+        } else if (tmpl === 'emergency') {
             // Cards
             cardEm.style.borderColor = '#b91c1c';
             cardEm.style.background = '#fff1f2';
@@ -613,12 +729,22 @@
             badgeReg.style.color = '#475569';
             badgeReg.innerText = 'Click to Configure';
 
+            if (cardBrachy) {
+                cardBrachy.style.borderColor = '#cbd5e1';
+                cardBrachy.style.background = '#ffffff';
+                badgeBrachy.style.background = '#e2e8f0';
+                badgeBrachy.style.color = '#475569';
+                badgeBrachy.innerText = 'Click to Configure';
+            }
+
             // Banners & Sections
             bannerReg.style.display = 'none';
             bannerEm.style.display = 'flex';
+            if (bannerBrachy) bannerBrachy.style.display = 'none';
 
             secReg.style.display = 'none';
             secEm.style.display = 'block';
+            if (secBrachy) secBrachy.style.display = 'none';
 
             // Preview
             prevReg.style.display = 'none';
@@ -626,6 +752,36 @@
             prevTag.style.background = '#fee2e2';
             prevTag.style.color = '#991b1b';
             prevTag.innerText = 'Emergency Slot';
+        } else {
+            // Brachy
+            if (cardBrachy) {
+                cardBrachy.style.borderColor = '#15803d';
+                cardBrachy.style.background = '#f0fdf4';
+                badgeBrachy.style.background = '#15803d';
+                badgeBrachy.style.color = '#ffffff';
+                badgeBrachy.innerText = '✓ Active Template';
+            }
+
+            cardReg.style.borderColor = '#cbd5e1';
+            cardReg.style.background = '#ffffff';
+            badgeReg.style.background = '#e2e8f0';
+            badgeReg.style.color = '#475569';
+            badgeReg.innerText = 'Click to Configure';
+
+            cardEm.style.borderColor = '#cbd5e1';
+            cardEm.style.background = '#ffffff';
+            badgeEm.style.background = '#e2e8f0';
+            badgeEm.style.color = '#475569';
+            badgeEm.innerText = 'Click to Configure';
+
+            // Banners & Sections
+            bannerReg.style.display = 'none';
+            bannerEm.style.display = 'none';
+            if (bannerBrachy) bannerBrachy.style.display = 'flex';
+
+            secReg.style.display = 'none';
+            secEm.style.display = 'none';
+            if (secBrachy) secBrachy.style.display = 'block';
         }
 
         // Update live preview texts for active template

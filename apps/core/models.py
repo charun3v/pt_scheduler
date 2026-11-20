@@ -197,6 +197,48 @@ class PrintTemplateConfig(models.Model):
         verbose_name="Department Line (Fixed in Signature Block)"
     )
 
+    # Brachytherapy OT List Template Fields
+    brachy_ot_header_line_1 = models.CharField(
+        max_length=255,
+        default='KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY, BANGALORE.',
+        verbose_name="Brachy OT Header Line 1"
+    )
+    brachy_ot_header_line_2 = models.CharField(
+        max_length=255,
+        default='DEPARTMENT OF RADIATION ONCOLOGY UNIT-III',
+        verbose_name="Brachy OT Header Line 2"
+    )
+    brachy_ot_header_line_3 = models.CharField(
+        max_length=255,
+        default='OT LIST AS ON {date}',
+        verbose_name="Brachy OT Header Line 3"
+    )
+    brachy_ot_copy_to = models.TextField(
+        default=(
+            "1-The Prof. & HOD., Radiation Physics,\n"
+            "2. THE PROF & HOD RADIATION PHYSICS\n"
+            "3.S/N. Brachytherapy,\n"
+            "4.Office copy"
+        ),
+        verbose_name="Brachy OT Copy To Recipients"
+    )
+    brachy_ot_default_signing_authority = models.CharField(
+        max_length=150,
+        default="DR. NAVEEN T",
+        verbose_name="Brachy OT Default Signing Authority"
+    )
+    brachy_ot_default_designation = models.CharField(
+        max_length=150,
+        default="HOD & HOU RT III",
+        verbose_name="Brachy OT Default Designation"
+    )
+    brachy_ot_department_line = models.CharField(
+        max_length=150,
+        default="Department of Radiation Oncology",
+        blank=True,
+        verbose_name="Brachy OT Department Line"
+    )
+
     page_margin_cm = models.FloatField(default=2.5, help_text="Page margin in centimeters (A4 paper)")
     row_vertical_padding_pt = models.FloatField(default=2.7, help_text="Cell vertical padding points (0.5mm expanded)")
 
