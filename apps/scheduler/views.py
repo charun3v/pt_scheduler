@@ -5,7 +5,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.contrib import messages
 from django.utils import timezone
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time as dt_time
 from decimal import Decimal
 
 from .models import (
@@ -1896,6 +1896,72 @@ def recalculate_patient_brachy_fractions(patient):
                 a.save(update_fields=['fraction_number'])
 
 
+def get_appointment_brachy_fraction_info(a):
+    """
+    Computes Fraction No and checks for unfinalized prior appointments in this patient's brachytherapy course.
+    """
+    prior_appts = a.patient.brachy_appointments.filter(
+        Q(appointment_date__lt=a.appointment_date) |
+        Q(appointment_date=a.appointment_date, fraction_number__lt=a.fraction_number)
+    ).exclude(status='Cancelled').select_related('applicator_type', 'anesthesia_type', 'completion_status').order_by('appointment_date', 'fraction_number')
+
+    incomplete_prior_list = []
+    if not prior_appts.exists() or a.fraction_number == 1:
+        fraction_no_disp = 1
+        has_unfinalized_prev = False
+    else:
+        unfinalized_prior = [
+            p for p in prior_appts
+            if not p.completion_status or (not p.completion_status.is_completed and p.status != 'Completed')
+        ]
+        if unfinalized_prior:
+            has_unfinalized_prev = True
+            fraction_no_disp = None
+            for p in unfinalized_prior:
+                incomplete_prior_list.append({
+                    'id': p.id,
+                    'patient_id': p.patient_id,
+                    'patient_name': p.patient.pt_name,
+                    'mr_no': p.patient.mr_no,
+                    'fraction_number': p.fraction_number,
+                    'appointment_date': p.appointment_date.strftime('%d-%b-%Y'),
+                    'appointment_date_iso': p.appointment_date.isoformat(),
+                    'applicator_name': p.applicator_type.name if p.applicator_type else 'Brachytherapy',
+                    'anesthesia_name': p.anesthesia_type.name if p.anesthesia_type else '-',
+                    'status': p.status,
+                    'completion_status_id': p.completion_status_id or '',
+                    'fractions_treated': p.fractions_treated or 1,
+                    'remarks': p.remarks or '',
+                })
+        else:
+            has_unfinalized_prev = False
+            total_prev_fractions = sum(p.fractions_treated or 1 for p in prior_appts)
+            fraction_no_disp = total_prev_fractions + 1
+
+    return fraction_no_disp, has_unfinalized_prev, incomplete_prior_list
+
+
+def is_brachy_status_active_now(appt_date):
+    """
+    Clinical rule: The application status of the current application should only be active
+    on the current day (the day of the application scheduled), 1000 hrs.
+    Past dates: already reached/active.
+    Today: active only at or after 10:00 AM (1000 hrs).
+    Future dates: not active yet.
+    """
+    now = timezone.localtime()
+    today = now.date()
+    ten_am = dt_time(10, 0)
+    if appt_date < today:
+        return True, False
+    elif appt_date == today:
+        is_active = (now.time() >= ten_am)
+        is_today_before_10 = (now.time() < ten_am)
+        return is_active, is_today_before_10
+    else:
+        return False, False
+
+
 @login_required
 def brachy_daily_patients_view(request):
     """
@@ -1931,7 +1997,7 @@ def brachy_daily_patients_view(request):
     ).order_by('display_order', 'name')
     completion_statuses = TreatmentCompletionStatus.objects.filter(is_active=True).order_by('display_order', 'name')
 
-    is_date_reached = (target_date <= today)
+    is_date_reached, is_today_before_10 = is_brachy_status_active_now(target_date)
 
     has_incomplete_prev_appts = False
 
@@ -1965,32 +2031,12 @@ def brachy_daily_patients_view(request):
                 remarks_val = a.schedule.notes
         remarks_val = remarks_val or ''
 
-        # Fraction No calculation:
-        # For the first application, it is going to be 1.
-        # From the second application onwards it has to be calculated based on the number of fractions given in previous application(s).
-        # The number only appears when the previous application details have been entered and finalised.
-        # If not, the Fraction number will show a warning symbol with a legend below.
-        prior_appts = a.patient.brachy_appointments.filter(
-            Q(appointment_date__lt=a.appointment_date) |
-            Q(appointment_date=a.appointment_date, fraction_number__lt=a.fraction_number)
-        ).exclude(status='Cancelled').order_by('appointment_date', 'fraction_number')
+        # Fraction No & unfinalized prior calculations
+        fraction_no_disp, has_unfinalized_prev, incomplete_prior_list = get_appointment_brachy_fraction_info(a)
+        if has_unfinalized_prev:
+            has_incomplete_prev_appts = True
 
-        if not prior_appts.exists() or a.fraction_number == 1:
-            fraction_no_disp = 1
-            has_unfinalized_prev = False
-        else:
-            unfinalized_prior = [
-                p for p in prior_appts
-                if not p.completion_status or (not p.completion_status.is_completed and p.status != 'Completed')
-            ]
-            if unfinalized_prior:
-                has_unfinalized_prev = True
-                fraction_no_disp = None
-                has_incomplete_prev_appts = True
-            else:
-                has_unfinalized_prev = False
-                total_prev_fractions = sum(p.fractions_treated or 1 for p in prior_appts)
-                fraction_no_disp = total_prev_fractions + 1
+        appt_is_date_reached, appt_is_today_before_10 = is_brachy_status_active_now(a.appointment_date)
 
         rows.append({
             'sl_no': idx,
@@ -2002,6 +2048,8 @@ def brachy_daily_patients_view(request):
             'age_sex': a.patient.age_sex_display,
             'fraction_no': fraction_no_disp,
             'has_unfinalized_prev': has_unfinalized_prev,
+            'incomplete_prior': incomplete_prior_list,
+            'incomplete_prior_json': json.dumps(incomplete_prior_list),
             'diagnosis': a.patient.diagnosis or 'Not specified',
             'applicator_name': a.applicator_type.name if a.applicator_type else 'Brachytherapy',
             'applicator_id': a.applicator_type_id,
@@ -2020,7 +2068,8 @@ def brachy_daily_patients_view(request):
             'status_display': status_disp,
             'completion_status_id': a.completion_status_id,
             'is_completed': (a.status == 'Completed') or (a.completion_status and a.completion_status.is_completed),
-            'is_date_reached': (a.appointment_date <= today),
+            'is_date_reached': appt_is_date_reached,
+            'is_today_before_10': appt_is_today_before_10,
         })
 
     context = {
@@ -2035,6 +2084,7 @@ def brachy_daily_patients_view(request):
         'completion_statuses': completion_statuses,
         'can_edit': can_schedule_patient(request.user),
         'is_date_reached': is_date_reached,
+        'is_today_before_10': is_today_before_10,
         'has_incomplete_prev_appts': has_incomplete_prev_appts,
         'today_iso': today.isoformat(),
     }
@@ -2046,6 +2096,7 @@ def brachy_daily_patients_view(request):
             'date_iso': target_date.isoformat(),
             'date_formatted': target_date.strftime('%d-%b-%Y'),
             'is_date_reached': is_date_reached,
+            'is_today_before_10': is_today_before_10,
             'has_incomplete_prev_appts': has_incomplete_prev_appts,
             'count': len(rows),
             'appointments': rows,
@@ -2113,28 +2164,12 @@ def brachy_daily_patients_api(request):
                 remarks_val = a.schedule.notes
         remarks_val = remarks_val or ''
 
-        # Fraction No calculation:
-        prior_appts = a.patient.brachy_appointments.filter(
-            Q(appointment_date__lt=a.appointment_date) |
-            Q(appointment_date=a.appointment_date, fraction_number__lt=a.fraction_number)
-        ).exclude(status='Cancelled').order_by('appointment_date', 'fraction_number')
+        # Fraction No & unfinalized prior calculations
+        fraction_no_disp, has_unfinalized_prev, incomplete_prior_list = get_appointment_brachy_fraction_info(a)
+        if has_unfinalized_prev:
+            has_incomplete_prev_appts = True
 
-        if not prior_appts.exists() or a.fraction_number == 1:
-            fraction_no_disp = 1
-            has_unfinalized_prev = False
-        else:
-            unfinalized_prior = [
-                p for p in prior_appts
-                if not p.completion_status or (not p.completion_status.is_completed and p.status != 'Completed')
-            ]
-            if unfinalized_prior:
-                has_unfinalized_prev = True
-                fraction_no_disp = None
-                has_incomplete_prev_appts = True
-            else:
-                has_unfinalized_prev = False
-                total_prev_fractions = sum(p.fractions_treated or 1 for p in prior_appts)
-                fraction_no_disp = total_prev_fractions + 1
+        appt_is_date_reached, appt_is_today_before_10 = is_brachy_status_active_now(a.appointment_date)
 
         rows.append({
             'sl_no': idx,
@@ -2146,6 +2181,8 @@ def brachy_daily_patients_api(request):
             'age_sex': a.patient.age_sex_display,
             'fraction_no': fraction_no_disp,
             'has_unfinalized_prev': has_unfinalized_prev,
+            'incomplete_prior': incomplete_prior_list,
+            'incomplete_prior_json': json.dumps(incomplete_prior_list),
             'diagnosis': a.patient.diagnosis or 'Not specified',
             'applicator_name': a.applicator_type.name if a.applicator_type else 'Brachytherapy',
             'applicator_id': a.applicator_type_id,
@@ -2164,7 +2201,8 @@ def brachy_daily_patients_api(request):
             'status_display': status_disp,
             'completion_status_id': a.completion_status_id,
             'is_completed': (a.status == 'Completed') or (a.completion_status and a.completion_status.is_completed),
-            'is_date_reached': (a.appointment_date <= today),
+            'is_date_reached': appt_is_date_reached,
+            'is_today_before_10': appt_is_today_before_10,
         })
 
     comp_statuses = list(
@@ -2173,11 +2211,14 @@ def brachy_daily_patients_api(request):
         .values('id', 'name', 'is_completed')
     )
 
+    is_date_reached, is_today_before_10 = is_brachy_status_active_now(target_date)
+
     return JsonResponse({
         'success': True,
         'date_iso': target_date.isoformat(),
         'date_formatted': target_date.strftime('%d-%b-%Y'),
-        'is_date_reached': (target_date <= today),
+        'is_date_reached': is_date_reached,
+        'is_today_before_10': is_today_before_10,
         'has_incomplete_prev_appts': has_incomplete_prev_appts,
         'count': len(rows),
         'appointments': rows,
@@ -2201,6 +2242,23 @@ def brachy_update_appointment_status_api(request, appointment_id):
         return JsonResponse({'success': False, 'error': "Invalid request method."}, status=405)
 
     appt = get_object_or_404(BrachytherapyAppointment, id=appointment_id)
+
+    # Clinical rule: The application status of the current application should only be active
+    # on the current day (the day of the application scheduled), 1000 hrs.
+    now = timezone.localtime()
+    today = now.date()
+    ten_am = dt_time(10, 0)
+    if appt.appointment_date > today:
+        return JsonResponse({
+            'success': False,
+            'error': f"Application status for App {appt.fraction_number} cannot be recorded before its scheduled date ({appt.appointment_date.strftime('%d-%b-%Y')})."
+        }, status=400)
+    elif appt.appointment_date == today and now.time() < ten_am and request.POST.get('force') != '1' and not is_admin_only(request.user):
+        return JsonResponse({
+            'success': False,
+            'error': f"Application status for App {appt.fraction_number} can only be recorded on the scheduled date ({appt.appointment_date.strftime('%d-%b-%Y')}) from 10:00 hrs."
+        }, status=400)
+
     status_id = request.POST.get('status_id')
     status_name = request.POST.get('status_name')
     remarks = request.POST.get('remarks')
@@ -2272,6 +2330,24 @@ def brachy_update_appointment_status_api(request, appointment_id):
         'fraction_number': appt.fraction_number,
         'fractions_treated': appt.fractions_treated or 1,
         'remarks': appt.remarks or '',
+    })
+
+
+@login_required
+def brachy_appointment_incomplete_prior_api(request, appointment_id):
+    """
+    API endpoint returning uncompleted prior brachytherapy applications for the patient of this appointment.
+    """
+    appt = get_object_or_404(BrachytherapyAppointment, id=appointment_id)
+    _, has_unfinalized_prev, incomplete_prior_list = get_appointment_brachy_fraction_info(appt)
+    return JsonResponse({
+        'success': True,
+        'appointment_id': appt.id,
+        'patient_id': appt.patient_id,
+        'patient_name': appt.patient.pt_name,
+        'mr_no': appt.patient.mr_no,
+        'has_unfinalized_prev': has_unfinalized_prev,
+        'incomplete_prior': incomplete_prior_list,
     })
 
 

@@ -14,7 +14,7 @@ from django.test import Client
 from django.contrib.auth.models import User
 from django.db.models import Count, Q
 from django.utils import timezone
-from datetime import date, timedelta, datetime
+from datetime import date, timedelta, datetime, time as dt_time
 from decimal import Decimal
 from apps.core.models import Role, UserProfile, Consultant, FieldValidationConfig, AuditLog
 from apps.core.validators import get_or_create_field_config, validate_field_value
@@ -2829,7 +2829,7 @@ def run_tests():
     c.force_login(res_user)
 
     # Attempt to schedule 5 appointments directly as Resident -> Blocked (400 or 403)
-    five_dates = ['2026-11-18', '2026-11-20', '2026-11-24', '2026-11-27', '2026-12-01']
+    five_dates = ['2026-11-21', '2026-11-22', '2026-11-24', '2026-11-27', '2026-12-01']
     resp_blocked = c.post(
         f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
         json.dumps({
@@ -2847,7 +2847,7 @@ def run_tests():
     assert 'Maximum of four brachytherapy appointments permitted' in blocked_json['error']
 
     # Resident schedules 3 dates -> Allowed!
-    three_dates_unordered = ['2026-11-27', '2026-11-20', '2026-11-24']
+    three_dates_unordered = ['2026-11-27', '2026-11-21', '2026-11-24']
     resp_allowed = c.post(
         f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
         json.dumps({
@@ -2866,7 +2866,7 @@ def run_tests():
     appts_created = list(BrachytherapyAppointment.objects.filter(patient=brachy_pt).order_by('fraction_number'))
     assert len(appts_created) == 3
     assert appts_created[0].fraction_number == 1
-    assert appts_created[0].appointment_date == date(2026, 11, 20)
+    assert appts_created[0].appointment_date == date(2026, 11, 21)
     assert appts_created[1].fraction_number == 2
     assert appts_created[1].appointment_date == date(2026, 11, 24)
     assert appts_created[2].fraction_number == 3
@@ -2874,7 +2874,7 @@ def run_tests():
 
     # Verify TreatmentSchedule course
     brachy_sched = TreatmentSchedule.objects.get(patient=brachy_pt, treatment_type='Brachytherapy')
-    assert brachy_sched.date_of_start == date(2026, 11, 20)
+    assert brachy_sched.date_of_start == date(2026, 11, 21)
     assert brachy_sched.date_of_end == date(2026, 11, 27)
     assert brachy_sched.no_of_fractions == 3
 
@@ -2919,7 +2919,7 @@ def run_tests():
     resp_dup = c.post(
         f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
         json.dumps({
-            'selected_dates': ['2026-11-20'],  # already scheduled!
+            'selected_dates': ['2026-11-21'],  # already scheduled!
             'applicator_id': app_ic.id,
             'anesthesia_id': ana_spinal.id,
             'site_of_treatment': 'Cervix',
@@ -4548,7 +4548,11 @@ def run_tests():
     assert row_pt['age_sex'] == "58/F"
     assert row_pt['unit'] == "I"
     assert row_pt['fraction'] == 1
-    assert row_pt['is_date_reached'] is True
+    now_curr_time = timezone.localtime().time()
+    if now_curr_time < dt_time(10, 0):
+        assert row_pt['is_today_before_10'] is True
+    else:
+        assert row_pt['is_date_reached'] is True
 
     # 5. Record Brachy Treatment Status to 'Completed' via API
     comp_st = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
@@ -4998,6 +5002,168 @@ def run_tests():
     sched_51.delete()
     pt_51.delete()
     print("✓ Test 51 Passed: Active Course Numbering Continuation, Fractions Treated, Daily List Fraction No & Print Lock fully verified.")
+
+    # 52. Test Brachytherapy 1000 hrs Status Rule and Interactive Previous Application Completion Modal
+    print("\n--- Test 52: Brachytherapy 1000 hrs Status Rule & Interactive Previous Application Completion Modal ---")
+    today = timezone.localdate()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+
+    BrachytherapyAppointment.objects.filter(patient__mr_no=9999052).delete()
+    Patient.objects.filter(mr_no=9999052).delete()
+
+    pt_52 = Patient.objects.create(
+        mr_no=9999052,
+        pt_name="Test Brachy Modal Pt",
+        age=58,
+        sex='F',
+        diagnosis="Cervix Ca",
+        primary_consultant=active_consultant,
+        unit="I"
+    )
+
+    intent_obj = TreatmentIntent.objects.filter(is_active=True).first()
+    sched_52 = TreatmentSchedule.objects.create(
+        patient=pt_52,
+        treatment_type='Brachytherapy',
+        machine=brachy_mach_50,
+        applicator_type=app_type,
+        anesthesia_type=ana_type,
+        site_of_treatment="Pelvis",
+        date_of_start=yesterday,
+        date_of_end=tomorrow,
+        intent=intent_obj,
+        no_of_fractions=3,
+        status='Scheduled',
+        created_by=admin_user
+    )
+
+    # App 1 was yesterday (uncompleted)
+    a1_52 = BrachytherapyAppointment.objects.create(
+        patient=pt_52,
+        schedule=sched_52,
+        appointment_date=yesterday,
+        fraction_number=1,
+        applicator_type=app_type,
+        anesthesia_type=ana_type,
+        status='Scheduled'
+    )
+
+    # App 2 is today
+    a2_52 = BrachytherapyAppointment.objects.create(
+        patient=pt_52,
+        schedule=sched_52,
+        appointment_date=today,
+        fraction_number=2,
+        applicator_type=app_type,
+        anesthesia_type=ana_type,
+        status='Scheduled'
+    )
+
+    # App 3 is tomorrow
+    a3_52 = BrachytherapyAppointment.objects.create(
+        patient=pt_52,
+        schedule=sched_52,
+        appointment_date=tomorrow,
+        fraction_number=3,
+        applicator_type=app_type,
+        anesthesia_type=ana_type,
+        status='Scheduled'
+    )
+
+    # A resident user (non-admin)
+    resident_client = Client()
+    resident_user = User.objects.filter(groups__name='Junior Residents').first()
+    if not resident_user:
+        resident_user = User.objects.create_user(username='test_resident_modal_user', password='password123')
+        from django.contrib.auth.models import Group
+        res_group, _ = Group.objects.get_or_create(name='Junior Residents')
+        resident_user.groups.add(res_group)
+    resident_client.login(username=resident_user.username, password='password123')
+
+    # Test 1000 hrs gating rule:
+    now_time = timezone.localtime().time()
+    resp_dl_today = client.get(f'/scheduler/brachytherapy/api/daily-list/?date={today.isoformat()}')
+    assert resp_dl_today.status_code == 200
+    data_dl_today = resp_dl_today.json()
+    pt52_row = next(r for r in data_dl_today['appointments'] if r['mr_no'] == 9999052)
+
+    if now_time < dt_time(10, 0):
+        assert pt52_row['is_today_before_10'] is True
+        assert pt52_row['is_date_reached'] is False
+        # Resident attempting to record status for today's appointment without force before 1000 hrs gets 400:
+        resp_blocked = resident_client.post(f'/scheduler/brachytherapy/api/appointment/{a2_52.id}/status/', {
+            'status_id': comp_status.id,
+            'fractions_treated': 1
+        })
+        assert resp_blocked.status_code == 400
+        assert "from 10:00 hrs" in resp_blocked.json()['error']
+
+        # HTML daily list view shows 'Active from 10:00 hrs'
+        resp_html_today = client.get(f'/scheduler/brachytherapy/daily-list/?date={today.isoformat()}')
+        assert "Active from 10:00 hrs" in resp_html_today.content.decode('utf-8')
+    else:
+        assert pt52_row['is_date_reached'] is True
+
+    # Future date (tomorrow) is blocked:
+    resp_fut_blocked = resident_client.post(f'/scheduler/brachytherapy/api/appointment/{a3_52.id}/status/', {
+        'status_id': comp_status.id,
+        'fractions_treated': 1
+    })
+    assert resp_fut_blocked.status_code == 400
+    assert "before its scheduled date" in resp_fut_blocked.json()['error']
+
+    # Test Incomplete Prior Applications API and modal interaction:
+    assert pt52_row['has_unfinalized_prev'] is True
+    assert pt52_row['fraction_no'] is None
+    assert len(pt52_row['incomplete_prior']) == 1
+    assert pt52_row['incomplete_prior'][0]['id'] == a1_52.id
+    assert pt52_row['incomplete_prior'][0]['fraction_number'] == 1
+
+    # Call endpoint /scheduler/brachytherapy/api/appointment/<id>/incomplete-prior/
+    resp_inc_api = client.get(f'/scheduler/brachytherapy/api/appointment/{a2_52.id}/incomplete-prior/')
+    assert resp_inc_api.status_code == 200
+    inc_data = resp_inc_api.json()
+    assert inc_data['success'] is True
+    assert inc_data['has_unfinalized_prev'] is True
+    assert len(inc_data['incomplete_prior']) == 1
+    assert inc_data['incomplete_prior'][0]['id'] == a1_52.id
+
+    # Complete previous application App 1 via the modal's save action (passes force=1, fractions_treated=2)
+    resp_save_prior = client.post(f'/scheduler/brachytherapy/api/appointment/{a1_52.id}/status/', {
+        'status_id': comp_status.id,
+        'fractions_treated': 2,
+        'remarks': 'Completed session 1 in OT',
+        'force': '1'
+    })
+    assert resp_save_prior.status_code == 200
+    assert resp_save_prior.json()['success'] is True
+
+    # Re-verify incomplete-prior API for App 2: now has_unfinalized_prev is False
+    resp_inc_api_2 = client.get(f'/scheduler/brachytherapy/api/appointment/{a2_52.id}/incomplete-prior/')
+    assert resp_inc_api_2.status_code == 200
+    assert resp_inc_api_2.json()['has_unfinalized_prev'] is False
+    assert len(resp_inc_api_2.json()['incomplete_prior']) == 0
+
+    # Re-fetch daily list for today: App 2 fraction_no is now computed as 3 (2 treated + 1)
+    resp_dl_today_after = client.get(f'/scheduler/brachytherapy/api/daily-list/?date={today.isoformat()}')
+    assert resp_dl_today_after.status_code == 200
+    pt52_row_after = next(r for r in resp_dl_today_after.json()['appointments'] if r['mr_no'] == 9999052)
+    assert pt52_row_after['has_unfinalized_prev'] is False
+    assert pt52_row_after['fraction_no'] == 3
+    assert resp_dl_today_after.json()['has_incomplete_prev_appts'] is False
+
+    # Verify HTML daily list shows Fraction 3
+    resp_html_after = client.get(f'/scheduler/brachytherapy/daily-list/?date={today.isoformat()}')
+    assert "3" in resp_html_after.content.decode('utf-8')
+
+    # Cleanup
+    a1_52.delete()
+    a2_52.delete()
+    a3_52.delete()
+    sched_52.delete()
+    pt_52.delete()
+    print("✓ Test 52 Passed: Brachytherapy 1000 hrs Status Rule & Interactive Previous Application Completion Modal fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

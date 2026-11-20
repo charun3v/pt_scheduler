@@ -888,6 +888,43 @@
     </div>
 </div>
 
+<!-- Modal: Complete Previous Incomplete Applications -->
+<div id="incompletePrevApptsModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 13500; justify-content: center; align-items: center;">
+    <div style="background: #ffffff; border-radius: 8px; width: 680px; max-width: 95%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.35); overflow: hidden; font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
+        <div style="background: #991b1b; color: #ffffff; padding: 12px 18px; font-weight: bold; font-size: 14.5px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span>⚠️ Complete Previous Application Details</span>
+            </div>
+            <button type="button" onclick="closeIncompletePrevApptsModal()" style="background: none; border: none; color: #ffffff; font-size: 22px; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+
+        <div style="padding: 16px 20px; overflow-y: auto;">
+            <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
+                <div style="font-weight: 700; font-size: 13.5px; color: #991b1b;" id="incomplete_modal_patient_info">
+                    Patient Name (MR: ...)
+                </div>
+                <div style="font-size: 12px; color: #7f1d1d; margin-top: 3px; line-height: 1.4;">
+                    The fraction number for this patient cannot be finalized until all previous applications have been recorded and finalized. Please enter the completion status and number of fractions treated for each previous application below:
+                </div>
+            </div>
+
+            <div id="incomplete_appts_list_container">
+                <!-- Dynamically populated incomplete applications -->
+            </div>
+        </div>
+
+        <div style="background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 10px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 11.5px; color: #64748b; font-style: italic;">
+                Completing previous applications recalculates fraction numbers and unlocks print preview.
+            </div>
+            <button type="button" onclick="closeIncompletePrevApptsModal()" style="padding: 6px 14px; border: 1px solid #cbd5e1; border-radius: 4px; background: #ffffff; color: #334155; font-size: 12.5px; font-weight: 600; cursor: pointer;">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+
 <!-- Modal: Record Brachytherapy Treatment Status from Calendar Modal -->
 <div id="calBrachyStatusModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 14000; align-items: center; justify-content: center;">
     <div style="background: #ffffff; border-radius: 8px; width: 480px; max-width: 95%; box-shadow: 0 10px 25px rgba(0,0,0,0.3); overflow: hidden; font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
@@ -1575,8 +1612,12 @@
                                           ⚠️ App ${a.fraction}: ${escapeHtml(a.status_display || a.status)}
                                       </a>`;
                     }
+                } else if (a.is_today_before_10) {
+                    statusHtml = `<span style="color: #d97706; font-size: 11px; background: #fffbeb; padding: 2px 7px; border-radius: 3px; border: 1px solid #fde68a; display: inline-block; font-weight: 600;" title="Status recording activates at 10:00 hrs on the appointment day">
+                                      ⏳ App ${a.fraction}: Active from 10:00 hrs
+                                  </span>`;
                 } else {
-                    statusHtml = `<span style="color: #64748b; font-size: 11px; background: #f1f5f9; padding: 2px 7px; border-radius: 3px; border: 1px dashed #cbd5e1; display: inline-block;" title="Status can be recorded on or after appointment date">
+                    statusHtml = `<span style="color: #64748b; font-size: 11px; background: #f1f5f9; padding: 2px 7px; border-radius: 3px; border: 1px dashed #cbd5e1; display: inline-block;" title="Status can be recorded on appointment date after 10:00 hrs">
                                       ⏳ App ${a.fraction}: Upcoming
                                   </span>`;
                 }
@@ -1601,7 +1642,7 @@
 
                     <!-- 4b. Fraction No -->
                     <td style="padding: 7px 8px; text-align: center; white-space: nowrap; font-weight: 700;">
-                        ${a.has_unfinalized_prev ? '<span style="font-size: 15px; color: #dc2626;" title="Complete the previous application details before finalising the list">⚠️</span>' : `<span style="color: #003366; font-size: 13px;">${a.fraction_no !== null ? a.fraction_no : '-'}</span>`}
+                        ${a.has_unfinalized_prev ? `<button type="button" class="btn" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" onclick='openIncompletePrevApptsModal(${JSON.stringify(a.incomplete_prior || []).replace(/'/g, "&#39;")}, "${escapeHtml(a.patient_name)}", "${a.mr_no}", ${a.id});' title="Click to complete previous application details and calculate fraction number">⚠️ Incomplete</button>` : `<span style="color: #003366; font-size: 13px;">${a.fraction_no !== null ? a.fraction_no : '-'}</span>`}
                     </td>
 
                     <!-- 5. Diagnosis -->
@@ -1856,5 +1897,163 @@
             }
         {% endif %}
     });
+
+let gIncompleteModalCurrentApptId = null;
+
+function openIncompletePrevApptsModal(incompletePrior, ptName, mrNo, currentApptId) {
+    gIncompleteModalCurrentApptId = currentApptId;
+    document.getElementById('incomplete_modal_patient_info').innerText = ptName + ' (MR: ' + mrNo + ')';
+    if (incompletePrior && incompletePrior.length > 0) {
+        renderIncompletePriorItems(incompletePrior, ptName, mrNo, currentApptId);
+        document.getElementById('incompletePrevApptsModal').style.display = 'flex';
+    } else {
+        fetch('/scheduler/brachytherapy/api/appointment/' + currentApptId + '/incomplete-prior/', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            renderIncompletePriorItems(data.incomplete_prior || [], ptName, mrNo, currentApptId);
+            document.getElementById('incompletePrevApptsModal').style.display = 'flex';
+        })
+        .catch(err => {
+            alert("Error loading incomplete previous applications.");
+        });
+    }
+}
+
+function closeIncompletePrevApptsModal() {
+    document.getElementById('incompletePrevApptsModal').style.display = 'none';
+}
+
+function renderIncompletePriorItems(items, ptName, mrNo, currentApptId) {
+    const container = document.getElementById('incomplete_appts_list_container');
+    if (!items || items.length === 0) {
+        container.innerHTML = `<div style="text-align: center; padding: 24px; color: #166534; font-weight: 700; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;">
+            ✅ All previous applications for this patient are completed and finalized!
+        </div>`;
+        return;
+    }
+
+    let html = '';
+    items.forEach(p => {
+        let optHtml = '';
+        if (typeof gCompletionStatuses !== 'undefined' && gCompletionStatuses) {
+            gCompletionStatuses.forEach(cs => {
+                const sel = (cs.id === p.completion_status_id || cs.is_completed) ? 'selected' : '';
+                optHtml += `<option value="${cs.id}" ${sel}>${escapeHtml(cs.name)}</option>`;
+            });
+        }
+
+        html += `
+        <div id="incomplete_card_${p.id}" style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; margin-bottom: 12px; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
+                <div>
+                    <span style="font-weight: 700; color: #003366; font-size: 13.5px;">Application ${p.fraction_number} (App ${p.fraction_number})</span>
+                    <span style="font-size: 12px; color: #64748b; margin-left: 8px;">Scheduled Date: <strong>${escapeHtml(p.appointment_date)}</strong></span>
+                </div>
+                <span style="font-size: 11px; padding: 2px 7px; border-radius: 3px; background: #fef3c7; color: #92400e; font-weight: 700;">⚠️ Incomplete</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                <div>
+                    <label style="display: block; font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 3px;">
+                        Treatment Completion Status: *
+                    </label>
+                    <select id="inc_status_${p.id}" style="width: 100%; padding: 5px 8px; font-size: 12.5px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
+                        ${optHtml}
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 3px;">
+                        Fractions Treated in App ${p.fraction_number}: *
+                    </label>
+                    <input type="number" id="inc_fractions_${p.id}" min="1" max="10" value="${p.fractions_treated || 1}" style="width: 100%; padding: 5px 8px; font-size: 12.5px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 3px;">
+                    Clinical Remarks / Notes:
+                </label>
+                <input type="text" id="inc_remarks_${p.id}" value="${escapeHtml(p.remarks || '')}" placeholder="Optional procedure notes or remarks..." style="width: 100%; padding: 5px 8px; font-size: 12.5px; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+                <button type="button" id="btn_save_inc_${p.id}" onclick="savePrevIncompleteAppt(${p.id}, ${currentApptId});" style="padding: 5px 14px; background: #003366; color: #ffffff; border: none; border-radius: 4px; font-weight: 700; font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                    💾 Save & Finalize App ${p.fraction_number}
+                </button>
+            </div>
+        </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+function savePrevIncompleteAppt(priorApptId, currentApptId) {
+    const btn = document.getElementById('btn_save_inc_' + priorApptId);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = 'Saving...';
+    }
+
+    const statusId = document.getElementById('inc_status_' + priorApptId).value;
+    const fractionsTreated = document.getElementById('inc_fractions_' + priorApptId).value;
+    const remarks = document.getElementById('inc_remarks_' + priorApptId).value;
+
+    const formData = new FormData();
+    formData.append('status_id', statusId);
+    formData.append('fractions_treated', fractionsTreated);
+    formData.append('remarks', remarks);
+    formData.append('force', '1');
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+    fetch('/scheduler/brachytherapy/api/appointment/' + priorApptId + '/status/', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            fetch('/scheduler/brachytherapy/api/appointment/' + currentApptId + '/incomplete-prior/', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json())
+            .then(priorData => {
+                if (priorData.has_unfinalized_prev && priorData.incomplete_prior && priorData.incomplete_prior.length > 0) {
+                    renderIncompletePriorItems(priorData.incomplete_prior, priorData.patient_name, priorData.mr_no, currentApptId);
+                } else {
+                    closeIncompletePrevApptsModal();
+                    if (typeof fetchDailyPatientsList === 'function') {
+                        fetchDailyPatientsList();
+                    }
+                    if (typeof fetchMonthCalendar === 'function') {
+                        fetchMonthCalendar(gCurrentYear, gCurrentMonth);
+                    }
+                }
+            })
+            .catch(() => {
+                closeIncompletePrevApptsModal();
+                if (typeof fetchDailyPatientsList === 'function') {
+                    fetchDailyPatientsList();
+                }
+            });
+        } else {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = '💾 Save & Finalize';
+            }
+            alert(data.error || "Failed to update prior appointment status.");
+        }
+    })
+    .catch(err => {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = '💾 Save & Finalize';
+        }
+        alert("Network error updating prior appointment.");
+    });
+}
+
 </script>
 {% endblock %}
