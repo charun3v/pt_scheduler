@@ -2480,7 +2480,7 @@ def run_tests():
     pt_search_html = resp_pt_search.content.decode('utf-8')
     assert "Schedule Status" in pt_search_html
     assert "Schedule Date & Machine" in pt_search_html
-    assert "Schedule Radiotherapy treatment" in pt_search_html
+    assert ("View Record" in pt_search_html or "Schedule Radiotherapy treatment" in pt_search_html)
 
     # b. Dashboard default hides pending patients list for Front Desk & Nursing; shows dedicated Search & Track portal
     resp_dash_def = c_fd.get('/')
@@ -3020,29 +3020,47 @@ def run_tests():
         status='Emergency'
     )
 
-    # Search for regular patient
+    # Search for regular patient (already scheduled -> View Record, no redundant "Schedule Radiotherapy treatment" button)
     resp_search_reg = c.get('/patients/search/?q=9999033')
     assert resp_search_reg.status_code == 200
     assert resp_search_reg.context['has_searched'] is True
     assert resp_search_reg.context['total_count'] == 1
     reg_html = resp_search_reg.content.decode('utf-8')
-    assert "Schedule Radiotherapy treatment" in reg_html
+    assert "View Record" in reg_html
+    assert "Schedule Radiotherapy treatment" not in reg_html
     assert "View Details" not in reg_html
     assert "Patient registered on:" in reg_html
     assert "Regular slot (EBRT) taken on:" in reg_html
     assert "01-Dec-2026" in reg_html
     assert "Shifted to Emergency / Vacant slot on:" not in reg_html
 
-    # Search for emergency patient
+    # Search for emergency patient (already slotted -> View Record, no redundant schedule button)
     resp_search_em = c.get('/patients/search/?q=9999034')
     assert resp_search_em.status_code == 200
     em_html = resp_search_em.content.decode('utf-8')
-    assert "Schedule Radiotherapy treatment" in em_html
+    assert "View Record" in em_html
+    assert "Schedule Radiotherapy treatment" not in em_html
     assert "Patient registered on:" in em_html
     assert "Regular slot (EBRT) taken on:" in em_html
     assert "15-Dec-2026" in em_html
     assert "Shifted to Emergency / Vacant slot on:" in em_html
     assert "25-Nov-2026" in em_html
+
+    # Search for unscheduled patient (not yet scheduled -> shows "Schedule Radiotherapy treatment")
+    pt_unsched = Patient.objects.create(
+        mr_no=9999035,
+        pt_name="TestSearch UnschedPt",
+        age=45,
+        sex='Female',
+        phone_no='9888800035',
+        diagnosis='Ca Breast',
+        primary_consultant=active_consultant
+    )
+    resp_search_unsched = c.get('/patients/search/?q=9999035')
+    assert resp_search_unsched.status_code == 200
+    unsched_html = resp_search_unsched.content.decode('utf-8')
+    assert "Schedule Radiotherapy treatment" in unsched_html
+    assert "View Record" not in unsched_html
 
     # 3. Scheduling page modality selector is prominent and contains Teletherapy and Brachytherapy
     resp_sched_page = c.get(f'/scheduler/patient/{pt_reg.id}/')
@@ -5396,6 +5414,283 @@ def run_tests():
     # Cleanup Test 54
     Patient.objects.filter(mr_no__in=[9900000001, 9900000002]).delete()
     print("✓ Test 54 Passed: Teletherapy Bulk Import & Export (Admin-Only, De-duplication, Multi-Course) fully verified.")
+
+    # =========================================================================
+    # Test 55: Clinical & Role Governance:
+    # 1. Edit Option Restricted to Admin and SubAdmin (Machine Daily List & Patient Detail & Backend)
+    # 2. Patient Search: Already Scheduled Patients Show "View Record" (No Redundant "Schedule" Button)
+    # 3. Add to Emergency Slot Inactive for Completed or Past Courses
+    # 4. Scheduling after Schedule Date Passed Opens New Course with Previous Course Status Prompts
+    # =========================================================================
+    print("\n--- Test 55: Clinical Governance, Edit Permissions, Search View Buttons & Past Course Handling ---")
+
+    # Roles and Users setup
+    doc_user, _ = User.objects.get_or_create(username='dr_nikhila', defaults={'first_name': 'Nikhila', 'last_name': 'K R'})
+    doc_user.set_password('Doctor123!')
+    doc_user.is_staff = False
+    doc_user.is_superuser = False
+    doc_user.save()
+    consultant_role = Role.objects.filter(role_name__icontains='Consultant').first()
+    UserProfile.objects.update_or_create(user=doc_user, defaults={'role': consultant_role, 'user_level': 'STAFF'})
+
+    admin_u = User.objects.filter(username='admin').first()
+    subadmin_u = User.objects.filter(username='subadmin').first()
+
+    consultant_c = Client()
+    consultant_c.force_login(doc_user)
+    admin_c = Client()
+    admin_c.force_login(admin_u)
+    subadmin_c = Client()
+    subadmin_c.force_login(subadmin_u)
+
+    today = date.today()
+    mach_test = Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').first()
+    shift_test = Shift.objects.filter(is_active=True).first()
+    tech_test = Technique.objects.filter(is_active=True).first()
+
+    # Pre-clean Test 55 patients
+    Patient.objects.filter(mr_no__in=[888800001, 888800002, 888800003, 888800004]).delete()
+
+    # 1. Patient with active upcoming schedule
+    pt55_active = Patient.objects.create(
+        mr_no=888800001,
+        pt_name="Test ActivePt",
+        age=52,
+        sex="Female",
+        phone_no="9876543210",
+        diagnosis="Ca Cervix",
+        site_of_treatment="Pelvis",
+        primary_consultant=active_consultant
+    )
+    sched55_active = TreatmentSchedule.objects.create(
+        patient=pt55_active,
+        treatment_type='Teletherapy',
+        machine=mach_test,
+        shift=shift_test,
+        technique=tech_test,
+        date_of_sim=today - timedelta(days=2),
+        date_of_start=today + timedelta(days=1),
+        status='Scheduled',
+        dose_planned=Decimal('50.00'),
+        no_of_fractions=25
+    )
+
+    # 2. Patient with past schedule (date_of_start passed, completion status not entered)
+    pt55_past = Patient.objects.create(
+        mr_no=888800002,
+        pt_name="Test PastPt",
+        age=60,
+        sex="Male",
+        phone_no="9876543211",
+        diagnosis="Ca Larynx",
+        site_of_treatment="Head and neck",
+        primary_consultant=active_consultant
+    )
+    sched55_past = TreatmentSchedule.objects.create(
+        patient=pt55_past,
+        treatment_type='Teletherapy',
+        machine=mach_test,
+        shift=shift_test,
+        technique=tech_test,
+        date_of_sim=today - timedelta(days=20),
+        date_of_start=today - timedelta(days=10),
+        status='Scheduled',
+        dose_planned=Decimal('60.00'),
+        no_of_fractions=30
+    )
+
+    # 3. Patient with completed schedule
+    pt55_comp = Patient.objects.create(
+        mr_no=888800003,
+        pt_name="Test CompPt",
+        age=45,
+        sex="Female",
+        phone_no="9876543212",
+        diagnosis="Ca Breast",
+        site_of_treatment="Chest",
+        primary_consultant=active_consultant
+    )
+    comp_status_obj = TreatmentCompletionStatus.objects.filter(is_completed=True).first()
+    sched55_comp = TreatmentSchedule.objects.create(
+        patient=pt55_comp,
+        treatment_type='Teletherapy',
+        machine=mach_test,
+        shift=shift_test,
+        technique=tech_test,
+        date_of_sim=today - timedelta(days=40),
+        date_of_start=today - timedelta(days=30),
+        status='Completed',
+        actual_treatment_status=comp_status_obj,
+        dose_planned=Decimal('40.00'),
+        no_of_fractions=15
+    )
+
+    # 4. Patient unscheduled
+    pt55_unsched = Patient.objects.create(
+        mr_no=888800004,
+        pt_name="Test UnschedPt",
+        age=38,
+        sex="Female",
+        phone_no="9876543213",
+        diagnosis="Ca Ovary",
+        site_of_treatment="Pelvis",
+        primary_consultant=active_consultant
+    )
+
+    # -------------------------------------------------------------------------
+    # PART 1: Edit Option - only for Admin and SubAdmin
+    # -------------------------------------------------------------------------
+    # a. In TreatmentSchedule model method is_editable_by:
+    assert sched55_active.is_editable_by(doc_user) is False, "Consultant cannot edit existing schedule"
+    assert sched55_active.is_editable_by(subadmin_u) is True, "SubAdmin can edit existing schedule"
+    assert sched55_active.is_editable_by(admin_u) is True, "Admin can edit existing schedule"
+
+    # b. Machine Treatment Start Lists (/reports/machines/):
+    # Consultant Dr. Nikhila K R viewing start list:
+    resp_doc_m = consultant_c.get(f'/reports/machines/?from_date={today.strftime("%Y-%m-%d")}&to_date={(today + timedelta(days=5)).strftime("%Y-%m-%d")}')
+    assert resp_doc_m.status_code == 200
+    doc_m_html = resp_doc_m.content.decode('utf-8')
+    assert "888800001" in doc_m_html
+    # In action column, Consultant sees "View", NOT "Edit"
+    assert f'/scheduler/patient/{pt55_active.id}/?schedule_id={sched55_active.id}' not in doc_m_html
+    assert f'href="/patients/{pt55_active.id}/"' in doc_m_html
+
+    # Admin viewing start list: sees "Edit"
+    resp_adm_m = admin_c.get(f'/reports/machines/?from_date={today.strftime("%Y-%m-%d")}&to_date={(today + timedelta(days=5)).strftime("%Y-%m-%d")}')
+    assert resp_adm_m.status_code == 200
+    adm_m_html = resp_adm_m.content.decode('utf-8')
+    assert f'/scheduler/patient/{pt55_active.id}/?schedule_id={sched55_active.id}' in adm_m_html
+
+    # SubAdmin viewing start list: sees "Edit"
+    resp_sub_m = subadmin_c.get(f'/reports/machines/?from_date={today.strftime("%Y-%m-%d")}&to_date={(today + timedelta(days=5)).strftime("%Y-%m-%d")}')
+    assert resp_sub_m.status_code == 200
+    sub_m_html = resp_sub_m.content.decode('utf-8')
+    assert f'/scheduler/patient/{pt55_active.id}/?schedule_id={sched55_active.id}' in sub_m_html
+
+    # c. Patient Detail page (/patients/<id>/):
+    # Consultant viewing active schedule: DOES NOT see "✏️ Edit"
+    resp_doc_pd = consultant_c.get(f'/patients/{pt55_active.id}/')
+    assert resp_doc_pd.status_code == 200
+    doc_pd_html = resp_doc_pd.content.decode('utf-8')
+    assert f'/scheduler/patient/{pt55_active.id}/?schedule_id={sched55_active.id}' not in doc_pd_html
+
+    # Admin viewing active schedule: DOES see "✏️ Edit"
+    resp_adm_pd = admin_c.get(f'/patients/{pt55_active.id}/')
+    assert resp_adm_pd.status_code == 200
+    adm_pd_html = resp_adm_pd.content.decode('utf-8')
+    assert f'/scheduler/patient/{pt55_active.id}/?schedule_id={sched55_active.id}' in adm_pd_html
+
+    # d. Backend HTTP guard: Consultant trying to access schedule_patient with schedule_id for existing course
+    resp_doc_edit = consultant_c.get(f'/scheduler/patient/{pt55_active.id}/?schedule_id={sched55_active.id}', follow=True)
+    assert any("Only Admin and SubAdmin are authorized to edit existing scheduled treatment courses" in m.message for m in resp_doc_edit.context['messages'])
+
+    # -------------------------------------------------------------------------
+    # PART 2: Patient Registry Search (patient_search)
+    # -------------------------------------------------------------------------
+    # a. Already Scheduled patient: Shows "👁️ View Record", NOT "Schedule Radiotherapy treatment"
+    resp_s_act = consultant_c.get(f'/patients/search/?q={pt55_active.mr_no}')
+    assert resp_s_act.status_code == 200
+    s_act_html = resp_s_act.content.decode('utf-8')
+    assert "View Record" in s_act_html
+    assert "Schedule Radiotherapy treatment" not in s_act_html
+
+    # b. Completed patient: Shows "👁️ View Record" & "➕ New Course", NOT "Schedule Radiotherapy treatment"
+    resp_s_comp = consultant_c.get(f'/patients/search/?q={pt55_comp.mr_no}')
+    assert resp_s_comp.status_code == 200
+    s_comp_html = resp_s_comp.content.decode('utf-8')
+    assert "View Record" in s_comp_html
+    assert "New Course" in s_comp_html
+    assert "Schedule Radiotherapy treatment" not in s_comp_html
+
+    # c. Unscheduled patient: Shows "Schedule Radiotherapy treatment"
+    resp_s_unsched = consultant_c.get(f'/patients/search/?q={pt55_unsched.mr_no}')
+    assert resp_s_unsched.status_code == 200
+    s_unsched_html = resp_s_unsched.content.decode('utf-8')
+    assert "Schedule Radiotherapy treatment" in s_unsched_html
+    assert "View Record" not in s_unsched_html
+
+    # -------------------------------------------------------------------------
+    # PART 3: Inactive "Add to Emergency slot" for completed or past courses
+    # -------------------------------------------------------------------------
+    # a. Model property can_add_to_emergency:
+    assert sched55_active.can_add_to_emergency is True, "Upcoming active schedule can be added to emergency"
+    assert sched55_past.can_add_to_emergency is False, "Schedule whose date has passed cannot be added to emergency"
+    assert sched55_comp.can_add_to_emergency is False, "Completed schedule cannot be added to emergency"
+
+    # b. Patient Detail UI:
+    # For past course: "Add to Emergency slot" is inactive (cursor: not-allowed, tooltip present)
+    resp_pd_past = admin_c.get(f'/patients/{pt55_past.id}/')
+    assert resp_pd_past.status_code == 200
+    pd_past_html = resp_pd_past.content.decode('utf-8')
+    assert "Add to Emergency slot is inactive because this course is completed or its schedule date has passed" in pd_past_html
+
+    # c. Backend guard in emergency_slot_view:
+    # Attempting to assign past course to emergency slot -> blocked
+    resp_em_block = admin_c.get(reverse('emergency_slot_view', args=[sched55_past.id]), follow=True)
+    assert any("cannot be added to an Emergency / Vacant slot because this course is completed or its scheduled start date has passed" in m.message for m in resp_em_block.context['messages'])
+
+    # Attempting to assign completed course to emergency slot -> blocked
+    resp_em_comp_block = admin_c.get(reverse('emergency_slot_view', args=[sched55_comp.id]), follow=True)
+    assert any("cannot be added to an Emergency / Vacant slot because this course is completed or its scheduled start date has passed" in m.message for m in resp_em_comp_block.context['messages'])
+
+    # -------------------------------------------------------------------------
+    # PART 4: Scheduling after Date of Schedule has Passed Opens New Course & Prompts Previous Status
+    # -------------------------------------------------------------------------
+    # Consultant visits schedule page for pt55_past (whose only schedule is 10 days in the past)
+    resp_new_c = consultant_c.get(f'/scheduler/patient/{pt55_past.id}/')
+    assert resp_new_c.status_code == 200
+    # Because date_of_start has passed, existing_schedule must be None and is_new_course must be True
+    assert resp_new_c.context['is_new_course'] is True
+    assert resp_new_c.context['schedule'] is None
+    assert resp_new_c.context['prev_course_needs_completion'] is True
+    assert resp_new_c.context['latest_prev'] == sched55_past
+    new_c_html = resp_new_c.content.decode('utf-8')
+    assert f"Previous Course #{sched55_past.id}" in new_c_html
+    assert "Is it completed?" in new_c_html
+
+    # Submitting the schedule form with previous course completion:
+    new_start_date = today + timedelta(days=7)
+    resp_sub_new = consultant_c.post(f'/scheduler/patient/{pt55_past.id}/', {
+        'form_action': 'approve_schedule',
+        'prev_course_id': str(sched55_past.id),
+        'prev_is_completed': 'yes',
+        'prev_actual_start_date': sched55_past.date_of_start.strftime('%Y-%m-%d'),
+        'prev_actual_end_date': today.strftime('%Y-%m-%d'),
+        'prev_status_notes': 'Past course concluded',
+        'treatment_type': 'Teletherapy',
+        'intent': 1,
+        'site_of_treatment': 'Head and neck',
+        'diagnosis': 'Ca Larynx - Recurrence / Boost',
+        'date_of_sim': today.strftime('%Y-%m-%d'),
+        'technique': 1,
+        'special_technique': 1,
+        'machine': mach_test.id,
+        'shift': shift_test.id,
+        'date_of_start': new_start_date.strftime('%Y-%m-%d'),
+        'dose_planned': '20.00',
+        'no_of_fractions': '10',
+        'notes': 'New course after previous completed'
+    })
+    assert resp_sub_new.status_code == 302
+
+    # Verify previous course is marked as completed
+    sched55_past.refresh_from_db()
+    assert sched55_past.status == 'Completed'
+    assert sched55_past.actual_treatment_status is not None
+    assert sched55_past.actual_treatment_status.is_completed is True
+    assert sched55_past.actual_status_notes == 'Past course concluded'
+
+    # Verify a brand new course was opened and scheduled for pt55_past
+    assert pt55_past.schedules.count() == 2
+    new_course = pt55_past.schedules.exclude(id=sched55_past.id).first()
+    assert new_course is not None
+    assert new_course.status == 'Scheduled'
+    assert new_course.date_of_start == new_start_date
+    assert new_course.machine == mach_test
+
+    # Cleanup Test 55 records
+    Patient.objects.filter(mr_no__in=[888800001, 888800002, 888800003, 888800004]).delete()
+    print("✓ Test 55 Passed: Clinical Governance, Edit Permissions, Search View Buttons & Past Course Handling fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

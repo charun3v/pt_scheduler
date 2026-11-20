@@ -423,14 +423,35 @@ class TreatmentSchedule(models.Model):
         from datetime import date, timedelta
         return date.today() > (f_date + timedelta(days=30))
 
+    @property
+    def can_add_to_emergency(self):
+        """
+        Returns True if this course can be shifted to an Emergency or Vacant slot.
+        Inactive if:
+          - Course is Brachytherapy
+          - Course is already an emergency/vacant slot
+          - Course is tagged as Completed (status == 'Completed' or actual_treatment_status.is_completed)
+          - Date of Schedule has passed (date_of_start < today)
+        """
+        if self.treatment_type == 'Brachytherapy' or self.is_emergency_slot:
+            return False
+        if self.status == 'Completed' or (self.actual_treatment_status and self.actual_treatment_status.is_completed):
+            return False
+        if self.date_of_start:
+            from django.utils import timezone
+            today = timezone.localdate()
+            if self.date_of_start < today:
+                return False
+        return True
+
     def is_editable_by(self, user):
         """
         Returns True if the given user is allowed to edit this schedule.
+        Only Admin and SubAdmin are authorized to edit existing schedules.
         If the schedule is frozen (> 1 month past final scheduled date), ONLY Admin can edit it.
-        Otherwise, standard scheduling permission rules apply.
         """
-        from apps.core.permissions import is_admin_only, can_schedule_patient
-        if not can_schedule_patient(user):
+        from apps.core.permissions import is_admin_only, is_admin_or_subadmin
+        if not is_admin_or_subadmin(user):
             return False
         if self.is_frozen:
             return is_admin_only(user)

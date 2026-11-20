@@ -465,31 +465,41 @@
                                         🔒 Frozen (Admin Only)
                                     </span>
                                     {% else %}
-                                        {% if s.treatment_type == 'Brachytherapy' %}
-                                        <a href="{% url 'brachy_schedule_patient' patient.id %}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; background: #e0f2fe; color: #0369a1; border-color: #7dd3fc;" title="Edit brachytherapy schedule & fractions">
-                                            ☢️ Edit Brachy
-                                        </a>
-                                        {% else %}
-                                        <a href="{% url 'schedule_patient' patient.id %}?schedule_id={{ s.id }}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px;" title="Edit or Approve this course">
-                                            ✏️ Edit
-                                        </a>
+                                        {% if IS_ADMIN_OR_SUBADMIN %}
+                                            {% if s.treatment_type == 'Brachytherapy' %}
+                                            <a href="{% url 'brachy_schedule_patient' patient.id %}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; background: #e0f2fe; color: #0369a1; border-color: #7dd3fc;" title="Edit brachytherapy schedule & fractions">
+                                                ☢️ Edit Brachy
+                                            </a>
+                                            {% else %}
+                                            <a href="{% url 'schedule_patient' patient.id %}?schedule_id={{ s.id }}" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px;" title="Edit or Approve this course">
+                                                ✏️ Edit
+                                            </a>
+                                            {% endif %}
                                         {% endif %}
                                         
                                         {% if s.treatment_type != 'Brachytherapy' %}
                                             {% if not s.is_emergency_slot %}
-                                            <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Shift patient to Emergency or Vacant slot list">
-                                                🚨 Add to Emergency slot
-                                            </a>
+                                                {% if s.can_add_to_emergency %}
+                                                <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Shift patient to Emergency or Vacant slot list">
+                                                    🚨 Add to Emergency slot
+                                                </a>
+                                                {% else %}
+                                                <span class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #94a3b8; border-color: #cbd5e1; background: #f8fafc; font-weight: 600; cursor: not-allowed; opacity: 0.6;" title="Add to Emergency slot is inactive because this course is completed or its schedule date has passed.">
+                                                    🚨 Add to Emergency slot
+                                                </span>
+                                                {% endif %}
                                             {% else %}
-                                            <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Edit Emergency / Vacant Slot details">
-                                                ✏️ Edit Slot
-                                            </a>
-                                            <form method="POST" action="{% url 'revert_emergency_slot' s.id %}" style="display: inline; margin: 0;" onsubmit="return confirm('Revert this course back to normal schedule queue?');">
-                                                {% csrf_token %}
-                                                <button type="submit" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #1e40af; border-color: #93c5fd; background: #eff6ff; font-weight: 600; cursor: pointer;" title="Revert back to normal schedule list">
-                                                    ↩️ Revert
-                                                </button>
-                                            </form>
+                                                {% if IS_ADMIN_OR_SUBADMIN %}
+                                                <a href="{% url 'emergency_slot_view' s.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #b91c1c; border-color: #f87171; background: #fff5f5; font-weight: 600;" title="Edit Emergency / Vacant Slot details">
+                                                    ✏️ Edit Slot
+                                                </a>
+                                                <form method="POST" action="{% url 'revert_emergency_slot' s.id %}" style="display: inline; margin: 0;" onsubmit="return confirm('Revert this course back to normal schedule queue?');">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px; color: #1e40af; border-color: #93c5fd; background: #eff6ff; font-weight: 600; cursor: pointer;" title="Revert back to normal schedule list">
+                                                        ↩️ Revert
+                                                    </button>
+                                                </form>
+                                                {% endif %}
                                             {% endif %}
                                         {% endif %}
 

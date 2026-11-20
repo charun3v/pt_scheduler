@@ -410,15 +410,28 @@
                         <td style="padding: 5px 8px; text-align: center; white-space: nowrap;">
                             <div style="display: inline-flex; gap: 4px; align-items: center;">
                                 {% if not show_hidden %}
-                                    {% if CAN_SCHEDULE_PATIENT %}
+                                    {% if p.dashboard_schedule_status in 'Scheduled,In Progress,Emergency,Vacant' and p.dashboard_schedule_status != 'Pending' and p.dashboard_schedule_status != 'Draft' %}
+                                        <a href="{% url 'patient_detail' p.id %}" class="action-ribbon-btn" style="padding: 2px 7px; font-size: 11px;" title="View patient details and schedule">
+                                            👁️ View
+                                        </a>
+                                        {% if IS_ADMIN_OR_SUBADMIN %}
+                                        <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn" style="padding: 2px 7px; font-size: 11px; background: #fef3c7; color: #92400e; border-color: #fde68a;" title="Edit treatment course (Admin / SubAdmin)">
+                                            ✏️ Edit Sched
+                                        </a>
+                                        {% endif %}
+                                    {% elif p.dashboard_schedule_status == 'Completed' %}
+                                        <a href="{% url 'patient_detail' p.id %}" class="action-ribbon-btn" style="padding: 2px 7px; font-size: 11px;" title="View completed course record">
+                                            👁️ View
+                                        </a>
+                                        {% if CAN_SCHEDULE_PATIENT %}
+                                        <a href="{% url 'schedule_patient' p.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 2px 7px; font-size: 11px;" title="Schedule new treatment course">
+                                            ➕ New Course
+                                        </a>
+                                        {% endif %}
+                                    {% elif CAN_SCHEDULE_PATIENT %}
                                         <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn btn-highlight" style="padding: 2px 7px; font-size: 11px;" title="Schedule treatment course">
                                             ⚡ Schedule
                                         </a>
-                                        {% if CAN_EDIT_PATIENT %}
-                                        <a href="{% url 'patient_edit' p.id %}" class="action-ribbon-btn" style="padding: 2px 7px; font-size: 11px;" title="Edit patient demographics">
-                                            ✏️ Edit
-                                        </a>
-                                        {% endif %}
                                     {% else %}
                                         <a href="{% url 'patient_detail' p.id %}" class="action-ribbon-btn" style="padding: 2px 9px; font-size: 11px; background: #e0f2fe; color: #0369a1; border-color: #bae6fd;" title="View patient details and appointment status">
                                             👁️ View Details

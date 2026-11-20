@@ -71,16 +71,41 @@ def schedule_patient_view(request, patient_id):
     user_is_jr = bool(current_profile and current_profile.role and 'resident' in current_profile.role.role_name.lower())
     default_jr_val = (request.user.get_full_name() or request.user.username) if user_is_jr else ''
 
+    today = timezone.localdate()
+
     # Handle specific course selection or adding a new course
     req_schedule_id = request.GET.get('schedule_id') or request.POST.get('schedule_id')
     is_new_course = (request.GET.get('new_course') == '1') or (request.POST.get('new_course') == '1')
 
     if req_schedule_id:
         existing_schedule = patient.schedules.filter(id=req_schedule_id).first()
+        # If user is not Admin/SubAdmin and tries to edit an existing scheduled course:
+        if existing_schedule and existing_schedule.status in ('Scheduled', 'In Progress', 'Completed', 'Emergency', 'Vacant'):
+            if not is_admin_or_subadmin(request.user):
+                messages.error(request, "Access restricted. Only Admin and SubAdmin are authorized to edit existing scheduled treatment courses.")
+                return redirect('patient_detail', patient_id=patient.id)
     elif is_new_course:
         existing_schedule = None
     else:
-        existing_schedule = patient.schedules.filter(status__in=['Draft', 'Pending', 'Scheduled']).first() or patient.schedules.first()
+        # Check if there is an active upcoming schedule that hasn't started yet (date_of_start is None or date_of_start >= today)
+        active_candidates = [
+            s for s in patient.schedules.filter(status__in=['Draft', 'Pending', 'Scheduled']).order_by('-id')
+            if not s.date_of_start or s.date_of_start >= today
+        ]
+        if active_candidates:
+            cand = active_candidates[0]
+            if cand.status == 'Scheduled' and not is_admin_or_subadmin(request.user):
+                # Patient already has an active scheduled course; non-admin cannot edit in place -> open a new course
+                messages.info(request, f"Patient already has an active scheduled course (#{cand.id}) starting {cand.date_of_start.strftime('%d-%b-%Y')}. Opening a new course.")
+                existing_schedule = None
+                is_new_course = True
+            else:
+                existing_schedule = cand
+        else:
+            # If all existing courses have passed their date_of_start (date_of_start < today) or are completed:
+            # A new course has to be opened and a new slot has to be taken!
+            existing_schedule = None
+            is_new_course = True
 
     if existing_schedule and existing_schedule.is_frozen and not is_admin_only(request.user):
         messages.error(request, f"Treatment Course #{existing_schedule.id} is frozen (> 1 month past scheduled completion). Only Administrators can edit frozen courses.")
@@ -109,7 +134,7 @@ def schedule_patient_view(request, patient_id):
 
         # Handle previous course completion if submitted
         prev_course_id = request.POST.get('prev_course_id')
-        if prev_course_id and prev_course_needs_completion:
+        if prev_course_id:
             prev_s = patient.schedules.filter(id=prev_course_id).first()
             if prev_s and not prev_s.actual_treatment_status:
                 prev_comp = request.POST.get('prev_is_completed', '').strip().lower()
@@ -143,6 +168,13 @@ def schedule_patient_view(request, patient_id):
                         prev_s.actual_treatment_status = TreatmentCompletionStatus.objects.filter(id=prev_st_id).first()
                     else:
                         prev_s.actual_treatment_status = TreatmentCompletionStatus.objects.filter(is_completed=False).first()
+                    st_obj = prev_s.actual_treatment_status
+                    if st_obj and st_obj.name.lower() == 'not started':
+                        prev_s.status = 'Pending'
+                    elif st_obj and st_obj.name.lower() in ('defaulted', 'discontinued'):
+                        prev_s.status = 'Cancelled'
+                    elif st_obj and st_obj.name.lower() == 'incomplete':
+                        prev_s.status = 'In Progress'
                     if prev_st_date:
                         prev_s.actual_start_date = prev_st_date
                     if prev_end_date:
@@ -1089,6 +1121,15 @@ def emergency_slot_view(request, schedule_id):
         messages.error(request, "Emergency slot option is not applicable for Brachytherapy courses.")
         return redirect('patient_detail', patient_id=patient.id)
 
+    if not sched.is_emergency_slot:
+        if not sched.can_add_to_emergency:
+            messages.error(request, f"Treatment Course #{sched.id} cannot be added to an Emergency / Vacant slot because this course is completed or its scheduled start date has passed.")
+            return redirect('patient_detail', patient_id=patient.id)
+    else:
+        if not is_admin_or_subadmin(request.user):
+            messages.error(request, "Access restricted. Only Admin and SubAdmin are authorized to edit Emergency / Vacant slot details.")
+            return redirect('patient_detail', patient_id=patient.id)
+
     all_machines = Machine.objects.filter(is_active=True, treatment_mode='Teletherapy').order_by('display_order', 'name')
     all_shifts = Shift.objects.filter(is_active=True).order_by('display_order')
     jr_users = User.objects.filter(
@@ -1265,8 +1306,8 @@ def revert_emergency_slot_view(request, schedule_id):
     sched = get_object_or_404(TreatmentSchedule, id=schedule_id)
     patient = sched.patient
 
-    if not can_schedule_patient(request.user):
-        messages.error(request, "Access restricted. You do not have permission to modify treatment schedules.")
+    if not is_admin_or_subadmin(request.user):
+        messages.error(request, "Access restricted. Only Admin and SubAdmin are authorized to revert emergency slots.")
         return redirect('patient_detail', patient_id=patient.id)
 
     if sched.is_frozen and not is_admin_only(request.user):
@@ -2088,7 +2129,7 @@ def brachy_daily_patients_view(request):
         'anesthesias': anesthesias,
         'brachy_machines': brachy_machines,
         'completion_statuses': completion_statuses,
-        'can_edit': can_schedule_patient(request.user),
+        'can_edit': is_admin_or_subadmin(request.user),
         'is_date_reached': is_date_reached,
         'is_today_before_10': is_today_before_10,
         'has_incomplete_prev_appts': has_incomplete_prev_appts,
@@ -2363,8 +2404,8 @@ def brachy_edit_appointment_api(request, appointment_id):
     API to update details of an individual Brachytherapy appointment (applicator, applicator type, anesthesia, machine, notes, date).
     Permits clinicians to edit the details of each applicator appointment later.
     """
-    if not can_schedule_patient(request.user) and not can_edit_patient(request.user):
-        return JsonResponse({'success': False, 'error': "Access restricted. Scheduling permission required."}, status=403)
+    if not is_admin_or_subadmin(request.user):
+        return JsonResponse({'success': False, 'error': "Access restricted. Only Admin and SubAdmin can edit brachytherapy application appointments."}, status=403)
 
     appt = get_object_or_404(BrachytherapyAppointment, id=appointment_id)
 

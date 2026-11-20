@@ -115,12 +115,12 @@
                 <td style="padding: 8px;">{{ s.jr_resident|default:'-' }}</td>
                 <td style="padding: 8px; font-weight: 500;">{{ s.machine_display }}</td>
                 <td style="padding: 8px; text-align: center; white-space: nowrap;">
-                    {% if CAN_SCHEDULE_PATIENT %}
-                    <a href="{% url 'schedule_patient' s.patient.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px;">
+                    {% if IS_ADMIN_OR_SUBADMIN %}
+                    <a href="{% url 'schedule_patient' s.patient.id %}?schedule_id={{ s.id }}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px;" title="Edit Treatment Course (Admin / SubAdmin)">
                         Edit
                     </a>
                     {% else %}
-                    <a href="{% url 'patient_detail' s.patient.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px;">
+                    <a href="{% url 'patient_detail' s.patient.id %}" class="action-ribbon-btn" style="padding: 2px 6px; font-size: 10px;" title="View Patient Details">
                         View
                     </a>
                     {% endif %}

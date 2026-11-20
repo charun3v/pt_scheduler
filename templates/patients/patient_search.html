@@ -103,9 +103,29 @@
                     {% endif %}
                 </td>
                 <td style="padding: 8px; text-align: center; white-space: nowrap;">
-                    <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn btn-highlight" style="padding: 5px 12px; font-size: 11.5px; font-weight: bold; white-space: nowrap; text-decoration: none;">
-                        Schedule Radiotherapy treatment
-                    </a>
+                    {% if p.dashboard_schedule_status in 'Scheduled,In Progress,Emergency,Vacant' and p.dashboard_schedule_status != 'Pending' and p.dashboard_schedule_status != 'Draft' %}
+                        <a href="{% url 'patient_detail' p.id %}" class="action-ribbon-btn" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600; text-decoration: none;" title="View Patient Details and Course Record">
+                            👁️ View Record
+                        </a>
+                        {% if IS_ADMIN_OR_SUBADMIN %}
+                        <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600; text-decoration: none; margin-left: 4px; background: #fef3c7; color: #92400e; border-color: #fde68a;" title="Edit Scheduled Course (Admin / SubAdmin)">
+                            ✏️ Edit
+                        </a>
+                        {% endif %}
+                    {% elif p.dashboard_schedule_status == 'Completed' %}
+                        <a href="{% url 'patient_detail' p.id %}" class="action-ribbon-btn" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600; text-decoration: none;" title="View Completed Course Record">
+                            👁️ View Record
+                        </a>
+                        {% if CAN_SCHEDULE_PATIENT %}
+                        <a href="{% url 'schedule_patient' p.id %}?new_course=1" class="action-ribbon-btn btn-highlight" style="padding: 4px 10px; font-size: 11.5px; font-weight: bold; text-decoration: none; margin-left: 4px;" title="Schedule New Course for this patient">
+                            ➕ New Course
+                        </a>
+                        {% endif %}
+                    {% else %}
+                        <a href="{% url 'schedule_patient' p.id %}" class="action-ribbon-btn btn-highlight" style="padding: 5px 12px; font-size: 11.5px; font-weight: bold; white-space: nowrap; text-decoration: none;">
+                            Schedule Radiotherapy treatment
+                        </a>
+                    {% endif %}
                 </td>
             </tr>
             <!-- Clinical Tracking Milestones Row -->
