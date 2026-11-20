@@ -163,28 +163,29 @@
             width: 100%;
             border-collapse: collapse;
             border: 1.5px solid #000000;
-            margin: 5px 0 6px 0;
-        }
-
-        .ot-table th, .ot-table td {
-            border: 1px solid #000000;
-            padding: 3.5px 5px;
-            font-size: 9.5pt;
-            line-height: 1.22;
-            color: #000000;
-            vertical-align: middle;
+            margin: 4px 0 5px 0;
         }
 
         .ot-table th {
+            border: 1px solid #000000;
             background: #f8fafc;
             font-weight: 800;
             text-align: center;
-            font-size: 9pt;
-            letter-spacing: 0.4px;
+            font-size: 8.5pt;
+            letter-spacing: 0.3px;
             text-transform: uppercase;
+            padding: 2px 4px;
+            line-height: 1.15;
+            vertical-align: middle;
         }
 
         .ot-table td {
+            border: 1px solid #000000;
+            padding: 1.5px 4px;
+            font-size: 9pt;
+            line-height: 1.14;
+            color: #000000;
+            vertical-align: middle;
             font-weight: normal;
         }
 
@@ -364,6 +365,17 @@
                 max-height: 136mm !important;
             }
 
+            .ot-table th {
+                padding: 1.8px 3px !important;
+                font-size: 8.5pt !important;
+            }
+
+            .ot-table td {
+                padding: 1.2px 4px !important;
+                font-size: 8.8pt !important;
+                line-height: 1.12 !important;
+            }
+
             .ot-cut-divider {
                 color: #475569 !important;
                 margin: 4mm 0 !important;
@@ -421,6 +433,16 @@
                     <option value="UNIT-I" {% if selected_unit == 'UNIT-I' %}selected{% endif %}>Unit I</option>
                     <option value="UNIT-II" {% if selected_unit == 'UNIT-II' %}selected{% endif %}>Unit II</option>
                     <option value="ALL" {% if selected_unit == 'ALL' %}selected{% endif %}>All Units</option>
+                </select>
+            </div>
+
+            <div class="toolbar-group">
+                <label for="rowPaddingSelect">Row Padding:</label>
+                <select id="rowPaddingSelect" onchange="updateRowPadding(this.value)">
+                    <option value="1.0">Ultra-Compact (1.0px)</option>
+                    <option value="1.5" selected>Compact (1.5px)</option>
+                    <option value="2.2">Standard (2.2px)</option>
+                    <option value="3.5">Spacious (3.5px)</option>
                 </select>
             </div>
         </div>
@@ -694,6 +716,18 @@
             const newHeader = 'DEPARTMENT OF RADIATION ONCOLOGY ' + unitText;
             document.querySelectorAll('[data-sync="header-line2"]').forEach(el => {
                 el.innerText = newHeader;
+            });
+        }
+
+        function updateRowPadding(val) {
+            document.querySelectorAll('.ot-table td').forEach(td => {
+                td.style.paddingTop = val + 'px';
+                td.style.paddingBottom = val + 'px';
+            });
+            document.querySelectorAll('.ot-table th').forEach(th => {
+                const thVal = Math.max(1.2, (parseFloat(val) * 1.2)).toFixed(1);
+                th.style.paddingTop = thVal + 'px';
+                th.style.paddingBottom = thVal + 'px';
             });
         }
     </script>

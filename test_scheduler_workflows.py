@@ -5235,6 +5235,9 @@ def run_tests():
     assert "contenteditable" in print_html
     assert "width: 18%" in print_html      # Reduced Patient column width
     assert "font-weight: normal;" in print_html # Entries normal weight, headings bold
+    assert "padding: 1.5px 4px;" in print_html  # Reduced vertical padding of entries
+    assert "padding: 1.2px 4px !important;" in print_html # Reduced vertical padding in print media
+    assert "rowPaddingSelect" in print_html # Toolbar row padding control
     assert "btnToggleBold" in print_html   # Quick toggle for bold entries
     assert "Dr. Naveen T" in print_html    # Signing authority in Title Case
 

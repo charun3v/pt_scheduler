@@ -2025,7 +2025,7 @@ def generate_technician_sheet_pdf(data):
                     '', '', '', '', '', '', '', '', ''
                 ])
 
-            v_pad = config.row_vertical_padding_pt or 2.7
+            v_pad = config.row_vertical_padding_pt if (config.row_vertical_padding_pt and config.row_vertical_padding_pt <= 2.2) else 1.6
             pt_table = Table(table_rows, colWidths=col_widths)
             ts = [
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),
@@ -2701,7 +2701,7 @@ def generate_emergency_sheet_pdf(data):
                     '', '', '', '', '', ''
                 ])
 
-            v_pad = config.row_vertical_padding_pt or 2.7
+            v_pad = config.row_vertical_padding_pt if (config.row_vertical_padding_pt and config.row_vertical_padding_pt <= 2.2) else 1.6
             pt_table = Table(table_rows, colWidths=col_widths)
             ts = [
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#cbd5e1')),

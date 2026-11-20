@@ -240,7 +240,7 @@ class PrintTemplateConfig(models.Model):
     )
 
     page_margin_cm = models.FloatField(default=2.5, help_text="Page margin in centimeters (A4 paper)")
-    row_vertical_padding_pt = models.FloatField(default=2.7, help_text="Cell vertical padding points (0.5mm expanded)")
+    row_vertical_padding_pt = models.FloatField(default=1.6, help_text="Cell vertical padding points (compact)")
 
     updated_at = models.DateTimeField(auto_now=True)
 
