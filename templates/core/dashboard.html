@@ -177,8 +177,7 @@
                                 {{ prof.user.username }}
                             </td>
                             <td style="padding: 4px 10px; font-weight: 600;">
-                                {% if prof.prefix %}<span style="color: #003366; font-weight: bold;">{{ prof.prefix }}</span>{% endif %}
-                                {{ prof.user.first_name|default:'-' }}
+                                {{ prof.display_name }}
                             </td>
                             <td style="padding: 4px 10px;">
                                 <span class="badge-locked" style="font-size: 11px;">{{ prof.role.role_name|default:'Resident' }}</span>
@@ -203,12 +202,13 @@
                             <td style="padding: 4px 10px; text-align: center; white-space: nowrap;">
                                 <div style="display: inline-flex; gap: 4px; align-items: center;">
                                     {% if not prof.is_approved %}
-                                    <a href="{% url 'user_approve' prof.user.id %}?next={{ request.get_full_path|urlencode }}"
-                                       onclick="return confirm('Approve account for {{ prof.display_name }} ({{ prof.user.username }}) and grant active system access?');"
-                                       class="action-ribbon-btn"
-                                       style="padding: 2px 10px; font-size: 11px; font-weight: bold; background: #16a34a; color: #fff; border-color: #15803d;">
+                                    <button type="button"
+                                            onclick="openApproveModal({{ prof.user.id }}, '{{ prof.user.username|escapejs }}', '{{ prof.prefix|default:'Dr.'|escapejs }}', '{{ prof.user.first_name|default:''|escapejs }}', {{ prof.role.role_id|default:'null' }}, '{{ prof.role.role_name|default:'Resident'|escapejs }}', '{{ prof.user.date_joined|date:'d-M-Y H:i' }}');"
+                                            class="action-ribbon-btn"
+                                            style="padding: 2px 10px; font-size: 11px; font-weight: bold; background: #16a34a; color: #fff; border-color: #15803d; cursor: pointer;"
+                                            title="Review profile details and approve registration">
                                         ✓ Approve
-                                    </a>
+                                    </button>
                                     {% endif %}
                                     <a href="{% url 'user_toggle_hide_dashboard' prof.user.id %}?next={{ request.get_full_path|urlencode }}"
                                        class="action-ribbon-btn"
@@ -592,7 +592,116 @@
     </div>
 </div>
 
+<!-- Modal: Review & Approve User Registration (Admin Only) -->
+<div id="approveUserModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1050; align-items: center; justify-content: center;">
+    <div style="background: #ffffff; border-radius: 8px; width: 520px; max-width: 95%; box-shadow: 0 10px 25px rgba(0,0,0,0.25); overflow: hidden; border: 2px solid #003366;">
+        <!-- Header -->
+        <div style="background: #003366; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">👤</span>
+                <strong style="font-size: 14px;">Review Profile Details & Approve User Registration</strong>
+            </div>
+            <button type="button" onclick="closeApproveModal();" style="background: none; border: none; color: #ffffff; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+
+        <!-- Form Body -->
+        <form method="POST" id="approveUserModalForm" action="" style="padding: 18px;">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+
+            <!-- Notice / Policy guidance -->
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px; color: #92400e; display: flex; gap: 8px; align-items: flex-start;">
+                <span style="font-size: 16px;">⚠️</span>
+                <div>
+                    <strong>Verification Required Before Approval:</strong> Review the applicant's submitted name and requested role. If a resident or other staff submitted an Administrator role, change the <strong>Approved Role</strong> dropdown below to their proper designation (e.g. <em>Resident</em>) before approving.
+                </div>
+            </div>
+
+            <!-- Profile Summary Ribbon -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 14px; font-size: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; display: block;">Username / Login ID:</span>
+                        <strong id="modalApproveUsername" style="font-family: Consolas, monospace; color: #003366; font-size: 13px;"></strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; display: block;">Registered On:</span>
+                        <span id="modalApproveDate" style="color: #334155; font-weight: 600;"></span>
+                    </div>
+                </div>
+                <div>
+                    <span style="color: #64748b; font-size: 11px; display: block; margin-bottom: 2px;">Requested Role (Submitted by Applicant):</span>
+                    <span id="modalApproveSubmittedRole" style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #fef3c7; color: #92400e; font-weight: bold; border: 1px solid #fde68a; font-size: 11.5px;"></span>
+                </div>
+            </div>
+
+            <!-- Prefix & Full Name -->
+            <div style="margin-bottom: 14px;">
+                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">
+                    Prefix & Full Name: <span style="color: #dc2626;">*</span>
+                </label>
+                <div style="display: flex; gap: 8px;">
+                    <select name="prefix" id="modalApprovePrefix" style="width: 95px; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12.5px; font-weight: 600; background: #fff;">
+                        {% for p in prefixes %}
+                        <option value="{{ p }}">{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" name="first_name" id="modalApproveFullName" required
+                           placeholder="Full Name"
+                           style="flex: 1; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12.5px;">
+                </div>
+            </div>
+
+            <!-- Approved Role (Dropdown) -->
+            <div style="margin-bottom: 18px;">
+                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px;">
+                    Approved Role / Permission Level: <span style="color: #dc2626;">*</span>
+                </label>
+                <select name="role_id" id="modalApproveRoleSelect" required style="width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; font-weight: 600; background: #fff; color: #003366;">
+                    {% for r in all_active_roles %}
+                    <option value="{{ r.role_id }}">{{ r.role_name }}</option>
+                    {% endfor %}
+                </select>
+                <div style="font-size: 11px; color: #64748b; margin-top: 3px;">
+                    Select the role to grant upon approval. Modifying this overrides what the user requested.
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+                <button type="button" onclick="closeApproveModal();" style="padding: 6px 14px; border: 1px solid #cbd5e1; border-radius: 4px; background: #ffffff; color: #475569; font-size: 12px; cursor: pointer;">
+                    Cancel
+                </button>
+                <button type="submit" style="padding: 6px 18px; border: none; border-radius: 4px; background: #16a34a; color: #ffffff; font-size: 12px; font-weight: 700; cursor: pointer;">
+                    ✓ Confirm & Approve Account
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+    // Open Approve Confirmation Modal
+    function openApproveModal(userId, username, prefix, fullName, roleId, roleName, regDate) {
+        document.getElementById('approveUserModalForm').action = '/users/' + userId + '/approve/';
+        document.getElementById('modalApproveUsername').innerText = username;
+        document.getElementById('modalApprovePrefix').value = prefix || 'Dr.';
+        document.getElementById('modalApproveFullName').value = fullName || '';
+        document.getElementById('modalApproveDate').innerText = regDate || '-';
+        document.getElementById('modalApproveSubmittedRole').innerText = roleName || 'Resident';
+
+        var roleSelect = document.getElementById('modalApproveRoleSelect');
+        if (roleId) {
+            roleSelect.value = roleId;
+        }
+        document.getElementById('approveUserModal').style.display = 'flex';
+    }
+
+    // Close Approve Confirmation Modal
+    function closeApproveModal() {
+        document.getElementById('approveUserModal').style.display = 'none';
+    }
+
     // Open Hide Confirmation Modal
     function openHideModal(patientId, ptName, mrNo) {
         document.getElementById('modalPtName').innerText = ptName;
@@ -619,6 +728,10 @@
         var hideModal = document.getElementById('hidePatientModal');
         if (event.target == hideModal) {
             hideModal.style.display = "none";
+        }
+        var approveModal = document.getElementById('approveUserModal');
+        if (event.target == approveModal) {
+            approveModal.style.display = "none";
         }
     }
 </script>

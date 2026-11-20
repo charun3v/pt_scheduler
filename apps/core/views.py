@@ -89,7 +89,8 @@ def register_account_view(request):
         return redirect('dashboard')
 
     prefixes = ['Dr.', 'Mr', 'Mrs', 'Miss']
-    roles = Role.objects.filter(is_active=True).order_by('display_order')
+    # Exclude Administrator and SubAdministrator from public self-registration (residents and staff cannot apply as admin)
+    roles = Role.objects.filter(is_active=True).exclude(role_name__in=['Admin', 'SubAdmin']).order_by('display_order')
 
     if request.method == 'POST':
         prefix = request.POST.get('prefix', 'Dr.').strip()
@@ -126,7 +127,8 @@ def register_account_view(request):
             })
 
         role_obj = Role.objects.filter(role_id=role_id).first() if role_id.isdigit() else None
-        if not role_obj:
+        # Enforce that public self-registrations cannot take Admin or SubAdmin roles
+        if not role_obj or role_obj.role_name.lower() in ('admin', 'subadmin'):
             role_obj = Role.objects.filter(role_name__icontains='Resident').first() or Role.objects.first()
 
         new_user = User.objects.create_user(
@@ -297,6 +299,8 @@ def dashboard_view(request):
         'hidden_accounts_count': hidden_accounts_count,
         'active_pending_count': active_pending_count,
         'total_pending_count': total_pending_count,
+        'all_active_roles': Role.objects.filter(is_active=True).order_by('display_order') if user_is_admin else [],
+        'prefixes': ['Dr.', 'Mr', 'Mrs', 'Miss'],
     }
     return render(request, 'core/dashboard.html', context)
 
@@ -361,7 +365,7 @@ def user_list_view(request):
 def user_approve_view(request, user_id):
     """
     Approve pending user account registration. Strictly Admin only (not SubAdmin).
-    Activates login and marks account as approved.
+    Shows submitted profile details before approval to verify role and prevent unauthorized admin rights.
     """
     if not is_admin_only(request.user):
         messages.error(request, "Access denied. Only Administrators can approve user accounts.")
@@ -369,27 +373,75 @@ def user_approve_view(request, user_id):
 
     target_user = get_object_or_404(User, id=user_id)
     profile, _ = UserProfile.objects.get_or_create(user=target_user)
+    roles = Role.objects.filter(is_active=True).order_by('display_order')
+    prefixes = ['Dr.', 'Mr', 'Mrs', 'Miss']
 
-    target_user.is_active = True
-    target_user.save()
+    if request.method == 'POST':
+        prefix = request.POST.get('prefix', profile.prefix or 'Dr.').strip()
+        fname = request.POST.get('first_name', target_user.first_name).strip()
+        role_id = request.POST.get('role_id', '').strip()
 
-    profile.is_approved = True
-    profile.approved_by = request.user
-    profile.approved_at = timezone.now()
-    profile.save()
+        if fname:
+            target_user.first_name = fname
 
-    AuditLog.objects.create(
-        user=request.user,
-        action="USER_APPROVED",
-        details=f"Admin {request.user.username} approved and activated user account {target_user.username} ({profile.display_name}).",
-        ip_address=request.META.get('REMOTE_ADDR')
-    )
+        role_obj = Role.objects.filter(role_id=role_id).first() if role_id.isdigit() else profile.role
+        if not role_obj:
+            role_obj = profile.role
 
-    messages.success(request, f"User account '{profile.display_name}' ({target_user.username}) approved and activated successfully.")
-    next_url = request.GET.get('next') or request.META.get('HTTP_REFERER')
-    if next_url and ('/dashboard' in next_url or '/users' in next_url):
-        return redirect(next_url)
-    return redirect('user_list')
+        target_user.is_staff = bool(role_obj and role_obj.role_name.lower() in ('admin', 'subadmin'))
+        target_user.is_active = True
+        target_user.save()
+
+        orig_role = profile.role.role_name if profile.role else 'None'
+        profile.prefix = prefix
+        profile.role = role_obj
+        profile.user_level = role_obj.role_name.upper() if role_obj else 'USER'
+        profile.is_approved = True
+        profile.approved_by = request.user
+        profile.approved_at = timezone.now()
+        profile.save()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="USER_APPROVED",
+            details=f"Admin {request.user.username} approved user {target_user.username} ({profile.display_name}) with assigned role: {role_obj.role_name if role_obj else 'None'} (Requested: {orig_role}).",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"User account '{profile.display_name}' ({target_user.username}) approved and activated with role '{role_obj.role_name if role_obj else 'None'}'.")
+        next_url = request.GET.get('next') or request.POST.get('next') or request.META.get('HTTP_REFERER')
+        if next_url and ('/dashboard' in next_url or '/users' in next_url):
+            return redirect(next_url)
+        return redirect('dashboard')
+
+    # If GET with direct=1 (e.g. programmatic / backward compatibility):
+    if request.GET.get('direct') == '1':
+        target_user.is_active = True
+        target_user.save()
+        profile.is_approved = True
+        profile.approved_by = request.user
+        profile.approved_at = timezone.now()
+        profile.save()
+        AuditLog.objects.create(
+            user=request.user,
+            action="USER_APPROVED",
+            details=f"Admin {request.user.username} approved and activated user account {target_user.username} ({profile.display_name}).",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        messages.success(request, f"User account '{profile.display_name}' ({target_user.username}) approved and activated successfully.")
+        next_url = request.GET.get('next') or request.META.get('HTTP_REFERER')
+        if next_url and ('/dashboard' in next_url or '/users' in next_url):
+            return redirect(next_url)
+        return redirect('dashboard')
+
+    # Normal GET: Render the review & approve confirmation template
+    return render(request, 'core/user_approve_confirm.html', {
+        'target_user': target_user,
+        'profile': profile,
+        'roles': roles,
+        'prefixes': prefixes,
+        'next_url': request.GET.get('next') or request.META.get('HTTP_REFERER') or '/dashboard/',
+    })
 
 
 @login_required

@@ -152,10 +152,9 @@
                     <div style="display: inline-flex; gap: 4px; align-items: center;">
                         {% if is_admin and not u.profile.is_approved %}
                             <a href="{% url 'user_approve' u.id %}"
-                               onclick="return confirm('Approve account for {{ u.username }} and grant active access?');"
                                class="action-ribbon-btn"
                                style="padding: 2px 8px; font-size: 11px; font-weight: bold; background: #16a34a; color: #fff; border-color: #15803d;"
-                               title="Approve user registration request">
+                               title="Review profile details and approve user registration">
                                 ✓ Approve
                             </a>
                         {% endif %}

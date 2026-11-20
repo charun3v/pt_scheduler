@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Review & Approve User Registration - {{ APP_TITLE }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: center; align-items: center; min-height: 75vh; padding: 24px 0;">
+    <div style="background: #ffffff; border: 2px solid #003366; border-radius: 8px; width: 540px; max-width: 95%; box-shadow: 0 4px 16px rgba(0,0,0,0.15); overflow: hidden;">
+        
+        <!-- Header -->
+        <div style="background: #003366; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">👤</span>
+                <h3 style="margin: 0; font-size: 15px; font-weight: 700;">Review Profile Details & Approve User</h3>
+            </div>
+            <a href="{% url 'dashboard' %}" style="color: #ffffff; text-decoration: none; font-size: 12px; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 4px;">
+                &larr; Back to Dashboard
+            </a>
+        </div>
+
+        <div style="padding: 22px;">
+            <!-- Verification Callout Banner -->
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 12px 14px; margin-bottom: 18px; font-size: 12.5px; color: #92400e; display: flex; gap: 10px; align-items: flex-start;">
+                <span style="font-size: 18px; line-height: 1;">⚠️</span>
+                <div>
+                    <strong>Verification Required Before Approval:</strong>
+                    <div style="margin-top: 3px; font-size: 12px; line-height: 1.4;">
+                        Please verify the applicant's submitted profile details. If a resident or other clinical staff submitted an unauthorized Administrator role, adjust the <strong>Approved Role</strong> dropdown below to their proper designation (e.g. <em>Resident</em>) before approving.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Summary Box -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; margin-bottom: 18px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 10px;">
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase; display: block; margin-bottom: 2px;">Username / Login ID</span>
+                        <strong style="font-family: Consolas, monospace; color: #003366; font-size: 13.5px;">{{ target_user.username }}</strong>
+                    </div>
+                    <div>
+                        <span style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase; display: block; margin-bottom: 2px;">Registration Date</span>
+                        <span style="color: #334155; font-size: 12.5px; font-weight: 600;">{{ target_user.date_joined|date:"d-M-Y H:i" }}</span>
+                    </div>
+                </div>
+                <div>
+                    <span style="color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase; display: block; margin-bottom: 3px;">Requested Role (Submitted by Applicant)</span>
+                    <span style="display: inline-block; padding: 3px 10px; border-radius: 4px; background: #fef3c7; color: #92400e; font-weight: bold; border: 1px solid #fde68a; font-size: 12px;">
+                        {{ profile.role.role_name|default:'Resident' }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Approval Form -->
+            <form method="POST" action="{% url 'user_approve' target_user.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next_url|default:'/dashboard/' }}">
+
+                <!-- Prefix & Full Name -->
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-weight: 700; margin-bottom: 5px; font-size: 12.5px; color: #1e293b;">
+                        Prefix & Full Name: <span style="color: #dc2626;">*</span>
+                    </label>
+                    <div style="display: flex; gap: 8px;">
+                        <select name="prefix" style="width: 100px; padding: 7px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; font-weight: 600; background: #fff;">
+                            {% for p in prefixes %}
+                            <option value="{{ p }}" {% if profile.prefix == p %}selected{% endif %}>{{ p }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="text" name="first_name" required value="{{ target_user.first_name|default:'' }}"
+                               placeholder="Full Name"
+                               style="flex: 1; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px;">
+                    </div>
+                </div>
+
+                <!-- Approved Role Dropdown -->
+                <div style="margin-bottom: 22px;">
+                    <label style="display: block; font-weight: 700; margin-bottom: 5px; font-size: 12.5px; color: #1e293b;">
+                        Approved Role / Permission Level: <span style="color: #dc2626;">*</span>
+                    </label>
+                    <select name="role_id" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13.5px; font-weight: 600; background: #fff; color: #003366;">
+                        {% for r in roles %}
+                        <option value="{{ r.role_id }}" {% if profile.role_id == r.role_id %}selected{% endif %}>
+                            {{ r.role_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div style="font-size: 11px; color: #64748b; margin-top: 4px;">
+                        Select the approved role to assign. Modifying this overrides what the user requested during self-registration.
+                    </div>
+                </div>
+
+                <!-- Form Action Buttons -->
+                <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+                    <a href="{% url 'dashboard' %}" style="padding: 7px 16px; border: 1px solid #cbd5e1; border-radius: 4px; background: #ffffff; color: #475569; font-size: 12.5px; text-decoration: none;">
+                        Cancel
+                    </a>
+                    <button type="submit" class="action-ribbon-btn btn-highlight" style="padding: 7px 20px; font-size: 12.5px; font-weight: bold; background: #16a34a; color: #fff; border-color: #15803d; cursor: pointer;">
+                        ✓ Confirm & Approve Account
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

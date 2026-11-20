@@ -1655,8 +1655,20 @@ def run_tests():
     unhide_acc_audit = AuditLog.objects.filter(action='USER_DASHBOARD_UNHIDDEN', details__icontains='test_new_reg_user').first()
     assert unhide_acc_audit is not None, "USER_DASHBOARD_UNHIDDEN audit log must be recorded"
 
-    # 8. Admin Approves Account
-    resp_approve = c.get(f'/users/{reg_user.id}/approve/')
+    # 8. Admin Reviews Profile Details and Approves Account
+    resp_review = c.get(f'/users/{reg_user.id}/approve/')
+    assert resp_review.status_code == 200
+    review_html = resp_review.content.decode('utf-8')
+    assert "Review Profile Details & Approve User" in review_html
+    assert "test_new_reg_user" in review_html
+    assert reg_user.is_active is False, "User must remain inactive until approval is confirmed"
+
+    resp_approve = c.post(f'/users/{reg_user.id}/approve/', {
+        'prefix': 'Dr.',
+        'first_name': 'Preethi Nair',
+        'role_id': str(res_role.role_id)
+    }, follow=True)
+    assert resp_approve.status_code == 200
     reg_user.refresh_from_db()
     assert reg_user.is_active is True, "Approved user must be active"
     assert reg_user.profile.is_approved is True, "Approved user must have is_approved=True"
@@ -5759,6 +5771,82 @@ def run_tests():
     # Cleanup Test 56 records
     pt56.delete()
     print("✓ Test 56 Passed: End Date Manual Entry Only (Never Auto-Calculated) fully verified.")
+
+    # ==========================================
+    # TEST 57: User Profile Review Before Admin Approval (Prevent Unauthorized Roles)
+    # ==========================================
+    print("\n--- Test 57: User Profile Review Before Admin Approval ---")
+    User.objects.filter(username__in=['test_resident_applicant', 'test_admin_try']).delete()
+
+    # 1. Public self-registration excludes Admin and SubAdmin from choices
+    c_anon = Client()
+    resp_pub_reg = c_anon.get('/register-account/')
+    assert resp_pub_reg.status_code == 200
+    pub_html = resp_pub_reg.content.decode('utf-8')
+    assert "Resident" in pub_html
+    # Admin and SubAdmin are excluded from public registration dropdown
+    admin_role = Role.objects.get(role_name='Admin')
+    res_role = Role.objects.get(role_name='Resident')
+    assert f'value="{admin_role.role_id}"' not in pub_html, "Admin role must not be a selectable option in public self-registration"
+
+    # If applicant tries to POST Admin role_id anyway, it automatically defaults to Resident
+    resp_try_admin = c_anon.post('/register-account/', {
+        'prefix': 'Dr.',
+        'first_name': 'Sneha Rao',
+        'username': 'test_admin_try',
+        'password': 'PassWord123!',
+        'confirm_password': 'PassWord123!',
+        'role_id': str(admin_role.role_id)
+    }, follow=True)
+    assert resp_try_admin.status_code == 200
+    try_admin_user = User.objects.get(username='test_admin_try')
+    assert try_admin_user.profile.role.role_name == 'Resident', "Self-registration with Admin role_id must default to Resident"
+    assert try_admin_user.is_active is False
+    assert try_admin_user.profile.is_approved is False
+
+    # 2. Test Pending Account with profile details shown on Dashboard
+    c.force_login(admin_user)
+    resp_dash = c.get('/dashboard/')
+    assert resp_dash.status_code == 200
+    dash_html = resp_dash.content.decode('utf-8')
+    assert "Pending User Account Approvals" in dash_html
+    assert "test_admin_try" in dash_html
+    assert "openApproveModal" in dash_html
+    assert "approveUserModal" in dash_html
+
+    # 3. Test standalone Review & Approve page shows profile details
+    resp_rev_page = c.get(f'/users/{try_admin_user.id}/approve/')
+    assert resp_rev_page.status_code == 200
+    rev_html = resp_rev_page.content.decode('utf-8')
+    assert "Review Profile Details & Approve User" in rev_html
+    assert "test_admin_try" in rev_html
+    assert "Sneha Rao" in rev_html
+    assert "Dr." in rev_html
+    assert try_admin_user.is_active is False, "User must remain inactive while under review"
+
+    # 4. Admin submits approval, confirming role as Resident
+    resp_appr_post = c.post(f'/users/{try_admin_user.id}/approve/', {
+        'prefix': 'Dr.',
+        'first_name': 'Dr. Sneha Rao',
+        'role_id': str(res_role.role_id)
+    }, follow=True)
+    assert resp_appr_post.status_code == 200
+
+    try_admin_user.refresh_from_db()
+    assert try_admin_user.is_active is True, "User must be active after approval"
+    assert try_admin_user.profile.is_approved is True
+    assert try_admin_user.profile.role == res_role, "Approved role must be Resident"
+    assert try_admin_user.is_staff is False, "Resident user must not be staff"
+    assert try_admin_user.first_name == 'Dr. Sneha Rao'
+
+    # Check Audit Log
+    appr_log = AuditLog.objects.filter(action='USER_APPROVED', details__icontains='test_admin_try').first()
+    assert appr_log is not None, "USER_APPROVED audit log must be recorded"
+    assert "Resident" in appr_log.details
+
+    # Cleanup Test 57
+    try_admin_user.delete()
+    print("✓ Test 57 Passed: User Profile Review Before Admin Approval fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
