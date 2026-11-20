@@ -611,3 +611,57 @@ def patient_unhide_dashboard_view(request, patient_id):
     return redirect('dashboard')
 
 
+@login_required
+def patient_batch_hide_dashboard_view(request):
+    """
+    Batch hide multiple non-scheduled patients from the Main Dashboard queue.
+    Strictly restricted to Admin (not SubAdmin).
+    Requires a comment / reason.
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted. Only Administrators have permission to hide patients from the dashboard.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        comment = request.POST.get('comment', '').strip()
+        if not comment:
+            messages.error(request, "A comment / reason is required to hide patients from the Main Dashboard.")
+            return redirect('dashboard')
+
+        raw_ids = request.POST.getlist('selected_patient_ids')
+        if not raw_ids:
+            raw_ids_str = request.POST.get('patient_ids', '')
+            if raw_ids_str:
+                raw_ids = [i.strip() for i in raw_ids_str.split(',') if i.strip()]
+
+        patient_ids = [int(i) for i in raw_ids if str(i).isdigit()]
+        if not patient_ids:
+            messages.error(request, "No patients were selected to hide.")
+            return redirect('dashboard')
+
+        patients = list(Patient.objects.filter(id__in=patient_ids))
+        now = timezone.now()
+        for p in patients:
+            p.is_hidden_from_dashboard = True
+            p.hidden_reason = comment
+            p.hidden_at = now
+            p.hidden_by = request.user
+            p.save()
+
+        mr_list_str = ', '.join(str(p.mr_no) for p in patients[:10])
+        if len(patients) > 10:
+            mr_list_str += f"... (+{len(patients) - 10} more)"
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="PATIENT_DASHBOARD_BATCH_HIDDEN",
+            details=f"Admin {request.user.username} batch hid {len(patients)} patients from dashboard. MRs: [{mr_list_str}]. Reason: {comment}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"Successfully hid {len(patients)} patient(s) from the main dashboard.")
+
+    return redirect('dashboard')
+
+
+

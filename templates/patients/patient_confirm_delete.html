@@ -51,14 +51,28 @@
                 </tbody>
             </table>
 
-            <form method="POST" style="display: flex; justify-content: flex-end; gap: 12px;">
+            <form method="POST" id="deletePatientForm" style="display: flex; flex-direction: column; gap: 16px;">
                 {% csrf_token %}
-                <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="padding: 8px 18px; font-size: 13px;">
-                    ✖ Cancel
-                </a>
-                <button type="submit" class="action-ribbon-btn btn-danger" style="padding: 8px 20px; font-size: 13px; font-weight: bold;">
-                    🗑️ Permanently Delete Record
-                </button>
+
+                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 12px 14px;">
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: #991b1b; cursor: pointer;">
+                        <input type="checkbox" name="confirm_delete" value="1" id="confirmDeletePatientCheck" required
+                               onchange="document.getElementById('btnSubmitPatientDelete').disabled = !this.checked;"
+                               style="width: 17px; height: 17px; cursor: pointer;">
+                        <span>I confirm permanent deletion of patient {{ patient.pt_name }} (MR: {{ patient.mr_no }}) and all associated courses, and understand this action cannot be undone.</span>
+                    </label>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                    <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="padding: 8px 18px; font-size: 13px;">
+                        ✖ Cancel
+                    </a>
+                    <button type="submit" id="btnSubmitPatientDelete" disabled class="action-ribbon-btn btn-danger"
+                            onclick="return confirm('FINAL CONFIRMATION: Are you absolutely certain you want to permanently delete patient {{ patient.pt_name|escapejs }} (MR: {{ patient.mr_no }})? This action is permanent and IRREVERSIBLE.');"
+                            style="padding: 8px 20px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                        🗑️ Permanently Delete Record
+                    </button>
+                </div>
             </form>
         </div>
     </div>

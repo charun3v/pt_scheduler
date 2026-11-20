@@ -216,6 +216,13 @@
                                        title="{% if prof.is_hidden_from_dashboard %}Unhide account on dashboard{% else %}Hide account from dashboard{% endif %}">
                                         {% if prof.is_hidden_from_dashboard %}👁️ Unhide{% else %}🙈 Hide{% endif %}
                                     </a>
+                                    <a href="{% url 'user_delete' prof.user.id %}?next={{ request.get_full_path|urlencode }}"
+                                       onclick="return confirm('Step 1 of 2: Are you sure you want to delete user account \'{{ prof.user.username|escapejs }}\'? Proceed to final confirmation.');"
+                                       class="btn-delete"
+                                       style="padding: 2px 6px; font-size: 11px;"
+                                       title="Permanently delete user registration request (Admin only)">
+                                        🗑️ Delete
+                                    </a>
                                 </div>
                             </td>
                         </tr>
@@ -281,16 +288,23 @@
                     {% endif %}
                 </h3>
 
-                <!-- Admin Toggle for Hidden Patients -->
+                <!-- Admin Toggle for Hidden Patients & Batch Hide -->
                 {% if IS_ADMIN_ONLY %}
                     {% if show_hidden %}
                         <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="font-size: 11px; padding: 2px 8px; background: #e0f2fe; color: #0369a1; border-color: #7dd3fc;">
                             ← Back to Active Queue
                         </a>
-                    {% elif hidden_count > 0 %}
+                    {% else %}
+                        {% if hidden_count > 0 %}
                         <a href="{% url 'dashboard' %}?show_hidden=1" class="action-ribbon-btn" style="font-size: 11px; padding: 2px 8px; color: #64748b;" title="View patients hidden from dashboard">
                             👁️ View Hidden Patients ({{ hidden_count }})
                         </a>
+                        {% endif %}
+                        <button type="button" id="btnBatchHide" onclick="openBatchHideModal();"
+                                style="display: none; padding: 2px 10px; font-size: 11px; font-weight: bold; background: #991b1b; color: #ffffff; border: 1px solid #7f1d1d; border-radius: 4px; cursor: pointer; align-items: center; gap: 4px;"
+                                title="Hide selected patients from dashboard in batch">
+                            🙈 Hide Selected (<span id="batchSelectedCount">0</span>)
+                        </button>
                     {% endif %}
                 {% endif %}
             </div>
@@ -316,6 +330,11 @@
             <table style="width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.2;">
                 <thead>
                     <tr style="background: #003366; color: #ffffff; text-align: left; white-space: nowrap;">
+                        {% if IS_ADMIN_ONLY and not show_hidden %}
+                        <th style="padding: 7px 4px; width: 32px; text-align: center;">
+                            <input type="checkbox" id="selectAllPatients" onchange="toggleSelectAllPatients(this.checked);" title="Select All Patients on this page" style="cursor: pointer;">
+                        </th>
+                        {% endif %}
                         <th style="padding: 7px 8px; width: 35px; text-align: center;">#</th>
                         <th style="padding: 7px 8px; width: 100px;">MR Number</th>
                         <th style="padding: 7px 8px; max-width: 180px;">Patient Name</th>
@@ -335,6 +354,11 @@
                         onmouseover="this.style.background='#eef5fc';"
                         onmouseout="this.style.background='{% cycle '#ffffff' '#fbfbfb' %}';">
                         
+                        {% if IS_ADMIN_ONLY and not show_hidden %}
+                        <td style="padding: 5px 4px; text-align: center;">
+                            <input type="checkbox" class="patient-select-cb" value="{{ p.id }}" data-mr="{{ p.mr_no }}" data-name="{{ p.pt_name|escape }}" onchange="updateBatchHideBar();" style="cursor: pointer;">
+                        </td>
+                        {% endif %}
                         <!-- Col 1: # -->
                         <td style="padding: 5px 8px; text-align: center; color: #888; white-space: nowrap;">
                             {{ forloop.counter0|add:page_obj.start_index }}
@@ -442,7 +466,9 @@
                                             onclick="openHideModal({{ p.id }}, '{{ p.pt_name|escapejs }}', '{{ p.mr_no }}');" title="Hide patient from main dashboard queue (Admin only)">
                                         👁️ Hide
                                     </button>
-                                    <a href="{% url 'patient_delete' p.id %}" class="btn-delete" style="padding: 2px 6px; font-size: 11px;" title="Permanently delete patient record (Admin only)">
+                                    <a href="{% url 'patient_delete' p.id %}"
+                                       onclick="return confirm('Step 1 of 2: Are you sure you want to delete patient {{ p.pt_name|escapejs }} (MR: {{ p.mr_no }})? Proceed to final confirmation.');"
+                                       class="btn-delete" style="padding: 2px 6px; font-size: 11px;" title="Permanently delete patient record (Admin only)">
                                         🗑️ Delete
                                     </a>
                                     {% endif %}
@@ -466,7 +492,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="10" style="padding: 36px 16px; text-align: center; color: #28a745;">
+                        <td colspan="{% if IS_ADMIN_ONLY and not show_hidden %}12{% else %}11{% endif %}" style="padding: 36px 16px; text-align: center; color: #28a745;">
                             <div style="font-size: 24px; margin-bottom: 6px;">🎉</div>
                             <strong style="font-size: 14px;">
                                 {% if show_hidden %}No Hidden Patients Found!{% else %}No Non-Scheduled Patients Found!{% endif %}
@@ -680,7 +706,121 @@
     </div>
 </div>
 
+{% if IS_ADMIN_ONLY %}
+<!-- Modal: Batch Hide Multiple Patients from Dashboard (Admin Only) -->
+<div id="batchHideModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1050; align-items: center; justify-content: center;">
+    <div style="background: #ffffff; border-radius: 8px; width: 540px; max-width: 95%; box-shadow: 0 10px 25px rgba(0,0,0,0.25); overflow: hidden; border: 2px solid #991b1b;">
+        <div style="background: #991b1b; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">🙈</span>
+                <strong style="font-size: 14px;">Hide Selected Patients from Dashboard (<span id="modalBatchCount">0</span> patients)</strong>
+            </div>
+            <button type="button" onclick="closeBatchHideModal();" style="background: none; border: none; color: #ffffff; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <form method="POST" action="{% url 'patient_batch_hide_dashboard' %}" id="batchHideForm" style="padding: 18px;">
+            {% csrf_token %}
+            <div id="batchHideHiddenInputs"></div>
+            <p style="margin: 0 0 10px 0; font-size: 13px; color: #334155;">
+                You are about to hide <strong id="modalBatchCountText" style="color: #991b1b;">0</strong> patient(s) from the main dashboard queue.
+            </p>
+            <div id="batchSelectedListPreview" style="max-height: 120px; overflow-y: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 12px; margin-bottom: 12px; font-size: 12px; color: #475569;">
+            </div>
+            <div style="margin-bottom: 14px;">
+                <label for="batchHideCommentInput" style="display: block; font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Comment / Reason for Hiding: <span style="color: #dc2626;">*</span>
+                </label>
+                <textarea name="comment" id="batchHideCommentInput" required rows="3"
+                          placeholder="Enter reason for hiding (e.g. Batch deferred, patient cohort opted out, transferred to other center)..."
+                          style="width: 100%; box-sizing: border-box; padding: 8px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px; resize: vertical;"></textarea>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+                <button type="button" onclick="closeBatchHideModal();" class="action-ribbon-btn" style="padding: 6px 14px; font-size: 12px;">
+                    Cancel
+                </button>
+                <button type="submit" class="btn-delete" style="padding: 6px 18px; font-size: 12px; font-weight: 700; cursor: pointer;">
+                    🙈 Confirm Batch Hide
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <script>
+    // Multi-Selection and Batch Hide for Unscheduled Patients
+    function toggleSelectAllPatients(checked) {
+        var cbs = document.querySelectorAll('.patient-select-cb');
+        cbs.forEach(function(cb) {
+            cb.checked = checked;
+        });
+        updateBatchHideBar();
+    }
+
+    function updateBatchHideBar() {
+        var cbs = document.querySelectorAll('.patient-select-cb:checked');
+        var count = cbs.length;
+        var badge = document.getElementById('batchSelectedCount');
+        var btn = document.getElementById('btnBatchHide');
+        var selectAll = document.getElementById('selectAllPatients');
+
+        if (badge) badge.innerText = count;
+        if (btn) {
+            if (count > 0) {
+                btn.style.display = 'inline-flex';
+            } else {
+                btn.style.display = 'none';
+            }
+        }
+        var allCbs = document.querySelectorAll('.patient-select-cb');
+        if (selectAll && allCbs.length > 0) {
+            selectAll.checked = (count === allCbs.length);
+            selectAll.indeterminate = (count > 0 && count < allCbs.length);
+        }
+    }
+
+    function openBatchHideModal() {
+        var checkedCbs = document.querySelectorAll('.patient-select-cb:checked');
+        if (checkedCbs.length === 0) {
+            alert('Please select at least one patient to hide.');
+            return;
+        }
+        var count = checkedCbs.length;
+        document.getElementById('modalBatchCount').innerText = count;
+        document.getElementById('modalBatchCountText').innerText = count;
+
+        var container = document.getElementById('batchHideHiddenInputs');
+        container.innerHTML = '';
+        var preview = document.getElementById('batchSelectedListPreview');
+        preview.innerHTML = '';
+
+        checkedCbs.forEach(function(cb) {
+            var inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'selected_patient_ids';
+            inp.value = cb.value;
+            container.appendChild(inp);
+
+            var mr = cb.getAttribute('data-mr') || '';
+            var name = cb.getAttribute('data-name') || '';
+            var row = document.createElement('div');
+            row.style.padding = '2px 0';
+            row.innerHTML = '<strong>' + mr + '</strong> — ' + name;
+            preview.appendChild(row);
+        });
+
+        document.getElementById('batchHideCommentInput').value = '';
+        var modal = document.getElementById('batchHideModal');
+        if (modal) {
+            modal.style.display = 'flex';
+            setTimeout(function() { document.getElementById('batchHideCommentInput').focus(); }, 50);
+        }
+    }
+
+    function closeBatchHideModal() {
+        var modal = document.getElementById('batchHideModal');
+        if (modal) modal.style.display = 'none';
+    }
+
     // Open Approve Confirmation Modal
     function openApproveModal(userId, username, prefix, fullName, roleId, roleName, regDate) {
         document.getElementById('approveUserModalForm').action = '/users/' + userId + '/approve/';
@@ -732,6 +872,10 @@
         var approveModal = document.getElementById('approveUserModal');
         if (event.target == approveModal) {
             approveModal.style.display = "none";
+        }
+        var batchModal = document.getElementById('batchHideModal');
+        if (event.target == batchModal) {
+            batchModal.style.display = "none";
         }
     }
 </script>

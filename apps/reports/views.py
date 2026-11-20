@@ -95,6 +95,11 @@ def machine_daily_list_view(request):
     if request.GET.get('export') == 'excel':
         return export_machine_schedule_excel(schedules, selected_machine, start_date, end_date)
 
+    active_print_cfg = PrintTemplateConfig.get_active()
+    consultant_options = get_consultant_signing_options(active_print_cfg.default_signing_authority)
+    designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
+    print_machines = Machine.objects.filter(is_active=True).order_by('display_order')
+
     context = {
         'machines': machines,
         'selected_machine': selected_machine,
@@ -103,6 +108,11 @@ def machine_daily_list_view(request):
         'end_date_str': end_date_str,
         'schedules': schedules,
         'total_count': schedules.count(),
+        'print_template_config': active_print_cfg,
+        'consultant_options': consultant_options,
+        'designations': designations,
+        'print_machines': print_machines,
+        'min_search_date': four_months_ago.isoformat() if not is_admin else '',
     }
     return render(request, 'reports/machine_daily_list.html', context)
 

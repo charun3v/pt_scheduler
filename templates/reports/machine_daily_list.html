@@ -25,14 +25,12 @@
             {% endif %}
 
             {% if CAN_PRINT_SCHEDULES %}
-            <a href="{% url 'print_treatment_schedule' %}?{% if selected_machine_id %}machines={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}"
-               target="_blank" class="action-ribbon-btn" style="background: #003366; color: #ffffff; border-color: #002244; font-weight: bold;" title="Print official KMIO Technician Information Sheet">
+            <button type="button" onclick="openPrintScheduleModal();" class="action-ribbon-btn" style="background: #003366; color: #ffffff; border-color: #002244; font-weight: bold; cursor: pointer;" title="Print official KMIO Technician Information Sheet">
                 🖨️ Print Technician Sheet
-            </a>
-            <a href="{% url 'print_treatment_schedule_pdf' %}?{% if selected_machine_id %}machines={{ selected_machine_id }}&{% endif %}start_date={{ start_date_str }}&end_date={{ end_date_str }}"
-               target="_blank" class="action-ribbon-btn" style="background: #b91c1c; color: #ffffff; border-color: #991b1b; font-weight: bold;" title="Download PDF official KMIO Technician Information Sheet">
+            </button>
+            <button type="button" onclick="openPrintScheduleModal();" class="action-ribbon-btn" style="background: #b91c1c; color: #ffffff; border-color: #991b1b; font-weight: bold; cursor: pointer;" title="Download PDF official KMIO Technician Information Sheet">
                 📄 Download PDF
-            </a>
+            </button>
             {% endif %}
 
             {% if schedules %}
@@ -142,4 +140,6 @@
     </table>
 
 </div>
+
+{% include 'reports/technician_sheet_modal.html' %}
 {% endblock %}

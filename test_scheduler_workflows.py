@@ -5848,6 +5848,138 @@ def run_tests():
     try_admin_user.delete()
     print("✓ Test 57 Passed: User Profile Review Before Admin Approval fully verified.")
 
+    # ==========================================
+    # TEST 58: Admin Rights to Delete Users & Patients (Double Confirmation),
+    # Batch Multi-Select Hide Unscheduled Patients,
+    # Machine Schedule Print Modal & Modality Machine Filtering
+    # ==========================================
+    print("\n--- Test 58: Admin Deletion Rights, Batch Hide Patients, & Technician Sheet Modal Filtering ---")
+    User.objects.filter(username__in=['test_del_target_user']).delete()
+    Patient.objects.filter(mr_no__in=[9999081, 9999082, 9999083]).delete()
+
+    # 1. User Deletion with Double Confirmation
+    # Create target user to delete
+    del_target = User.objects.create_user(username='test_del_target_user', password='DelPass123!', first_name='Target User')
+    UserProfile.objects.create(user=del_target, role=res_role, user_level='RESIDENT')
+
+    # SubAdmin blocked from user deletion (GET & POST)
+    c.force_login(subadmin_user)
+    resp_sub_get = c.get(f'/users/{del_target.id}/delete/')
+    assert resp_sub_get.status_code == 302, "SubAdmin must not be allowed to access user delete confirmation"
+    resp_sub_post = c.post(f'/users/{del_target.id}/delete/', {'confirm_delete': '1'})
+    assert resp_sub_post.status_code == 302
+    assert User.objects.filter(id=del_target.id).exists(), "SubAdmin must not be able to delete users"
+
+    # Admin blocked from deleting own account
+    c.force_login(admin_user)
+    resp_self_del = c.get(f'/users/{admin_user.id}/delete/')
+    assert resp_self_del.status_code == 302, "Admin must be blocked from deleting own account"
+
+    # Admin GET user delete confirmation (Step 2 page)
+    resp_admin_get = c.get(f'/users/{del_target.id}/delete/')
+    assert resp_admin_get.status_code == 200
+    del_html = resp_admin_get.content.decode('utf-8')
+    assert "Confirm Permanent User Account Deletion" in del_html
+    assert "test_del_target_user" in del_html
+    assert "confirmDeleteUserCheck" in del_html
+
+    # Admin POST without checking confirm checkbox -> fails
+    resp_unconfirmed = c.post(f'/users/{del_target.id}/delete/', {})
+    assert resp_unconfirmed.status_code == 200
+    assert User.objects.filter(id=del_target.id).exists(), "User must not be deleted if confirmation checkbox not checked"
+
+    # Admin POST with confirm_delete='1' -> successfully deleted
+    resp_confirmed = c.post(f'/users/{del_target.id}/delete/', {'confirm_delete': '1'}, follow=True)
+    assert resp_confirmed.status_code == 200
+    assert not User.objects.filter(id=del_target.id).exists(), "User must be permanently deleted by Admin"
+    user_del_log = AuditLog.objects.filter(action='USER_DELETE', details__icontains='test_del_target_user').first()
+    assert user_del_log is not None, "USER_DELETE audit log must be recorded"
+
+    # 2. Patient Deletion Double Confirmation Check
+    del_pt_mr = 9999081
+    del_pt = Patient.objects.create(
+        mr_no=del_pt_mr,
+        pt_name='Double Confirm Patient',
+        sex='F',
+        diagnosis='Ca Cervix',
+        created_by=admin_user
+    )
+    resp_pt_del_page = c.get(f'/patients/{del_pt.id}/delete/')
+    assert resp_pt_del_page.status_code == 200
+    pt_del_html = resp_pt_del_page.content.decode('utf-8')
+    assert "confirmDeletePatientCheck" in pt_del_html
+    assert "btnSubmitPatientDelete" in pt_del_html
+
+    # Delete with confirmation
+    resp_pt_del = c.post(f'/patients/{del_pt.id}/delete/', {'confirm_delete': '1'}, follow=True)
+    assert resp_pt_del.status_code == 200
+    assert not Patient.objects.filter(id=del_pt.id).exists(), "Patient must be deleted"
+
+    # 3. Batch Hide Unscheduled Patients with Multi-Selection
+    p1 = Patient.objects.create(mr_no=9999082, pt_name='Batch Patient 1', sex='M', diagnosis='Ca Head and Neck', created_by=admin_user)
+    p2 = Patient.objects.create(mr_no=9999083, pt_name='Batch Patient 2', sex='F', diagnosis='Ca Breast', created_by=admin_user)
+
+    # Check dashboard renders checkboxes and batch hide button for Admin
+    resp_dash = c.get('/dashboard/')
+    assert resp_dash.status_code == 200
+    dash_html = resp_dash.content.decode('utf-8')
+    assert "selectAllPatients" in dash_html
+    assert "patient-select-cb" in dash_html
+    assert "btnBatchHide" in dash_html
+    assert "batchHideModal" in dash_html
+
+    # Non-admin blocked from batch hide endpoint
+    c.force_login(subadmin_user)
+    resp_batch_sub = c.post('/patients/batch-hide-dashboard/', {
+        'selected_patient_ids': [p1.id, p2.id],
+        'comment': 'SubAdmin attempt'
+    })
+    assert resp_batch_sub.status_code == 302
+    p1.refresh_from_db()
+    assert p1.is_hidden_from_dashboard is False, "SubAdmin must not be allowed to batch hide patients"
+
+    # Admin performs batch hide
+    c.force_login(admin_user)
+    resp_batch_admin = c.post('/patients/batch-hide-dashboard/', {
+        'selected_patient_ids': [p1.id, p2.id],
+        'comment': 'Batch deferred pending staging MRI'
+    }, follow=True)
+    assert resp_batch_admin.status_code == 200
+    p1.refresh_from_db()
+    p2.refresh_from_db()
+    assert p1.is_hidden_from_dashboard is True
+    assert p2.is_hidden_from_dashboard is True
+    assert p1.hidden_reason == 'Batch deferred pending staging MRI'
+    assert p2.hidden_reason == 'Batch deferred pending staging MRI'
+
+    batch_log = AuditLog.objects.filter(action='PATIENT_DASHBOARD_BATCH_HIDDEN').order_by('-id').first()
+    assert batch_log is not None
+    assert "Batch deferred pending staging MRI" in batch_log.details
+
+    # 4. Machine Daily List Print Modal & Modality Machine Filtering
+    resp_mach_list = c.get('/reports/machines/')
+    assert resp_mach_list.status_code == 200
+    mach_html = resp_mach_list.content.decode('utf-8')
+    assert "openPrintScheduleModal" in mach_html
+    assert "printScheduleModal" in mach_html
+    assert "modalRadioTeletherapy" in mach_html
+    assert "modalRadioBrachytherapy" in mach_html
+    assert "filterPrintMachinesByModality" in mach_html
+    assert 'data-type="Teletherapy"' in mach_html
+    assert 'data-type="Brachytherapy"' in mach_html
+
+    # Manual Schedule Grid also includes the shared modal
+    resp_grid = c.get('/reports/manual-grid/')
+    assert resp_grid.status_code == 200
+    grid_html = resp_grid.content.decode('utf-8')
+    assert "openPrintScheduleModal" in grid_html
+    assert "printScheduleModal" in grid_html
+
+    # Clean up Test 58 patients
+    p1.delete()
+    p2.delete()
+    print("✓ Test 58 Passed: Admin Deletion Rights (Users & Patients with double confirmation), Batch Multi-Select Hide, and Technician Sheet Modal Modality Filtering fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

@@ -13,6 +13,7 @@ urlpatterns = [
     path('users/<int:user_id>/toggle-active/', views.user_toggle_active_view, name='user_toggle_active'),
     path('users/<int:user_id>/approve/', views.user_approve_view, name='user_approve'),
     path('users/<int:user_id>/toggle-hide-dashboard/', views.user_toggle_hide_dashboard_view, name='user_toggle_hide_dashboard'),
+    path('users/<int:user_id>/delete/', views.user_delete_view, name='user_delete'),
     path('roles/', views.role_dashboard_view, name='role_dashboard'),
     path('roles/new/', views.role_edit_view, name='role_create'),
     path('roles/<int:role_id>/edit/', views.role_edit_view, name='role_edit'),

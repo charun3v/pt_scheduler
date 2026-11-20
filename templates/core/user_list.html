@@ -179,6 +179,14 @@
                                    title="{% if u.is_active %}Deactivate user (block login & hide from dropdowns){% else %}Re-activate user account{% endif %}">
                                     {% if u.is_active %}🚫 Inactive{% else %}✓ Activate{% endif %}
                                 </a>
+
+                                <a href="{% url 'user_delete' u.id %}"
+                                   onclick="return confirm('Step 1 of 2: Are you sure you want to delete user \'{{ u.username|escapejs }}\'? Proceed to final confirmation.');"
+                                   class="btn-delete"
+                                   style="padding: 2px 6px; font-size: 11px;"
+                                   title="Permanently delete user account (Admin only)">
+                                    🗑️ Delete
+                                </a>
                             {% else %}
                                 <span style="font-size: 10px; color: #888; font-style: italic; padding: 0 4px;">(Self)</span>
                             {% endif %}

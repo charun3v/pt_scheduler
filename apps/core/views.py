@@ -488,6 +488,64 @@ def user_toggle_hide_dashboard_view(request, user_id):
 
 
 @login_required
+def user_delete_view(request, user_id):
+    """
+    Permanently delete a user account and associated profile.
+    Strictly restricted to Admin (not SubAdmin).
+    Enforces double confirmation:
+    - Step 1: Trigger confirmation in UI.
+    - Step 2: Dedicated confirmation page with target details, mandatory confirmation checkbox, and final submit warning.
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted. Only Administrators have permission to delete user accounts.")
+        return redirect('dashboard')
+
+    target_user = get_object_or_404(User, id=user_id)
+
+    # Prevent deleting own account
+    if target_user.id == request.user.id:
+        messages.error(request, "Action blocked: You cannot delete your own administrative account.")
+        return redirect('user_list')
+
+    profile = getattr(target_user, 'profile', None)
+    next_url = request.GET.get('next') or request.POST.get('next') or '/users/'
+
+    if request.method == 'POST':
+        confirm_check = request.POST.get('confirm_delete')
+        if not confirm_check:
+            messages.error(request, "Please check the confirmation box to verify permanent user deletion.")
+            return render(request, 'core/user_confirm_delete.html', {
+                'target_user': target_user,
+                'profile': profile,
+                'next_url': next_url,
+            })
+
+        username = target_user.username
+        full_name = target_user.get_full_name() or target_user.username
+        role_name = profile.role.role_name if profile and profile.role else 'None'
+
+        target_user.delete()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="USER_DELETE",
+            details=f"Admin {request.user.username} permanently deleted user account '{username}' ({full_name}, Role: {role_name}).",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"User account '{username}' has been permanently deleted.")
+        if next_url and ('/dashboard' in next_url or '/users' in next_url):
+            return redirect(next_url)
+        return redirect('user_list')
+
+    return render(request, 'core/user_confirm_delete.html', {
+        'target_user': target_user,
+        'profile': profile,
+        'next_url': next_url,
+    })
+
+
+@login_required
 def user_toggle_active_view(request, user_id):
     """
     Toggle user active/inactive status. Strictly restricted to Admin only.

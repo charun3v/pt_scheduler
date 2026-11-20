@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm User Deletion - {{ target_user.username }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 650px; margin: 40px auto;">
+    <div style="background: #ffffff; border: 2px solid #d9534f; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden;">
+        <div style="background: #d9534f; color: #ffffff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;">
+            <h2 style="margin: 0; font-size: 16px; font-weight: bold; display: flex; align-items: center; gap: 8px;">
+                ⚠️ Confirm Permanent User Account Deletion (Step 2 of 2)
+            </h2>
+            <span class="badge-admin">ADMIN ONLY</span>
+        </div>
+
+        <div style="padding: 24px;">
+            <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
+                <strong>Warning:</strong> You are about to permanently delete the user account for <strong>{{ target_user.username }}</strong>.
+                This will remove their profile and access rights. This action is irreversible and recorded in the institutional security audit log.
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px;">
+                <tbody>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; width: 35%; color: #495057;">Username / Login ID:</td>
+                        <td style="padding: 10px 14px; color: #003366; font-weight: bold; font-family: Consolas, monospace; font-size: 15px;">{{ target_user.username }}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Full Name:</td>
+                        <td style="padding: 10px 14px; font-weight: 600;">
+                            {% if profile.prefix %}{{ profile.prefix }} {% endif %}{{ target_user.first_name|default:'-' }}
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Assigned Role:</td>
+                        <td style="padding: 10px 14px;">
+                            <span class="badge-locked">{{ profile.role.role_name|default:'None' }}</span>
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #dee2e6;">
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Account Status:</td>
+                        <td style="padding: 10px 14px;">
+                            {% if not profile.is_approved %}
+                                <span class="badge-warning" style="padding: 2px 8px; font-size: 11px;">Pending Approval</span>
+                            {% elif target_user.is_active %}
+                                <span class="badge-success" style="padding: 2px 8px; font-size: 11px;">Active</span>
+                            {% else %}
+                                <span class="badge-locked" style="padding: 2px 8px; font-size: 11px;">Inactive</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px 14px; font-weight: bold; color: #495057;">Date Registered:</td>
+                        <td style="padding: 10px 14px; color: #64748b;">{{ target_user.date_joined|date:'d-M-Y H:i' }}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <form method="POST" id="deleteUserForm" style="display: flex; flex-direction: column; gap: 16px;">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next_url }}">
+
+                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 12px 14px;">
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: #991b1b; cursor: pointer;">
+                        <input type="checkbox" name="confirm_delete" value="1" id="confirmDeleteUserCheck" required
+                               onchange="document.getElementById('btnSubmitUserDelete').disabled = !this.checked;"
+                               style="width: 17px; height: 17px; cursor: pointer;">
+                        <span>I confirm permanent deletion of user account "{{ target_user.username }}" and understand this action cannot be undone.</span>
+                    </label>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+                    <a href="{{ next_url }}" class="action-ribbon-btn" style="padding: 8px 18px; font-size: 13px;">
+                        ✖ Cancel
+                    </a>
+                    <button type="submit" id="btnSubmitUserDelete" disabled class="action-ribbon-btn btn-danger"
+                            onclick="return confirm('FINAL CONFIRMATION: Are you absolutely certain you want to permanently delete user account \'{{ target_user.username|escapejs }}\'? This action is permanent and IRREVERSIBLE.');"
+                            style="padding: 8px 20px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                        🗑️ Permanently Delete User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

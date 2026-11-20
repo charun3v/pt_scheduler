@@ -169,7 +169,9 @@
                 </a>
                 {% endif %}
                 {% if CAN_DELETE_PATIENT %}
-                <a href="{% url 'patient_delete' patient.id %}" class="btn-delete" style="padding: 5px 10px; font-size: 12px;" title="Permanently delete patient record (Admin only)">
+                <a href="{% url 'patient_delete' patient.id %}"
+                   onclick="return confirm('Step 1 of 2: Are you sure you want to delete patient {{ patient.pt_name|escapejs }} (MR: {{ patient.mr_no }})? Proceed to final confirmation.');"
+                   class="btn-delete" style="padding: 5px 10px; font-size: 12px;" title="Permanently delete patient record (Admin only)">
                     🗑️ Delete
                 </a>
                 {% endif %}
