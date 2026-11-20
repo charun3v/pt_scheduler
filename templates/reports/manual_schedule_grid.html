@@ -277,6 +277,17 @@
                    class="action-ribbon-btn" style="background: #28a745; color: #fff; border-color: #1e7e34; padding: 5px 12px; font-weight: bold;" title="Download Excel .xlsx file">
                     📥 Download .xlsx
                 </a>
+                {% if IS_ADMIN_ONLY %}
+                <button type="button" onclick="openTeletherapyImportModal()" class="action-ribbon-btn"
+                        style="background: #ecfdf5; color: #047857; border-color: #10b981; padding: 5px 12px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"
+                        title="Bulk Import Teletherapy Data from Excel or CSV (Admin Only)">
+                    📥 Import Data
+                </button>
+                <a href="{% url 'teletherapy_export' %}{% if selected_machine_id %}?machine_id={{ selected_machine_id }}{% endif %}"
+                   class="action-ribbon-btn" style="background: #f0f9ff; color: #0369a1; border-color: #0284c7; padding: 5px 12px; font-weight: bold; text-decoration: none;" title="Export Teletherapy Data to CSV">
+                    📤 Export CSV
+                </a>
+                {% endif %}
             </div>
         </div>
 

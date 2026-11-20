@@ -26,6 +26,11 @@ urlpatterns = [
     path('holidays/', views.holiday_manager_view, name='holiday_manager'),
     path('manual-grid/', report_views.manual_schedule_grid_view, name='scheduler_manual_grid'),
     
+    # Teletherapy Bulk Data Import & Export (Admin Only)
+    path('teletherapy/import/', views.teletherapy_import_view, name='teletherapy_import'),
+    path('teletherapy/export/', views.teletherapy_export_view, name='teletherapy_export'),
+    path('teletherapy/import-template/', views.teletherapy_import_template_view, name='teletherapy_import_template'),
+
     # API endpoints
     path('api/machine-options/<int:machine_id>/', views.get_machine_options_api, name='api_machine_options'),
     path('api/nearest-free-slot/', views.get_nearest_free_slot_api, name='api_nearest_free_slot'),

@@ -1,0 +1,184 @@
+<!-- Teletherapy Bulk Import Modal (Admin Only) -->
+{% if IS_ADMIN_ONLY %}
+<div id="teletherapyImportModal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 99999; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+    <div style="background: #ffffff; border-radius: 10px; width: 92%; max-width: 580px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; animation: modalPop 0.2s ease-out;">
+        
+        <!-- Modal Header -->
+        <div style="background: #003366; color: #ffffff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">📥</span>
+                <span style="font-size: 15px; font-weight: 700;">Import Teletherapy Data</span>
+                <span style="background: #fee2e2; color: #991b1b; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px;">Admin Only</span>
+            </div>
+            <button type="button" onclick="closeTeletherapyImportModal()" style="background: none; border: none; color: #ffffff; font-size: 20px; cursor: pointer; line-height: 1; padding: 0 4px;">&times;</button>
+        </div>
+
+        <!-- Modal Body -->
+        <div style="padding: 20px;">
+            <p style="font-size: 13px; color: #475569; margin: 0 0 14px 0; line-height: 1.5;">
+                Select an Excel workbook (<strong>.xlsx, .xls</strong>) or <strong>.csv</strong> file formatted according to the standard 21-column template.
+            </p>
+
+            <form id="modalImportForm" onsubmit="submitModalImport(event)" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <div id="modalDropzone" style="border: 2px dashed #cbd5e1; border-radius: 8px; padding: 24px 16px; text-align: center; background: #f8fafc; cursor: pointer;"
+                     onclick="document.getElementById('modalFileInput').click()"
+                     ondragover="event.preventDefault(); this.style.borderColor='#0284c7'; this.style.background='#f0f9ff';"
+                     ondragleave="this.style.borderColor='#cbd5e1'; this.style.background='#f8fafc';"
+                     ondrop="handleModalDrop(event)">
+                    
+                    <div style="font-size: 32px; margin-bottom: 6px;">📄</div>
+                    <div style="font-size: 13.5px; font-weight: 700; color: #1e293b;">Click to select file or drag & drop</div>
+                    <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">Supported: .xlsx, .xls, .csv</div>
+                    
+                    <input type="file" id="modalFileInput" name="import_file" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleModalFileSelect(this)">
+                    
+                    <div id="modalFileDisplay" style="display: none; margin-top: 10px; padding: 6px 12px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 5px; font-size: 12px; color: #0369a1; font-weight: 600;">
+                        Selected: <span id="modalFileName"></span>
+                    </div>
+                </div>
+
+                <!-- Info Badges -->
+                <div style="margin-top: 12px; font-size: 11.5px; color: #64748b; background: #f1f5f9; padding: 8px 12px; border-radius: 6px; line-height: 1.5;">
+                    <div>🛡️ <strong>De-duplication:</strong> Re-importing existing records updates missing fields without creating duplicate patients or courses.</div>
+                    <div>🔗 <strong>Multi-Course:</strong> Multiple courses for the same MR Number are safely linked to that patient.</div>
+                </div>
+
+                <!-- Template Download link -->
+                <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                    <a href="{% url 'teletherapy_import_template' %}" style="color: #0369a1; text-decoration: underline; font-weight: 600;">
+                        📥 Download Template (.csv)
+                    </a>
+                    <a href="{% url 'teletherapy_import' %}" style="color: #475569; text-decoration: none;">
+                        Detailed Import Page &rarr;
+                    </a>
+                </div>
+
+                <!-- Modal Result Box -->
+                <div id="modalResultBox" style="display: none; margin-top: 14px; padding: 12px; border-radius: 6px; font-size: 12.5px;"></div>
+
+                <!-- Modal Footer Buttons -->
+                <div style="margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px;">
+                    <button type="button" onclick="closeTeletherapyImportModal()" style="padding: 7px 14px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; border-radius: 5px; font-size: 12.5px; cursor: pointer; font-weight: 600;">Cancel</button>
+                    <button type="submit" id="modalSubmitBtn" style="padding: 7px 18px; background: #003366; color: #ffffff; border: none; border-radius: 5px; font-size: 12.5px; font-weight: 700; cursor: pointer;">
+                        <span id="modalBtnText">Upload & Import</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function openTeletherapyImportModal() {
+    var modal = document.getElementById('teletherapyImportModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        document.getElementById('modalResultBox').style.display = 'none';
+        document.getElementById('modalFileDisplay').style.display = 'none';
+        document.getElementById('modalImportForm').reset();
+    }
+}
+
+function closeTeletherapyImportModal() {
+    var modal = document.getElementById('teletherapyImportModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+function handleModalFileSelect(input) {
+    if (input.files && input.files[0]) {
+        var file = input.files[0];
+        document.getElementById('modalFileName').textContent = file.name;
+        document.getElementById('modalFileDisplay').style.display = 'inline-block';
+    }
+}
+
+function handleModalDrop(e) {
+    e.preventDefault();
+    var dropzone = document.getElementById('modalDropzone');
+    dropzone.style.borderColor = '#cbd5e1';
+    dropzone.style.background = '#f8fafc';
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        var file = e.dataTransfer.files[0];
+        var fileInput = document.getElementById('modalFileInput');
+        fileInput.files = e.dataTransfer.files;
+        document.getElementById('modalFileName').textContent = file.name;
+        document.getElementById('modalFileDisplay').style.display = 'inline-block';
+    }
+}
+
+function submitModalImport(e) {
+    e.preventDefault();
+    var fileInput = document.getElementById('modalFileInput');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert('Please select an Excel or CSV file to import.');
+        return;
+    }
+
+    var btn = document.getElementById('modalSubmitBtn');
+    var btnText = document.getElementById('modalBtnText');
+    var resultBox = document.getElementById('modalResultBox');
+
+    btn.disabled = true;
+    btnText.textContent = 'Importing (Please wait)...';
+    resultBox.style.display = 'none';
+
+    var formData = new FormData(document.getElementById('modalImportForm'));
+    formData.append('is_ajax', '1');
+
+    fetch("{% url 'teletherapy_import' %}", {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+    })
+    .then(function(res) {
+        return res.json().then(function(data) {
+            return { ok: res.ok, data: data };
+        });
+    })
+    .then(function(resObj) {
+        btn.disabled = false;
+        btnText.textContent = 'Upload & Import';
+
+        var data = resObj.data;
+        resultBox.style.display = 'block';
+
+        if (resObj.ok && data.success) {
+            resultBox.style.background = '#ecfdf5';
+            resultBox.style.border = '1px solid #a7f3d0';
+            resultBox.style.color = '#065f46';
+            resultBox.innerHTML = '<strong>✅ Import Successful!</strong><br>' +
+                'Processed <strong>' + data.stats.total_rows + '</strong> rows:<br>' +
+                '• ' + data.stats.patients_created + ' new patients created<br>' +
+                '• ' + data.stats.patients_updated + ' patients updated<br>' +
+                '• ' + data.stats.schedules_created + ' new courses created<br>' +
+                '• ' + data.stats.schedules_updated + ' courses updated<br>' +
+                '• ' + data.stats.schedules_skipped + ' courses unchanged' +
+                (data.errors && data.errors.length > 0 ? '<br><span style="color:#b45309;">⚠️ ' + data.errors.length + ' warning(s) logged</span>' : '') +
+                '<div style="margin-top: 8px;"><a href="javascript:location.reload()" style="color: #065f46; font-weight: bold; text-decoration: underline;">Refresh page to view imported data &rarr;</a></div>';
+        } else {
+            resultBox.style.background = '#fef2f2';
+            resultBox.style.border = '1px solid #fecaca';
+            resultBox.style.color = '#991b1b';
+            resultBox.innerHTML = '<strong>❌ Import Failed:</strong> ' + (data.error || 'Unknown error occurred.');
+        }
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        btnText.textContent = 'Upload & Import';
+        resultBox.style.display = 'block';
+        resultBox.style.background = '#fef2f2';
+        resultBox.style.border = '1px solid #fecaca';
+        resultBox.style.color = '#991b1b';
+        resultBox.innerHTML = '<strong>❌ Network Error:</strong> ' + err.message;
+    });
+}
+</script>
+{% endif %}

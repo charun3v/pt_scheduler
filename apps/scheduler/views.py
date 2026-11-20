@@ -3,7 +3,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.contrib import messages
 from django.utils import timezone
 from datetime import date, datetime, timedelta, time as dt_time
@@ -14,11 +14,15 @@ from .models import (
     TreatmentSite, TreatmentIntent, MachineMapping, TreatmentSchedule, Holiday, EmergencyReason,
     BrachyApplicator, BrachyAnesthesia, BrachytherapyAppointment, TreatmentCompletionStatus
 )
+import os
 import json
 import re
+import csv
+import io
+import openpyxl
 import calendar
 from apps.patients.models import Patient, DEFAULT_SITES
-from apps.core.models import AuditLog, PrintTemplateConfig, Designation
+from apps.core.models import AuditLog, PrintTemplateConfig, Designation, Consultant
 from apps.core.permissions import (
     is_admin_or_subadmin, can_manage_mappings, can_remove_from_schedule,
     can_schedule_patient, can_view_pending_patients, is_consultant_or_admin, is_resident,
@@ -2671,3 +2675,676 @@ def brachy_ot_list_print_view(request):
         'config': config,
     }
     return render(request, 'scheduler/brachy_ot_list_print.html', context)
+
+
+# ==============================================================================
+# TELETHERAPY BULK DATA IMPORT & EXPORT (ADMIN ONLY)
+# ==============================================================================
+
+def normalize_import_header(h):
+    if not h:
+        return ''
+    return re.sub(r'[\s_]+', '_', str(h)).strip('_').lower()
+
+
+def process_teletherapy_import(file_obj, filename, current_user):
+    """
+    Parses and imports Teletherapy patient and treatment schedule data from Excel (.xlsx/.xls) or CSV.
+    Enforces de-duplication:
+      - Patients are de-duplicated by MR_No. Existing patients have missing/empty demographics updated.
+      - Schedules are de-duplicated by (patient, treatment_type='Teletherapy', machine, shift, date_of_start, site_of_treatment).
+      - Multi-course support: one MR_No can have multiple Teletherapy courses; if a row has distinct machine/shift/date_of_start
+        for the same MR_No, it creates an additional course linked under the same patient record.
+    Returns:
+      stats: dict(total_rows, patients_created, patients_updated, schedules_created, schedules_updated, schedules_skipped)
+      errors: list of dicts with row number, mr_no, error message
+    """
+    ext = os.path.splitext(filename)[1].lower() if filename else ''
+
+    raw_headers = []
+    data_rows = []
+
+    if ext in ('.xlsx', '.xls'):
+        wb = openpyxl.load_workbook(file_obj, data_only=True)
+        sheet = wb.active
+        max_col = sheet.max_column
+        raw_headers = [sheet.cell(1, c).value for c in range(1, max_col + 1)]
+        for r in range(2, sheet.max_row + 1):
+            row_vals = [sheet.cell(r, c).value for c in range(1, max_col + 1)]
+            if any(v is not None and str(v).strip() != '' for v in row_vals):
+                data_rows.append((r, row_vals))
+    else:
+        if hasattr(file_obj, 'read'):
+            content = file_obj.read()
+        else:
+            content = file_obj
+        if isinstance(content, bytes):
+            try:
+                text_content = content.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                text_content = content.decode('latin-1')
+        else:
+            text_content = str(content)
+
+        reader = csv.reader(io.StringIO(text_content))
+        all_csv_rows = list(reader)
+        if all_csv_rows:
+            raw_headers = all_csv_rows[0]
+            for r_idx, row_vals in enumerate(all_csv_rows[1:], start=2):
+                if any(str(v).strip() != '' for v in row_vals):
+                    data_rows.append((r_idx, row_vals))
+
+    if not raw_headers:
+        return {'total_rows': 0, 'patients_created': 0, 'patients_updated': 0,
+                'schedules_created': 0, 'schedules_updated': 0, 'schedules_skipped': 0}, [{'row': 1, 'mr_no': '-', 'error': 'The uploaded file is empty or missing headers.'}]
+
+    norm_headers = [normalize_import_header(h) for h in raw_headers]
+
+    header_aliases = {
+        'mr_no': ['mr_no', 'mrno', 'mr_num', 'hospital_mr_no', 'hospital_mr_number', 'mr'],
+        'pt_name': ['pt_name', 'patient_name', 'patientname', 'name'],
+        'age': ['age'],
+        'sex': ['sex', 'gender'],
+        'date_of_sim': ['date_of_sim', 'dateofsim', 'sim_date', 'simulation_date'],
+        'diagnosis': ['diagnosis', 'diag'],
+        'site_of_treatment': ['site_of_treatment', 'site_of__treatment', 'site', 'treatment_site'],
+        'laterality': ['laterality'],
+        'phone_no': ['phone_no', 'phoneno', 'phone', 'mobile', 'contact_no'],
+        'intent': ['intent', 'treatment_intent'],
+        'unit': ['unit', 'clinical_unit'],
+        'primary_consultant': ['primary_consultant', 'consultant', 'doctor', 'primary_doctor'],
+        'machine': ['machine', 'machine_name'],
+        'date_of_start': ['date_of_start', 'dateofstart', 'start_date', 'treatment_start'],
+        'shift': ['shift'],
+        'dose_planned': ['dose_planned', 'dose', 'total_dose'],
+        'no_of_fractions': ['no_of_fractions', 'fractions', 'fractions_planned', 'fractions_count'],
+        'technique': ['technique', 'treatment_technique'],
+        'jr_resident': ['jr_resident', 'resident', 'junior_resident'],
+        'simulated_for': ['simulated_for', 'sim_for', 'simulatedfor'],
+        'rt_no': ['rt_no', 'rtno', 'rt_number'],
+    }
+
+    col_index_map = {}
+    for standard_col, aliases in header_aliases.items():
+        for idx, nh in enumerate(norm_headers):
+            if nh in aliases:
+                col_index_map[standard_col] = idx
+                break
+
+    if 'mr_no' not in col_index_map:
+        return {'total_rows': 0, 'patients_created': 0, 'patients_updated': 0,
+                'schedules_created': 0, 'schedules_updated': 0, 'schedules_skipped': 0}, [{'row': 1, 'mr_no': '-', 'error': "Required column 'MR_No' not found in file headers. Please ensure the template column headers are present."}]
+
+    # Pre-fetch lookup caches for optimal bulk processing speed
+    machines = {m.name.lower(): m for m in Machine.objects.all()}
+    shifts = {s.name.lower(): s for s in Shift.objects.all()}
+    techniques = {t.name.lower(): t for t in Technique.objects.all()}
+    special_techs = {st.name.lower(): st for st in SpecialTechnique.objects.all()}
+    sim_fors = {sf.name.lower(): sf for sf in SimulatedFor.objects.all()}
+    intents = {i.name.lower(): i for i in TreatmentIntent.objects.all()}
+    consultants = {c.name.lower(): c for c in Consultant.objects.all()}
+
+    def parse_date_cell(val):
+        if not val:
+            return None
+        if isinstance(val, datetime):
+            return val.date()
+        if isinstance(val, date):
+            return val
+        s = str(val).strip()
+        if not s:
+            return None
+        for fmt in ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d', '%d-%b-%Y', '%d-%b-%y', '%d %b %Y', '%d %B %Y'):
+            try:
+                return datetime.strptime(s, fmt).date()
+            except ValueError:
+                pass
+        return None
+
+    def clean_phone_str(val):
+        if val is None:
+            return ''
+        s = str(val).strip()
+        if s.endswith('.0'):
+            s = s[:-2]
+        return s
+
+    def clean_decimal_val(val):
+        if val is None or val == '':
+            return None
+        try:
+            return Decimal(str(val).strip())
+        except Exception:
+            return None
+
+    def clean_int_val(val):
+        if val is None or val == '':
+            return None
+        try:
+            return int(float(str(val).strip()))
+        except Exception:
+            return None
+
+    def norm_unit_str(val):
+        if not val:
+            return 'I'
+        u = str(val).strip().upper()
+        if u in ('1', 'I'):
+            return 'I'
+        elif u in ('2', 'II'):
+            return 'II'
+        elif u in ('3', 'III'):
+            return 'III'
+        return 'I'
+
+    def get_or_create_doc(c_name):
+        if not c_name:
+            return None
+        c_clean = c_name.strip()
+        c_lower = c_clean.lower()
+        if c_lower in consultants:
+            return consultants[c_lower]
+        c_no_dr = re.sub(r'^dr\.?\s*', '', c_lower)
+        for k, v in consultants.items():
+            if c_no_dr and (c_no_dr in k or k in c_lower):
+                return v
+        c = Consultant.objects.create(name=c_clean, display_order=99)
+        consultants[c_lower] = c
+        return c
+
+    def get_or_create_intent_obj(i_name):
+        if not i_name:
+            return None
+        i_clean = i_name.strip()
+        i_lower = i_clean.lower()
+        if i_lower in intents:
+            return intents[i_lower]
+        i = TreatmentIntent.objects.create(name=i_clean.capitalize(), display_order=99)
+        intents[i_lower] = i
+        return i
+
+    def get_or_create_sim_for_obj(sf_name):
+        if not sf_name:
+            return None
+        sf_clean = sf_name.strip()
+        sf_lower = sf_clean.lower()
+        if sf_lower in sim_fors:
+            return sim_fors[sf_lower]
+        sf = SimulatedFor.objects.create(name=sf_clean.capitalize(), display_order=99)
+        sim_fors[sf_lower] = sf
+        return sf
+
+    def get_shift_obj(sh_name):
+        if not sh_name:
+            return None
+        sh_clean = str(sh_name).strip().upper()
+        if sh_clean in ('IL', '2', 'II'):
+            sh_clean = 'II'
+        elif sh_clean in ('1', 'I'):
+            sh_clean = 'I'
+        elif sh_clean in ('3', 'III'):
+            sh_clean = 'III'
+        return shifts.get(sh_clean.lower())
+
+    def get_mach_obj(m_name):
+        if not m_name:
+            return None
+        m_lower = str(m_name).strip().lower()
+        if m_lower in machines:
+            return machines[m_lower]
+        for k, v in machines.items():
+            if m_lower in k or k in m_lower:
+                return v
+        return None
+
+    def resolve_tech(t_name):
+        if not t_name:
+            return None, None
+        t_clean = str(t_name).strip()
+        t_lower = t_clean.lower()
+        if t_lower in special_techs:
+            return None, special_techs[t_lower]
+        if t_lower in techniques:
+            return techniques[t_lower], None
+        for k, v in special_techs.items():
+            if k in t_lower or t_lower in k:
+                return None, v
+        for k, v in techniques.items():
+            if k in t_lower or t_lower in k:
+                return v, None
+        t_obj = Technique.objects.create(name=t_clean, display_order=99)
+        techniques[t_lower] = t_obj
+        return t_obj, None
+
+    def get_cell(row_vals, col_key):
+        idx = col_index_map.get(col_key)
+        if idx is not None and idx < len(row_vals):
+            return row_vals[idx]
+        return None
+
+    stats = {
+        'total_rows': len(data_rows),
+        'patients_created': 0,
+        'patients_updated': 0,
+        'schedules_created': 0,
+        'schedules_updated': 0,
+        'schedules_skipped': 0,
+    }
+    errors = []
+
+    today = timezone.localdate()
+
+    for r_num, row_vals in data_rows:
+        mr_val = get_cell(row_vals, 'mr_no')
+        mr_no = clean_int_val(mr_val)
+        if not mr_no:
+            errors.append({'row': r_num, 'mr_no': str(mr_val or '-'), 'error': 'Missing or invalid MR_No.'})
+            continue
+
+        try:
+            pt_name_raw = get_cell(row_vals, 'pt_name')
+            pt_name = str(pt_name_raw).strip() if pt_name_raw is not None else ''
+            if not pt_name:
+                pt_name = f"Patient {mr_no}"
+
+            age = clean_int_val(get_cell(row_vals, 'age'))
+            sex_raw = str(get_cell(row_vals, 'sex') or '').strip().upper()
+            sex = 'M' if sex_raw.startswith('M') else ('F' if sex_raw.startswith('F') else 'O')
+            diag = str(get_cell(row_vals, 'diagnosis') or '').strip() or 'Carcinoma'
+            site = str(get_cell(row_vals, 'site_of_treatment') or '').strip() or 'Others'
+            laterality = str(get_cell(row_vals, 'laterality') or '').strip()
+            phone = clean_phone_str(get_cell(row_vals, 'phone_no'))
+            unit_val = norm_unit_str(get_cell(row_vals, 'unit'))
+            rt_no = str(get_cell(row_vals, 'rt_no') or '').strip()
+            consultant_raw = str(get_cell(row_vals, 'primary_consultant') or '').strip()
+            consultant_obj = get_or_create_doc(consultant_raw)
+
+            sim_date = parse_date_cell(get_cell(row_vals, 'date_of_sim'))
+            start_date = parse_date_cell(get_cell(row_vals, 'date_of_start'))
+            mach_obj = get_mach_obj(get_cell(row_vals, 'machine'))
+            shift_obj = get_shift_obj(get_cell(row_vals, 'shift'))
+            dose = clean_decimal_val(get_cell(row_vals, 'dose_planned'))
+            fractions = clean_int_val(get_cell(row_vals, 'no_of_fractions'))
+            tech_obj, spec_tech_obj = resolve_tech(get_cell(row_vals, 'technique'))
+            jr_res = str(get_cell(row_vals, 'jr_resident') or '').strip()
+            sim_for_obj = get_or_create_sim_for_obj(str(get_cell(row_vals, 'simulated_for') or '').strip())
+            intent_obj = get_or_create_intent_obj(str(get_cell(row_vals, 'intent') or '').strip())
+
+            # 1. Patient Demographics & De-duplication
+            patient, pt_created = Patient.objects.get_or_create(
+                mr_no=mr_no,
+                defaults={
+                    'pt_name': pt_name,
+                    'age': age,
+                    'sex': sex,
+                    'diagnosis': diag,
+                    'site_of_treatment': site,
+                    'phone_no': phone,
+                    'unit': unit_val,
+                    'rt_no': rt_no,
+                    'primary_consultant': consultant_obj,
+                    'created_by': current_user if current_user and current_user.is_authenticated else None,
+                }
+            )
+
+            if pt_created:
+                stats['patients_created'] += 1
+            else:
+                p_changed = False
+                if pt_name and (not patient.pt_name or patient.pt_name.lower().startswith('patient ')):
+                    patient.pt_name = pt_name; p_changed = True
+                if age is not None and not patient.age:
+                    patient.age = age; p_changed = True
+                if phone and not patient.phone_no:
+                    patient.phone_no = phone; p_changed = True
+                if rt_no and not patient.rt_no:
+                    patient.rt_no = rt_no; p_changed = True
+                if unit_val and patient.unit != unit_val:
+                    patient.unit = unit_val; p_changed = True
+                if diag and (not patient.diagnosis or patient.diagnosis == 'Carcinoma'):
+                    patient.diagnosis = diag; p_changed = True
+                if site and (not patient.site_of_treatment or patient.site_of_treatment == 'Others'):
+                    patient.site_of_treatment = site; p_changed = True
+                if consultant_obj and not patient.primary_consultant:
+                    patient.primary_consultant = consultant_obj; p_changed = True
+                if p_changed:
+                    patient.save()
+                    stats['patients_updated'] += 1
+
+            # 2. Teletherapy Course De-duplication & Multi-Course per MR No Support
+            notes_parts = []
+            if laterality:
+                notes_parts.append(f"Laterality: {laterality}")
+            notes_val = "\n".join(notes_parts) if notes_parts else None
+
+            existing_courses = list(patient.schedules.filter(treatment_type='Teletherapy'))
+            matching_course = None
+
+            for ec in existing_courses:
+                if start_date and ec.date_of_start:
+                    if ec.date_of_start == start_date:
+                        mach_match = (not mach_obj or not ec.machine or ec.machine_id == mach_obj.id)
+                        shift_match = (not shift_obj or not ec.shift or ec.shift_id == shift_obj.id)
+                        site_match = (not site or not ec.site_of_treatment or ec.site_of_treatment.lower() == site.lower())
+                        if mach_match and shift_match and site_match:
+                            matching_course = ec
+                            break
+                elif not start_date and not ec.date_of_start:
+                    if ec.date_of_sim == sim_date:
+                        site_match = (not site or not ec.site_of_treatment or ec.site_of_treatment.lower() == site.lower())
+                        if site_match:
+                            matching_course = ec
+                            break
+
+            if matching_course:
+                # De-duplication: Course already exists! Update missing fields if any
+                c_changed = False
+                if mach_obj and not matching_course.machine:
+                    matching_course.machine = mach_obj; c_changed = True
+                if shift_obj and not matching_course.shift:
+                    matching_course.shift = shift_obj; c_changed = True
+                if dose is not None and matching_course.dose_planned is None:
+                    matching_course.dose_planned = dose; c_changed = True
+                if fractions is not None and matching_course.no_of_fractions is None:
+                    matching_course.no_of_fractions = fractions; c_changed = True
+                if tech_obj and not matching_course.technique:
+                    matching_course.technique = tech_obj; c_changed = True
+                if spec_tech_obj and not matching_course.special_technique:
+                    matching_course.special_technique = spec_tech_obj; c_changed = True
+                if intent_obj and not matching_course.intent:
+                    matching_course.intent = intent_obj; c_changed = True
+                if sim_for_obj and not matching_course.simulated_for:
+                    matching_course.simulated_for = sim_for_obj; c_changed = True
+                if jr_res and not matching_course.jr_resident:
+                    matching_course.jr_resident = jr_res; c_changed = True
+                if notes_val and not matching_course.notes:
+                    matching_course.notes = notes_val; c_changed = True
+                if c_changed:
+                    matching_course.save()
+                    stats['schedules_updated'] += 1
+                else:
+                    stats['schedules_skipped'] += 1
+            else:
+                # New Teletherapy Course for this patient
+                sched_status = 'Scheduled'
+                if start_date:
+                    temp_s = TreatmentSchedule(
+                        patient=patient, treatment_type='Teletherapy',
+                        date_of_start=start_date, no_of_fractions=fractions
+                    )
+                    calc_end = temp_s.calculate_end_date() if fractions else None
+                    if (calc_end and calc_end < today) or (start_date < today):
+                        sched_status = 'Completed'
+                    else:
+                        sched_status = 'Scheduled'
+                else:
+                    sched_status = 'Draft'
+
+                TreatmentSchedule.objects.create(
+                    patient=patient,
+                    treatment_type='Teletherapy',
+                    date_of_sim=sim_date,
+                    date_of_start=start_date,
+                    dose_planned=dose,
+                    no_of_fractions=fractions,
+                    technique=tech_obj,
+                    special_technique=spec_tech_obj,
+                    simulated_for=sim_for_obj,
+                    intent=intent_obj,
+                    machine=mach_obj,
+                    shift=shift_obj,
+                    site_of_treatment=site,
+                    jr_resident=jr_res,
+                    notes=notes_val,
+                    status=sched_status,
+                    created_by=current_user if current_user and current_user.is_authenticated else None,
+                )
+                stats['schedules_created'] += 1
+
+        except Exception as e:
+            errors.append({'row': r_num, 'mr_no': str(mr_no), 'error': str(e)})
+
+    return stats, errors
+
+
+@login_required
+def teletherapy_import_view(request):
+    """
+    Teletherapy Data Bulk Import View (Admin Only).
+    Allows Administrators to upload Excel (.xlsx, .xls) or CSV (.csv) files matching the 21-column template.
+    Avoids duplicate patients and courses; links multiple courses under the same MR_No.
+    """
+    is_ajax = (request.headers.get('x-requested-with') == 'XMLHttpRequest' or 
+               request.content_type == 'application/json' or
+               request.POST.get('is_ajax') == '1')
+
+    if not is_admin_only(request.user):
+        err_msg = "Access restricted. Only Administrators can import data into the database."
+        if is_ajax:
+            return JsonResponse({'success': False, 'error': err_msg}, status=403)
+        messages.error(request, err_msg)
+        return redirect('dashboard')
+
+    stats = None
+    errors = None
+
+    if request.method == 'POST':
+        uploaded_file = request.FILES.get('import_file')
+        if not uploaded_file:
+            err_msg = "Please select a valid Excel (.xlsx, .xls) or CSV (.csv) file to import."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': err_msg}, status=400)
+            messages.error(request, err_msg)
+            return redirect('teletherapy_import')
+
+        filename = uploaded_file.name
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ('.xlsx', '.xls', '.csv'):
+            err_msg = f"Unsupported file format '{ext}'. Please upload an Excel (.xlsx, .xls) or CSV (.csv) file."
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': err_msg}, status=400)
+            messages.error(request, err_msg)
+            return redirect('teletherapy_import')
+
+        try:
+            stats, errors = process_teletherapy_import(uploaded_file, filename, request.user)
+
+            AuditLog.objects.create(
+                user=request.user,
+                action="TELETHERAPY_DATA_IMPORT",
+                mr_no="BULK_IMPORT",
+                details=f"Imported file '{filename}': {stats['patients_created']} pts created, {stats['patients_updated']} pts updated, {stats['schedules_created']} courses created, {stats['schedules_updated']} courses updated, {len(errors)} errors.",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+
+            msg = (f"Import completed successfully! Processed {stats['total_rows']} rows: "
+                   f"{stats['patients_created']} new patients created, {stats['patients_updated']} patients updated, "
+                   f"{stats['schedules_created']} new courses created, {stats['schedules_updated']} courses updated, "
+                   f"{stats['schedules_skipped']} courses unchanged.")
+            if errors:
+                msg += f" Encountered {len(errors)} row warning(s)."
+            messages.success(request, msg)
+
+            if is_ajax:
+                return JsonResponse({
+                    'success': True,
+                    'message': msg,
+                    'stats': stats,
+                    'errors': errors,
+                })
+
+        except Exception as e:
+            err_msg = f"Import processing failed: {str(e)}"
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': err_msg}, status=500)
+            messages.error(request, err_msg)
+
+    # Context for GET or rendered POST
+    recent_imports = AuditLog.objects.filter(action="TELETHERAPY_DATA_IMPORT").order_by('-log_datetime')[:5]
+
+    template_columns = [
+        {'name': 'MR_No', 'required': True, 'desc': 'Unique Patient Hospital MR Number (Integer)'},
+        {'name': 'Pt_name', 'required': True, 'desc': 'Patient Full Name'},
+        {'name': 'Age', 'required': False, 'desc': 'Patient Age in years'},
+        {'name': 'Sex', 'required': True, 'desc': "M (Male), F (Female), or O (Other)"},
+        {'name': 'Date_Of_sim', 'required': False, 'desc': 'Date of Simulation (YYYY-MM-DD)'},
+        {'name': 'Diagnosis', 'required': False, 'desc': 'Primary Oncological Diagnosis'},
+        {'name': 'Site_of _treatment', 'required': False, 'desc': 'Anatomical Treatment Site (Brain, Breast, Pelvis, etc.)'},
+        {'name': 'Laterality', 'required': False, 'desc': 'Central, Left, Right, Bilateral'},
+        {'name': 'Phone_no', 'required': False, 'desc': 'Patient Contact Phone Number'},
+        {'name': 'Intent', 'required': False, 'desc': 'Radical, Palliative, Adjuvant, Neo-adjuvant'},
+        {'name': 'Unit', 'required': False, 'desc': 'Clinical Unit: I, II, or III'},
+        {'name': 'Primary Consultant', 'required': False, 'desc': 'Treating Consultant Doctor (e.g. Dr. Khaleel)'},
+        {'name': 'Machine', 'required': False, 'desc': 'Target Machine (e.g. ELEKTA - LA2, Varian - DBX)'},
+        {'name': 'Date_of_start', 'required': False, 'desc': 'Scheduled Treatment Start Date (YYYY-MM-DD)'},
+        {'name': 'Shift', 'required': False, 'desc': 'Treatment Shift: I, II, or III'},
+        {'name': 'Dose_planned', 'required': False, 'desc': 'Total planned radiation dose in Gy'},
+        {'name': 'No_of_fractions', 'required': False, 'desc': 'Total planned number of fractions'},
+        {'name': 'Technique', 'required': False, 'desc': 'IMRT, 3D CRT, VMAT, SRS, SBRT, 2D'},
+        {'name': 'Jr_Resident', 'required': False, 'desc': 'Assigned Junior Resident Doctor'},
+        {'name': 'Simulated_for', 'required': False, 'desc': 'Simulated machine group: Elekta, Varian, Cobalt'},
+        {'name': 'RT_No', 'required': False, 'desc': 'Radiotherapy Department Registration Number'},
+    ]
+
+    context = {
+        'template_columns': template_columns,
+        'recent_imports': recent_imports,
+        'stats': stats,
+        'errors': errors,
+    }
+    return render(request, 'scheduler/teletherapy_import.html', context)
+
+
+@login_required
+def teletherapy_export_view(request):
+    """
+    Exports Teletherapy patient and treatment schedule data as a CSV file matching
+    the exact 21-column template:
+    MR_No,Pt_name,Age,Sex,Date_Of_sim,Diagnosis,Site_of _treatment,Laterality,Phone_no,
+    Intent,Unit,Primary Consultant,Machine,Date_of_start,Shift,Dose_planned,
+    No_of_fractions,Technique,Jr_Resident,Simulated_for,RT_No
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted. Only Administrators can export data.")
+        return redirect('dashboard')
+
+    schedules_qs = TreatmentSchedule.objects.filter(treatment_type='Teletherapy').select_related(
+        'patient', 'patient__primary_consultant', 'machine', 'shift', 'technique',
+        'special_technique', 'simulated_for', 'intent'
+    ).order_by('date_of_start', 'patient__mr_no')
+
+    # Optional machine filter
+    machine_id = request.GET.get('machine_id')
+    if machine_id:
+        schedules_qs = schedules_qs.filter(machine_id=machine_id)
+
+    # Optional date filters
+    date_from_str = request.GET.get('date_from')
+    date_to_str = request.GET.get('date_to')
+    if date_from_str:
+        try:
+            d_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+            schedules_qs = schedules_qs.filter(date_of_start__gte=d_from)
+        except ValueError:
+            pass
+    if date_to_str:
+        try:
+            d_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
+            schedules_qs = schedules_qs.filter(date_of_start__lte=d_to)
+        except ValueError:
+            pass
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    filename = f"teletherapy_export_{timezone.localdate().strftime('%Y-%m-%d')}.csv"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    headers = [
+        'MR_No', 'Pt_name', 'Age', 'Sex', 'Date_Of_sim', 'Diagnosis',
+        'Site_of _treatment', 'Laterality', 'Phone_no', 'Intent', 'Unit',
+        'Primary Consultant', 'Machine', 'Date_of_start', 'Shift',
+        'Dose_planned', 'No_of_fractions', 'Technique', 'Jr_Resident',
+        'Simulated_for', 'RT_No'
+    ]
+    writer.writerow(headers)
+
+    for s in schedules_qs:
+        p = s.patient
+        tech_name = ''
+        if s.special_technique and s.special_technique.name.lower() != 'none':
+            tech_name = s.special_technique.name
+        elif s.technique:
+            tech_name = s.technique.name
+        
+        laterality = ''
+        if s.notes:
+            m = re.search(r'Laterality:\s*([^\n\r]+)', s.notes, re.IGNORECASE)
+            if m:
+                laterality = m.group(1).strip()
+
+        row = [
+            p.mr_no,
+            p.pt_name,
+            p.age if p.age is not None else '',
+            p.sex,
+            s.date_of_sim.strftime('%Y-%m-%d') if s.date_of_sim else '',
+            p.diagnosis or '',
+            s.site_of_treatment or p.site_of_treatment or '',
+            laterality,
+            p.phone_no or '',
+            s.intent.name if s.intent else '',
+            p.unit or '',
+            p.primary_consultant.name if p.primary_consultant else '',
+            s.machine.name if s.machine else '',
+            s.date_of_start.strftime('%Y-%m-%d') if s.date_of_start else '',
+            s.shift.name if s.shift else '',
+            s.dose_planned if s.dose_planned is not None else '',
+            s.no_of_fractions if s.no_of_fractions is not None else '',
+            tech_name,
+            s.jr_resident or '',
+            s.simulated_for.name if s.simulated_for else '',
+            p.rt_no or '',
+        ]
+        writer.writerow(row)
+
+    return response
+
+
+@login_required
+def teletherapy_import_template_view(request):
+    """
+    Downloads a blank sample CSV template with the exact 21 columns and sample rows.
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted. Only Administrators can download templates.")
+        return redirect('dashboard')
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = 'attachment; filename="Teletherapy_Import_Template.csv"'
+
+    writer = csv.writer(response)
+    headers = [
+        'MR_No', 'Pt_name', 'Age', 'Sex', 'Date_Of_sim', 'Diagnosis',
+        'Site_of _treatment', 'Laterality', 'Phone_no', 'Intent', 'Unit',
+        'Primary Consultant', 'Machine', 'Date_of_start', 'Shift',
+        'Dose_planned', 'No_of_fractions', 'Technique', 'Jr_Resident',
+        'Simulated_for', 'RT_No'
+    ]
+    writer.writerow(headers)
+    sample_row_1 = [
+        '20240024292', 'REKHA', '36', 'F', '2025-02-14', 'ASTROCYTOMA',
+        'Brain', 'Central', '9535600246', 'Adjuvant', 'I',
+        'Dr. Khaleel', 'ELEKTA - LA2', '2025-03-11', 'I',
+        '60', '30', 'IMRT', 'Dr. Resident',
+        'Elekta', '4428'
+    ]
+    sample_row_2 = [
+        '20230022427', 'gangamma', '53', 'F', '2025-02-25', 'recurrent ca r breast',
+        'Breast', 'Right', '9743762778', 'Adjuvant', 'II',
+        'Dr. Thejaswini', 'ELEKTA - LA4', '2025-03-03', 'I',
+        '40', '15', 'IMRT', 'dr jameema',
+        'Elekta', '4491'
+    ]
+    writer.writerow(sample_row_1)
+    writer.writerow(sample_row_2)
+    return response

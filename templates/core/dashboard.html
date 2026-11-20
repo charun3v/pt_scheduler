@@ -94,6 +94,32 @@
                 </a>
             </div>
             {% endif %}
+
+            {% if IS_ADMIN_ONLY %}
+            <!-- Option 4: Teletherapy Bulk Import & Export (Admin Only) -->
+            <div style="background: #ffffff; border: 2px solid #047857; border-radius: 6px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                        <span style="font-size: 24px;">📥</span>
+                        <div>
+                            <h2 style="margin: 0; font-size: 16px; color: #047857;">Import & Export Data</h2>
+                            <span style="font-size: 11px; color: #047857; font-weight: bold;">Bulk Teletherapy Data</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 12px; color: #444; margin: 0 0 10px 0; line-height: 1.4;">
+                        Import historical or bulk Excel/CSV records with automated patient and course de-duplication, or export full records.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <button type="button" onclick="openTeletherapyImportModal()" class="action-ribbon-btn" style="flex: 1; padding: 7px 10px; font-size: 12px; justify-content: center; background: #ecfdf5; color: #047857; border: 1px solid #10b981; font-weight: bold; cursor: pointer;">
+                        📥 Import Data
+                    </button>
+                    <a href="{% url 'teletherapy_export' %}" class="action-ribbon-btn" style="flex: 1; padding: 7px 10px; font-size: 12px; justify-content: center; background: #f0f9ff; color: #0369a1; border: 1px solid #0284c7; font-weight: bold; text-decoration: none;">
+                        📤 Export Data
+                    </a>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 

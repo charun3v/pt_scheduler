@@ -5289,6 +5289,114 @@ def run_tests():
     pt_53.delete()
     print("✓ Test 53 Passed: Brachytherapy OT List 2x Half-A4 Printout & Template Settings fully verified.")
 
+    # --------------------------------------------------------------------------
+    # Test 54: Teletherapy Bulk Import & Export (Admin-Only, De-duplication, Multi-Course)
+    # --------------------------------------------------------------------------
+    print("\n--- Test 54: Teletherapy Bulk Import & Export (Admin-Only, De-duplication, Multi-Course) ---")
+    from django.urls import reverse
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    admin_client = Client()
+    admin_client.force_login(admin_user)
+    
+    # Clean any leftover test records
+    Patient.objects.filter(mr_no__in=[9900000001, 9900000002]).delete()
+
+    # 1. Access Control: Resident & SubAdmin blocked, Admin allowed
+    res_client = Client()
+    res_client.force_login(res_user)
+    resp_res_get = res_client.get(reverse('teletherapy_import'), follow=True)
+    assert resp_res_get.status_code == 200
+    # Resident redirected to dashboard with error message
+    assert "Access restricted" in resp_res_get.content.decode()
+
+    resp_res_export = res_client.get(reverse('teletherapy_export'), follow=True)
+    assert "Access restricted" in resp_res_export.content.decode()
+
+    # Admin access allowed
+    resp_adm_get = admin_client.get(reverse('teletherapy_import'))
+    assert resp_adm_get.status_code == 200
+    assert "Teletherapy Bulk Data Import" in resp_adm_get.content.decode()
+
+    # 2. Template download check
+    resp_template = admin_client.get(reverse('teletherapy_import_template'))
+    assert resp_template.status_code == 200
+    assert resp_template['Content-Type'] == 'text/csv; charset=utf-8-sig'
+    template_content = resp_template.content.decode('utf-8-sig')
+    assert "MR_No,Pt_name,Age,Sex,Date_Of_sim" in template_content
+    assert "Site_of _treatment" in template_content
+    assert "Primary Consultant,Machine,Date_of_start" in template_content
+
+    # 3. CSV Import with Multiple Courses for single MR No:
+    # Patient 9900000001 has TWO courses in the CSV
+    # Patient 9900000002 has ONE course
+    csv_rows = [
+        "MR_No,Pt_name,Age,Sex,Date_Of_sim,Diagnosis,Site_of _treatment,Laterality,Phone_no,Intent,Unit,Primary Consultant,Machine,Date_of_start,Shift,Dose_planned,No_of_fractions,Technique,Jr_Resident,Simulated_for,RT_No",
+        "9900000001,MULTI COURSE TEST,45,F,2026-11-01,Ca Breast,Breast,Right,9876543210,Adjuvant,I,Dr. Khaleel,ELEKTA - LA1,2026-12-01,I,50,25,IMRT,Dr. Resident,Elekta,9001",
+        "9900000001,MULTI COURSE TEST,45,F,2026-11-01,Ca Breast,Breast,Right,9876543210,Adjuvant,I,Dr. Khaleel,ELEKTA - LA2,2027-01-15,II,20,5,SBRT,Dr. Resident,Elekta,9001",
+        "9900000002,SINGLE COURSE TEST,60,M,2026-11-05,Ca Prostate,Pelvis,Central,9123456780,Radical,II,Dr. Sridhar,ELEKTA - LA3,2026-12-10,I,60,30,3D CRT,Dr. Junior,Elekta,9002",
+    ]
+    csv_data = "\n".join(csv_rows).encode('utf-8-sig')
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    upload_file_1 = SimpleUploadedFile("test_import.csv", csv_data, content_type="text/csv")
+
+    resp_import_1 = admin_client.post(reverse('teletherapy_import'), {
+        'import_file': upload_file_1,
+        'is_ajax': '1'
+    }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+    assert resp_import_1.status_code == 200
+    import_res_1 = resp_import_1.json()
+    assert import_res_1['success'] is True
+    assert import_res_1['stats']['patients_created'] == 2
+    assert import_res_1['stats']['schedules_created'] == 3
+
+    # Verify Patient 9900000001 in DB
+    pt_multi = Patient.objects.get(mr_no=9900000001)
+    assert pt_multi.pt_name == "MULTI COURSE TEST"
+    assert pt_multi.unit == "I"
+    courses_pt_multi = list(pt_multi.schedules.filter(treatment_type='Teletherapy').order_by('date_of_start'))
+    assert len(courses_pt_multi) == 2, f"Expected 2 courses for single MR No, got {len(courses_pt_multi)}"
+    assert courses_pt_multi[0].machine.name == "ELEKTA - LA1"
+    assert courses_pt_multi[0].shift.name == "I"
+    assert courses_pt_multi[0].technique.name == "IMRT"
+    assert courses_pt_multi[1].machine.name == "ELEKTA - LA2"
+    assert courses_pt_multi[1].shift.name == "II"
+    assert courses_pt_multi[1].special_technique.name == "SBRT"
+
+    # Verify Patient 9900000002 in DB
+    pt_single = Patient.objects.get(mr_no=9900000002)
+    assert pt_single.pt_name == "SINGLE COURSE TEST"
+    assert pt_single.schedules.filter(treatment_type='Teletherapy').count() == 1
+
+    # 4. De-duplication Check: Re-import exact same CSV file!
+    upload_file_2 = SimpleUploadedFile("test_reimport.csv", csv_data, content_type="text/csv")
+    resp_import_2 = admin_client.post(reverse('teletherapy_import'), {
+        'import_file': upload_file_2,
+        'is_ajax': '1'
+    }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+    assert resp_import_2.status_code == 200
+    import_res_2 = resp_import_2.json()
+    assert import_res_2['success'] is True
+    assert import_res_2['stats']['patients_created'] == 0, "No duplicate patients should be created!"
+    assert import_res_2['stats']['schedules_created'] == 0, "No duplicate courses should be created!"
+    assert import_res_2['stats']['schedules_skipped'] == 3, "All 3 courses should be recognized as unchanged!"
+    assert Patient.objects.filter(mr_no=9900000001).count() == 1
+    assert pt_multi.schedules.filter(treatment_type='Teletherapy').count() == 2
+
+    # 5. Export Check: Verify exported CSV contains the imported records with all 21 columns
+    resp_export = admin_client.get(reverse('teletherapy_export'))
+    assert resp_export.status_code == 200
+    assert resp_export['Content-Type'] == 'text/csv; charset=utf-8-sig'
+    export_content = resp_export.content.decode('utf-8-sig')
+    assert "MR_No,Pt_name,Age,Sex,Date_Of_sim" in export_content
+    assert "9900000001,MULTI COURSE TEST" in export_content
+    assert "9900000002,SINGLE COURSE TEST" in export_content
+    assert "SBRT" in export_content
+
+    # Cleanup Test 54
+    Patient.objects.filter(mr_no__in=[9900000001, 9900000002]).delete()
+    print("✓ Test 54 Passed: Teletherapy Bulk Import & Export (Admin-Only, De-duplication, Multi-Course) fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

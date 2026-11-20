@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Import Teletherapy Data | Radiation Oncology Department{% endblock %}
+
+{% block content %}
+<div style="max-width: 1200px; margin: 0 auto; padding: 20px 15px;">
+
+    <!-- Breadcrumb & Top Bar -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">
+                <a href="{% url 'dashboard' %}" style="color: #0369a1; text-decoration: none;">Dashboard</a> &rsaquo; 
+                <span>Data Management</span> &rsaquo; 
+                <span style="font-weight: 600; color: #1e293b;">Teletherapy Bulk Import & Export</span>
+            </div>
+            <h1 style="font-size: 22px; font-weight: 700; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 8px;">
+                <span>📥 Teletherapy Bulk Data Import</span>
+                <span style="background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid #fecaca;">Admin Only</span>
+            </h1>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="{% url 'teletherapy_import_template' %}" class="action-ribbon-btn" style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; font-weight: 600; text-decoration: none; padding: 7px 14px; border-radius: 5px; display: inline-flex; align-items: center; gap: 6px;">
+                <span>📄 Download Template (.csv)</span>
+            </a>
+            <a href="{% url 'teletherapy_export' %}" class="action-ribbon-btn" style="background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; font-weight: 600; text-decoration: none; padding: 7px 14px; border-radius: 5px; display: inline-flex; align-items: center; gap: 6px;">
+                <span>📤 Export Database Records</span>
+            </a>
+            <a href="{% url 'dashboard' %}" class="action-ribbon-btn" style="text-decoration: none; padding: 7px 14px; border-radius: 5px;">
+                <span>&larr; Back to Dashboard</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Messages / Alerts -->
+    {% if messages %}
+    <div style="margin-bottom: 20px;">
+        {% for message in messages %}
+        <div style="padding: 12px 16px; border-radius: 6px; font-size: 13.5px; margin-bottom: 8px; font-weight: 500;
+                    {% if message.tags == 'success' %}background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;
+                    {% elif message.tags == 'error' %}background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
+                    {% else %}background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe;{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Import Results Statistics (if just imported) -->
+    {% if stats %}
+    <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 16px;">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #047857; display: flex; align-items: center; gap: 8px;">
+                <span>✅ Import Processing Summary</span>
+            </h3>
+            <span style="font-size: 12px; color: #64748b;">Completed just now</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 16px;">
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; text-align: center;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Total Rows</div>
+                <div style="font-size: 24px; font-weight: 800; color: #0f172a; margin-top: 4px;">{{ stats.total_rows }}</div>
+            </div>
+            <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 12px; text-align: center;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #065f46; font-weight: 600;">New Patients Created</div>
+                <div style="font-size: 24px; font-weight: 800; color: #047857; margin-top: 4px;">{{ stats.patients_created }}</div>
+            </div>
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 12px; text-align: center;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #166534; font-weight: 600;">Patients Updated</div>
+                <div style="font-size: 24px; font-weight: 800; color: #15803d; margin-top: 4px;">{{ stats.patients_updated }}</div>
+            </div>
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 12px; text-align: center;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #1e40af; font-weight: 600;">New Courses Created</div>
+                <div style="font-size: 24px; font-weight: 800; color: #1d4ed8; margin-top: 4px;">{{ stats.schedules_created }}</div>
+            </div>
+            <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 6px; padding: 12px; text-align: center;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #5b21b6; font-weight: 600;">Courses Updated</div>
+                <div style="font-size: 24px; font-weight: 800; color: #6d28d9; margin-top: 4px;">{{ stats.schedules_updated }}</div>
+            </div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; text-align: center;">
+                <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Courses Unchanged</div>
+                <div style="font-size: 24px; font-weight: 800; color: #475569; margin-top: 4px;">{{ stats.schedules_skipped }}</div>
+            </div>
+        </div>
+
+        {% if errors %}
+        <div style="margin-top: 14px; border: 1px solid #fed7aa; background: #fffaf0; border-radius: 6px; padding: 12px 14px;">
+            <div style="font-weight: 700; color: #9a3412; font-size: 13px; margin-bottom: 8px;">
+                ⚠️ Row-Level Warnings / Skipped Rows ({{ errors|length }})
+            </div>
+            <div style="max-height: 180px; overflow-y: auto; font-size: 12px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #fed7aa; color: #7c2d12; text-align: left;">
+                            <th style="padding: 4px 8px; width: 80px;">Row #</th>
+                            <th style="padding: 4px 8px; width: 140px;">MR No.</th>
+                            <th style="padding: 4px 8px;">Reason / Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for err in errors %}
+                        <tr style="border-bottom: 1px solid #ffedd5;">
+                            <td style="padding: 4px 8px; font-weight: 600; color: #9a3412;">Row {{ err.row }}</td>
+                            <td style="padding: 4px 8px; font-weight: 600;">{{ err.mr_no }}</td>
+                            <td style="padding: 4px 8px; color: #431407;">{{ err.error }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Upload Card -->
+    <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+        <h2 style="font-size: 16px; font-weight: 700; color: #003366; margin: 0 0 6px 0;">Upload Teletherapy Data File</h2>
+        <p style="font-size: 13px; color: #64748b; margin: 0 0 18px 0; line-height: 1.5;">
+            Select an Excel workbook (<strong>.xlsx</strong> or <strong>.xls</strong>) or Comma-Separated Values file (<strong>.csv</strong>) conforming to the standard 21-column schema.
+        </p>
+
+        <form method="post" enctype="multipart/form-data" id="importForm" onsubmit="handleImportSubmit(event)">
+            {% csrf_token %}
+
+            <div id="dropzone" style="border: 2px dashed #94a3b8; border-radius: 8px; padding: 36px 20px; text-align: center; background: #f8fafc; cursor: pointer; transition: all 0.2s;"
+                 onclick="document.getElementById('fileInput').click()"
+                 ondragover="event.preventDefault(); this.style.borderColor='#0284c7'; this.style.background='#f0f9ff';"
+                 ondragleave="this.style.borderColor='#94a3b8'; this.style.background='#f8fafc';"
+                 ondrop="handleFileDrop(event)">
+                
+                <div style="font-size: 38px; margin-bottom: 8px;">📁</div>
+                <div style="font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Click to browse or drag and drop file here
+                </div>
+                <div style="font-size: 12.5px; color: #64748b;">
+                    Supported formats: <strong>Microsoft Excel (.xlsx, .xls)</strong> or <strong>CSV (.csv)</strong>
+                </div>
+
+                <input type="file" name="import_file" id="fileInput" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleFileSelect(this)">
+                
+                <div id="fileSelectedDisplay" style="display: none; margin-top: 14px; padding: 8px 16px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: none; align-items: center; justify-content: center; gap: 8px; max-width: 480px; margin-left: auto; margin-right: auto;">
+                    <span style="font-size: 16px;">📄</span>
+                    <span id="selectedFileName" style="font-weight: 700; color: #0369a1; font-size: 13px;"></span>
+                    <span id="selectedFileSize" style="color: #64748b; font-size: 12px;"></span>
+                </div>
+            </div>
+
+            <!-- Submit Ribbon -->
+            <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div style="font-size: 12px; color: #64748b; line-height: 1.4;">
+                    🔒 <strong>De-duplication Active:</strong> Patients are identified uniquely by MR No. Existing courses are updated without duplicates.
+                </div>
+                <button type="submit" id="submitBtn" class="action-ribbon-btn btn-highlight" style="padding: 10px 24px; font-size: 14px; font-weight: 700; background: #003366; color: #ffffff; border: none; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                    <span id="btnIcon">📥</span>
+                    <span id="btnText">Import Teletherapy Data Now</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Instructions & Architecture Card -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-bottom: 24px;">
+        
+        <!-- Clinical Rules Card -->
+        <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+            <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #003366; display: flex; align-items: center; gap: 6px;">
+                <span>⚙️ System Import & De-duplication Logic</span>
+            </h3>
+            <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155; line-height: 1.7;">
+                <li><strong>Patient Identification:</strong> Every row is mapped by <code>MR_No</code>. If the patient exists in the registry, their demographics are verified and updated; no duplicate patient records are ever created.</li>
+                <li><strong>Multiple Teletherapy Courses per MR No:</strong> A patient may have multiple separate treatment courses (e.g. initial course, boost, or retreatment). If a row represents a distinct course (different machine, shift, start date, or anatomical site), it is stored as an independent course linked to that same patient record.</li>
+                <li><strong>Re-Import Safety:</strong> Re-importing the same file will safely detect matching existing courses and update empty fields without duplicating slots or schedule records.</li>
+                <li><strong>Lookup Resolution:</strong> Consultants, Machines, Shifts, Techniques, Treatment Intents, and Simulation Categories are matched automatically. If an intent or consultant does not exist, it is safely created in reference lookups.</li>
+                <li><strong>Treatment End Date:</strong> Automatically computed based on <code>Date_of_start</code> and <code>No_of_fractions</code>, excluding Sundays according to departmental scheduling rules.</li>
+            </ul>
+        </div>
+
+        <!-- Recent Imports Card -->
+        <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+            <h3 style="margin: 0 0 12px 0; font-size: 15px; font-weight: 700; color: #003366; display: flex; align-items: center; gap: 6px;">
+                <span>📋 Recent Import Activity (Audit Trail)</span>
+            </h3>
+            {% if recent_imports %}
+            <div style="font-size: 12.5px;">
+                {% for log in recent_imports %}
+                <div style="border-bottom: 1px solid #f1f5f9; padding: 8px 0;">
+                    <div style="display: flex; justify-content: space-between; color: #64748b; font-size: 11px; margin-bottom: 2px;">
+                        <span>👤 <strong>{{ log.user.get_full_name|default:log.user.username }}</strong></span>
+                        <span>🕒 {{ log.log_datetime|date:"d-M-Y H:i" }}</span>
+                    </div>
+                    <div style="color: #334155; font-size: 12px;">{{ log.details }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="padding: 24px 0; text-align: center; color: #94a3b8; font-size: 13px;">
+                No bulk import activity logged yet.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 21 Columns Schema Specification -->
+    <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <h3 style="margin: 0; font-size: 15px; font-weight: 700; color: #003366;">
+                📊 Required Template Column Specifications (21 Columns)
+            </h3>
+            <a href="{% url 'teletherapy_import_template' %}" style="font-size: 12.5px; color: #0369a1; text-decoration: none; font-weight: 600;">
+                Download Blank Template &rarr;
+            </a>
+        </div>
+        
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <thead>
+                    <tr style="background: #003366; color: #ffffff; text-align: left;">
+                        <th style="padding: 7px 10px; width: 40px;">#</th>
+                        <th style="padding: 7px 10px; width: 160px;">Column Header</th>
+                        <th style="padding: 7px 10px; width: 90px;">Required?</th>
+                        <th style="padding: 7px 10px;">Description & Expected Values</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for col in template_columns %}
+                    <tr style="border-bottom: 1px solid #e2e8f0; {% cycle 'background: #ffffff;' 'background: #f8fafc;' %}">
+                        <td style="padding: 6px 10px; font-weight: 600; color: #64748b;">{{ forloop.counter }}</td>
+                        <td style="padding: 6px 10px; font-weight: 700; color: #0f172a; font-family: monospace;">{{ col.name }}</td>
+                        <td style="padding: 6px 10px;">
+                            {% if col.required %}
+                            <span style="color: #b91c1c; font-weight: 700;">Required</span>
+                            {% else %}
+                            <span style="color: #64748b;">Optional</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 6px 10px; color: #334155;">{{ col.desc }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function handleFileSelect(input) {
+    if (input.files && input.files[0]) {
+        var file = input.files[0];
+        displaySelectedFile(file.name, file.size);
+    }
+}
+
+function handleFileDrop(e) {
+    e.preventDefault();
+    var dropzone = document.getElementById('dropzone');
+    dropzone.style.borderColor = '#94a3b8';
+    dropzone.style.background = '#f8fafc';
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        var file = e.dataTransfer.files[0];
+        var fileInput = document.getElementById('fileInput');
+        fileInput.files = e.dataTransfer.files;
+        displaySelectedFile(file.name, file.size);
+    }
+}
+
+function displaySelectedFile(name, size) {
+    var display = document.getElementById('fileSelectedDisplay');
+    var nameSpan = document.getElementById('selectedFileName');
+    var sizeSpan = document.getElementById('selectedFileSize');
+
+    nameSpan.textContent = name;
+    var sizeKb = (size / 1024).toFixed(1);
+    var sizeMb = (size / (1024 * 1024)).toFixed(2);
+    sizeSpan.textContent = '(' + (sizeMb >= 1 ? sizeMb + ' MB' : sizeKb + ' KB') + ')';
+    display.style.display = 'inline-flex';
+}
+
+function handleImportSubmit(e) {
+    var fileInput = document.getElementById('fileInput');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        e.preventDefault();
+        alert('Please select an Excel or CSV file to import.');
+        return false;
+    }
+    
+    var btn = document.getElementById('submitBtn');
+    var icon = document.getElementById('btnIcon');
+    var text = document.getElementById('btnText');
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    icon.textContent = '⏳';
+    text.textContent = 'Processing Import (Please wait)...';
+    return true;
+}
+</script>
+{% endblock %}
