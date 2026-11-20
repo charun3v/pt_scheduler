@@ -184,50 +184,51 @@
             text-transform: uppercase;
         }
 
+        .ot-table td {
+            font-weight: normal;
+        }
+
+        .bold-entries .ot-table td {
+            font-weight: 700 !important;
+        }
+
         .col-sl {
             width: 32px;
             text-align: center;
-            font-weight: 600;
         }
 
         .col-name {
-            width: 24%;
-            font-weight: 700;
+            width: 18%;
             text-transform: uppercase;
         }
 
         .col-ip {
             width: 14%;
             text-align: center;
-            font-family: monospace, 'Courier New', Courier, sans-serif;
-            font-weight: 700;
-            font-size: 10pt;
+            font-size: 9.5pt;
             letter-spacing: 0.3px;
         }
 
         .col-diag {
-            width: 18%;
+            width: 21%;
             text-transform: uppercase;
         }
 
         .col-proc {
-            width: 19%;
+            width: 21%;
             text-align: center;
-            font-weight: 600;
             text-transform: uppercase;
         }
 
         .col-ana {
             width: 12%;
             text-align: center;
-            font-weight: 600;
             text-transform: uppercase;
         }
 
         .col-cons {
-            width: 13%;
+            width: 14%;
             text-align: center;
-            font-weight: 600;
             text-transform: uppercase;
         }
 
@@ -272,8 +273,7 @@
         .ot-sig-name {
             font-size: 10pt;
             font-weight: 800;
-            letter-spacing: 0.3px;
-            text-transform: uppercase;
+            letter-spacing: 0.2px;
             margin-bottom: 1px;
         }
 
@@ -425,10 +425,13 @@
             </div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 11px; background: rgba(255,255,255,0.18); padding: 3px 8px; border-radius: 3px; color: #f8fafc;" title="Click any cell or text on the sheet to edit directly before printing">
-                ✏️ All cells inline-editable &amp; auto-synced
-            </span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" onclick="toggleBoldEntries()" id="btnToggleBold" class="btn" style="background: rgba(255,255,255,0.15); color: #fff; border-color: rgba(255,255,255,0.3);" title="Toggle font weight of table row entries between Normal and Bold">
+                🔲 Bold Entries: OFF
+            </button>
+            <a href="{% url 'print_template_settings' %}?template=brachy" target="_blank" class="btn" style="background: #15803d; color: #fff; border-color: #166534;" title="Configure default institutional headers, copy-to list, and signing authority">
+                ⚙️ Template Settings ↗
+            </a>
             <button type="button" onclick="syncTopToBottom()" class="btn btn-sync" title="Ensure both top and bottom copies match">
                 🔄 Sync Top &amp; Bottom
             </button>
@@ -637,9 +640,43 @@
             alert("✓ Top and Bottom lists are now in 100% identical sync!");
         }
 
+        let gBoldEntries = false;
+        function toggleBoldEntries() {
+            gBoldEntries = !gBoldEntries;
+            const topSheet = document.getElementById('topSheet');
+            const bottomSheet = document.getElementById('bottomSheet');
+            const btn = document.getElementById('btnToggleBold');
+            if (gBoldEntries) {
+                topSheet.classList.add('bold-entries');
+                bottomSheet.classList.add('bold-entries');
+                btn.innerHTML = '☑️ Bold Entries: ON';
+                btn.style.background = '#f59e0b';
+                btn.style.borderColor = '#d97706';
+                btn.style.color = '#000';
+            } else {
+                topSheet.classList.remove('bold-entries');
+                bottomSheet.classList.remove('bold-entries');
+                btn.innerHTML = '🔲 Bold Entries: OFF';
+                btn.style.background = 'rgba(255,255,255,0.15)';
+                btn.style.borderColor = 'rgba(255,255,255,0.3)';
+                btn.style.color = '#fff';
+            }
+        }
+
+        function toTitleCase(str) {
+            if (!str) return '';
+            return str.replace(/\w\S*/g, function(txt) {
+                if (txt.toUpperCase() === 'DR' || txt.toUpperCase() === 'DR.') return 'Dr.';
+                if (txt.toUpperCase() === 'PROF' || txt.toUpperCase() === 'PROF.') return 'Prof.';
+                if (txt.length === 1) return txt.toUpperCase();
+                return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+            });
+        }
+
         function updateSigningAuthority(val) {
+            const titleCased = toTitleCase(val);
             document.querySelectorAll('[data-sync="sig-name"]').forEach(el => {
-                el.innerText = val.toUpperCase();
+                el.innerText = titleCased;
             });
         }
 

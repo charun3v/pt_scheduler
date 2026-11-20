@@ -2498,6 +2498,26 @@ def brachy_search_patients_api(request):
 
 
 
+def to_title_case_doctor(name_str):
+    if not name_str:
+        return ''
+    parts = name_str.strip().split()
+    formatted = []
+    for p in parts:
+        p_clean = p.strip()
+        if p_clean.upper() in ['DR', 'DR.', 'DOCTOR']:
+            formatted.append('Dr.')
+        elif p_clean.upper() in ['PROF', 'PROF.', 'PROFESSOR']:
+            formatted.append('Prof.')
+        elif len(p_clean) == 1:
+            formatted.append(p_clean.upper())
+        elif len(p_clean) == 2 and p_clean.endswith('.'):
+            formatted.append(p_clean.upper())
+        else:
+            formatted.append(p_clean.capitalize())
+    return ' '.join(formatted)
+
+
 @login_required
 def brachy_ot_list_print_view(request):
     """
@@ -2624,10 +2644,12 @@ def brachy_ot_list_print_view(request):
     header_line_2 = (config.brachy_ot_header_line_2 or 'DEPARTMENT OF RADIATION ONCOLOGY {unit}').replace('{unit}', unit_disp)
     header_line_3 = (config.brachy_ot_header_line_3 or 'OT LIST AS ON {date}').replace('{date}', target_date_formatted)
 
-    signing_authority = request.GET.get('signing_authority') or config.brachy_ot_default_signing_authority
+    raw_signing_authority = request.GET.get('signing_authority') or config.brachy_ot_default_signing_authority
+    signing_authority = to_title_case_doctor(raw_signing_authority)
     designation = request.GET.get('designation') or config.brachy_ot_default_designation
 
-    consultant_options = get_consultant_signing_options(signing_authority)
+    raw_consultant_options = get_consultant_signing_options(raw_signing_authority)
+    consultant_options = [to_title_case_doctor(opt) for opt in raw_consultant_options]
     designations = list(Designation.objects.filter(is_active=True).order_by('display_order', 'name'))
 
     context = {

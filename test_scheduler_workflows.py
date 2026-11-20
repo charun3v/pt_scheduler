@@ -5225,14 +5225,18 @@ def run_tests():
     assert "KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY" in print_html
     assert "DEPARTMENT OF RADIATION ONCOLOGY UNIT-III" in print_html
     assert "OT LIST AS ON" in print_html
-    assert "SHIVARATHNAMMA" in print_html
+    assert "SHIVARATHNAMMA" in print_html  # Patient Name in Capital Case
     assert "9999053" in print_html
-    assert "CA CERVIX" in print_html
-    assert "REQUIRED" in print_html  # Spinal Anaesthesia -> REQUIRED
-    assert "SESSION" in print_html   # e.g., ICBT 1ST SESSION or ICBT HDR 1ST SESSION
+    assert "CA CERVIX" in print_html       # Diagnosis in Capital Case
+    assert "REQUIRED" in print_html        # Spinal Anaesthesia -> REQUIRED
+    assert "SESSION" in print_html         # e.g., ICBT 1ST SESSION or ICBT HDR 1ST SESSION
     assert "COPY TO" in print_html
     assert "Radiation Physics" in print_html
     assert "contenteditable" in print_html
+    assert "width: 18%" in print_html      # Reduced Patient column width
+    assert "font-weight: normal;" in print_html # Entries normal weight, headings bold
+    assert "btnToggleBold" in print_html   # Quick toggle for bold entries
+    assert "Dr. Naveen T" in print_html    # Signing authority in Title Case
 
     # 2. Test Print Template Settings GET for Brachy
     resp_settings_get = client.get('/reports/print-template-settings/?template=brachy')
@@ -5240,6 +5244,7 @@ def run_tests():
     settings_html = resp_settings_get.content.decode('utf-8')
     assert "sectionBrachyFields" in settings_html
     assert "Brachytherapy OT List" in settings_html
+    assert "previewBrachyMockup" in settings_html # Live mockup preview pane
 
     # 3. Test Print Template Settings POST to update Brachy OT configs
     resp_settings_post = client.post('/reports/print-template-settings/', {
@@ -5257,12 +5262,12 @@ def run_tests():
     assert cfg.brachy_ot_header_line_1 == 'CUSTOM TEST ONCOLOGY CENTRE, BANGALORE.'
     assert cfg.brachy_ot_default_signing_authority == 'DR. TEST CONSULTANT'
 
-    # Verify custom settings reflect on the print page
+    # Verify custom settings reflect on the print page (with Title Case doctor name)
     resp_print_custom = client.get(f'/scheduler/brachytherapy/daily-list/print/?date={test_date_53.isoformat()}')
     assert resp_print_custom.status_code == 200
     custom_print_html = resp_print_custom.content.decode('utf-8')
     assert "CUSTOM TEST ONCOLOGY CENTRE, BANGALORE." in custom_print_html
-    assert "DR. TEST CONSULTANT" in custom_print_html
+    assert "Dr. Test Consultant" in custom_print_html
     assert "1. Test Physicist" in custom_print_html
 
     # 4. Test Reset to Defaults for Brachy

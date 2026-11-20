@@ -302,7 +302,7 @@
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                         Brachy OT Header Line 1 (Institution Name): *
                     </label>
-                    <input type="text" name="brachy_ot_header_line_1" id="input_brachy_ot_header_line_1" value="{{ config.brachy_ot_header_line_1 }}" required
+                    <input type="text" name="brachy_ot_header_line_1" id="input_brachy_ot_header_line_1" value="{{ config.brachy_ot_header_line_1 }}" required oninput="updateLivePreview()"
                            style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                     <span style="font-size: 11px; color: #64748b;">Default: KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY, BANGALORE.</span>
                 </div>
@@ -311,7 +311,7 @@
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                         Brachy OT Header Line 2 (Department &amp; Unit): *
                     </label>
-                    <input type="text" name="brachy_ot_header_line_2" id="input_brachy_ot_header_line_2" value="{{ config.brachy_ot_header_line_2 }}" required
+                    <input type="text" name="brachy_ot_header_line_2" id="input_brachy_ot_header_line_2" value="{{ config.brachy_ot_header_line_2 }}" required oninput="updateLivePreview()"
                            style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                     <span style="font-size: 11px; color: #64748b;">Use {unit} to dynamically substitute the selected clinical unit (e.g. UNIT-III)</span>
                 </div>
@@ -320,7 +320,7 @@
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                         Brachy OT Header Line 3 (Document Title &amp; Date): *
                     </label>
-                    <input type="text" name="brachy_ot_header_line_3" id="input_brachy_ot_header_line_3" value="{{ config.brachy_ot_header_line_3 }}" required
+                    <input type="text" name="brachy_ot_header_line_3" id="input_brachy_ot_header_line_3" value="{{ config.brachy_ot_header_line_3 }}" required oninput="updateLivePreview()"
                            style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                     <span style="font-size: 11px; color: #64748b;">Use {date} to dynamically insert the scheduled date (e.g. OT LIST AS ON {date})</span>
                 </div>
@@ -329,7 +329,7 @@
                     <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                         Brachy OT Copy To Recipients List (One per line): *
                     </label>
-                    <textarea name="brachy_ot_copy_to" id="input_brachy_ot_copy_to" rows="4" required
+                    <textarea name="brachy_ot_copy_to" id="input_brachy_ot_copy_to" rows="4" required oninput="updateLivePreview()"
                               style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-family: monospace;">{{ config.brachy_ot_copy_to }}</textarea>
                     <span style="font-size: 11px; color: #64748b;">Displays in the bottom-left footer of each half-sheet</span>
                 </div>
@@ -339,14 +339,14 @@
                         <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                             Brachy Default Signing Authority: *
                         </label>
-                        <input type="text" name="brachy_ot_default_signing_authority" id="input_brachy_ot_default_signing_authority" value="{{ config.brachy_ot_default_signing_authority }}" required list="consultantList"
+                        <input type="text" name="brachy_ot_default_signing_authority" id="input_brachy_ot_default_signing_authority" value="{{ config.brachy_ot_default_signing_authority }}" required list="consultantList" oninput="updateLivePreview()"
                                style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                     </div>
                     <div>
                         <label style="display: block; font-weight: bold; font-size: 12px; color: #1e293b; margin-bottom: 4px;">
                             Brachy Default Designation: *
                         </label>
-                        <input type="text" name="brachy_ot_default_designation" id="input_brachy_ot_default_designation" value="{{ config.brachy_ot_default_designation }}" required list="designationList"
+                        <input type="text" name="brachy_ot_default_designation" id="input_brachy_ot_default_designation" value="{{ config.brachy_ot_default_designation }}" required list="designationList" oninput="updateLivePreview()"
                                style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #707070; border-radius: 4px; font-weight: bold;">
                     </div>
                 </div>
@@ -505,8 +505,8 @@
                 </div>
             </div>
 
-            <!-- Paper Sheet Mockup -->
-            <div style="background: #ffffff; border: 1px solid #94a3b8; border-radius: 4px; padding: 25px 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; color: #111;">
+            <!-- Paper Sheet Mockup: Teletherapy (Regular & Emergency) -->
+            <div id="previewTeletherapyMockup" style="display: {% if active_template == 'brachy' %}none{% else %}block{% endif %}; background: #ffffff; border: 1px solid #94a3b8; border-radius: 4px; padding: 25px 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; color: #111;">
                 <!-- Header Grid -->
                 <div style="display: grid; grid-template-columns: 120px 1fr 120px; align-items: start; margin-bottom: 12px;">
                     <div style="font-size: 11px; font-weight: bold; font-family: monospace;" id="prev_ref_code">
@@ -642,6 +642,112 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Paper Sheet Mockup: Brachytherapy OT List (2x Half-A4 Format) -->
+            <div id="previewBrachyMockup" style="display: {% if active_template == 'brachy' %}block{% else %}none{% endif %}; background: #ffffff; border: 1.5px solid #86efac; border-radius: 4px; padding: 18px 22px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #111;">
+                <!-- TOP HALF -->
+                <div style="border: 1px dashed #cbd5e1; padding: 10px 14px; border-radius: 4px; background: #fafafa; margin-bottom: 6px;">
+                    <div style="text-align: center; margin-bottom: 6px;">
+                        <div style="font-size: 12px; font-weight: 800; text-transform: uppercase;" class="prev-brachy-h1">{{ config.brachy_ot_header_line_1 }}</div>
+                        <div style="font-size: 10.5px; font-weight: 700; text-transform: uppercase; margin-top: 1px;" class="prev-brachy-h2">{{ config.brachy_ot_header_line_2 }}</div>
+                        <div style="font-size: 10.5px; font-weight: 700; text-transform: uppercase; margin-top: 1px;" class="prev-brachy-h3">{{ config.brachy_ot_header_line_3 }}</div>
+                    </div>
+
+                    <!-- Table (7 columns) -->
+                    <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; border: 1px solid #000; margin-bottom: 6px;">
+                        <thead>
+                            <tr style="background: #f1f5f9; text-align: center; font-weight: 800; text-transform: uppercase;">
+                                <th style="border: 1px solid #000; padding: 2.5px 2px; width: 28px;">Sl.<br>No</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 18%;">NAME</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 14%;">IP NO</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 21%;">DIAGNOSIS</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 21%;">PROCEDURE</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 12%;">ANAESTHESIA</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 14%;">CONSULTANT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="text-align: left; font-weight: normal; font-size: 8.5px;">
+                                <td style="border: 1px solid #000; padding: 2.5px 2px; text-align: center;">1</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-transform: uppercase;">JAYAMMA</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: center;">20250016982</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-transform: uppercase;">RECURRENT CA GBS</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: center; text-transform: uppercase;">ISBT 3RD SESSION</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: center; text-transform: uppercase;">NOT REQUIRED</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: center; text-transform: uppercase;">DR TANVIR</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Footer: Copy To & Signature -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                        <div style="font-size: 7.5px; line-height: 1.25; max-width: 60%;">
+                            <div style="font-weight: 800;">COPY TO</div>
+                            <div class="prev-brachy-copy" style="white-space: pre-line;">{{ config.brachy_ot_copy_to }}</div>
+                        </div>
+                        <div style="text-align: center; min-width: 130px; font-size: 8.5px;">
+                            <div style="height: 14px;"></div>
+                            <div class="prev-brachy-sig-name" style="font-weight: 800; font-size: 9px;">{{ config.brachy_ot_default_signing_authority }}</div>
+                            <div class="prev-brachy-sig-desig" style="font-size: 8px; font-weight: 700;">{{ config.brachy_ot_default_designation }}</div>
+                            <div class="prev-brachy-sig-dept" style="font-size: 7.5px;">{{ config.brachy_ot_department_line }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mid-sheet Cutting Divider -->
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 0; color: #64748b; font-size: 8px;">
+                    <div style="flex: 1; border-top: 1px dashed #94a3b8;"></div>
+                    <span style="border: 1px dashed #cbd5e1; background: #f8fafc; padding: 1px 6px; border-radius: 3px; font-weight: bold;">✂ TEAR / CUT ALONG LINE ✂</span>
+                    <div style="flex: 1; border-top: 1px dashed #94a3b8;"></div>
+                </div>
+
+                <!-- BOTTOM HALF -->
+                <div style="border: 1px dashed #cbd5e1; padding: 10px 14px; border-radius: 4px; background: #fafafa;">
+                    <div style="text-align: center; margin-bottom: 6px;">
+                        <div style="font-size: 12px; font-weight: 800; text-transform: uppercase;" class="prev-brachy-h1">{{ config.brachy_ot_header_line_1 }}</div>
+                        <div style="font-size: 10.5px; font-weight: 700; text-transform: uppercase; margin-top: 1px;" class="prev-brachy-h2">{{ config.brachy_ot_header_line_2 }}</div>
+                        <div style="font-size: 10.5px; font-weight: 700; text-transform: uppercase; margin-top: 1px;" class="prev-brachy-h3">{{ config.brachy_ot_header_line_3 }}</div>
+                    </div>
+
+                    <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; border: 1px solid #000; margin-bottom: 6px;">
+                        <thead>
+                            <tr style="background: #f1f5f9; text-align: center; font-weight: 800; text-transform: uppercase;">
+                                <th style="border: 1px solid #000; padding: 2.5px 2px; width: 28px;">Sl.<br>No</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 18%;">NAME</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 14%;">IP NO</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 21%;">DIAGNOSIS</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 21%;">PROCEDURE</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 12%;">ANAESTHESIA</th>
+                                <th style="border: 1px solid #000; padding: 2.5px 4px; width: 14%;">CONSULTANT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="text-align: left; font-weight: normal; font-size: 8.5px;">
+                                <td style="border: 1px solid #000; padding: 2.5px 2px; text-align: center;">1</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-transform: uppercase;">JAYAMMA</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: center;">20250016982</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-transform: uppercase;">RECURRENT CA GBS</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: center; text-transform: uppercase;">ISBT 3RD SESSION</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: center; text-transform: uppercase;">NOT REQUIRED</td>
+                                <td style="border: 1px solid #000; padding: 2.5px 4px; text-align: center; text-transform: uppercase;">DR TANVIR</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                        <div style="font-size: 7.5px; line-height: 1.25; max-width: 60%;">
+                            <div style="font-weight: 800;">COPY TO</div>
+                            <div class="prev-brachy-copy" style="white-space: pre-line;">{{ config.brachy_ot_copy_to }}</div>
+                        </div>
+                        <div style="text-align: center; min-width: 130px; font-size: 8.5px;">
+                            <div style="height: 14px;"></div>
+                            <div class="prev-brachy-sig-name" style="font-weight: 800; font-size: 9px;">{{ config.brachy_ot_default_signing_authority }}</div>
+                            <div class="prev-brachy-sig-desig" style="font-size: 8px; font-weight: 700;">{{ config.brachy_ot_default_designation }}</div>
+                            <div class="prev-brachy-sig-dept" style="font-size: 7.5px;">{{ config.brachy_ot_department_line }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -677,6 +783,8 @@
         const badgeBrachy = document.getElementById('badgeBrachy');
         const bannerBrachy = document.getElementById('bannerBrachy');
         const secBrachy = document.getElementById('sectionBrachyFields');
+        const prevTeleMockup = document.getElementById('previewTeletherapyMockup');
+        const prevBrachyMockup = document.getElementById('previewBrachyMockup');
 
         if (tmpl === 'regular') {
             // Cards
@@ -710,6 +818,8 @@
             if (secBrachy) secBrachy.style.display = 'none';
 
             // Preview
+            if (prevTeleMockup) prevTeleMockup.style.display = 'block';
+            if (prevBrachyMockup) prevBrachyMockup.style.display = 'none';
             prevReg.style.display = 'block';
             prevEm.style.display = 'none';
             prevTag.style.background = '#e0f2fe';
@@ -747,6 +857,8 @@
             if (secBrachy) secBrachy.style.display = 'none';
 
             // Preview
+            if (prevTeleMockup) prevTeleMockup.style.display = 'block';
+            if (prevBrachyMockup) prevBrachyMockup.style.display = 'none';
             prevReg.style.display = 'none';
             prevEm.style.display = 'block';
             prevTag.style.background = '#fee2e2';
@@ -782,6 +894,13 @@
             secReg.style.display = 'none';
             secEm.style.display = 'none';
             if (secBrachy) secBrachy.style.display = 'block';
+
+            // Preview
+            if (prevTeleMockup) prevTeleMockup.style.display = 'none';
+            if (prevBrachyMockup) prevBrachyMockup.style.display = 'block';
+            prevTag.style.background = '#dcfce7';
+            prevTag.style.color = '#15803d';
+            prevTag.innerText = 'Brachytherapy OT List';
         }
 
         // Update live preview texts for active template
@@ -818,6 +937,21 @@
         document.getElementById('prev_signing_authority').innerText = document.getElementById('input_default_signing_authority').value;
         document.getElementById('prev_designation').innerText = document.getElementById('input_default_designation').value;
         document.getElementById('prev_dept_line').innerText = document.getElementById('input_department_signature_line').value;
+
+        // Brachy Mockup Live Refresh
+        const inBH1 = document.getElementById('input_brachy_ot_header_line_1');
+        const inBH2 = document.getElementById('input_brachy_ot_header_line_2');
+        const inBH3 = document.getElementById('input_brachy_ot_header_line_3');
+        const inBCopy = document.getElementById('input_brachy_ot_copy_to');
+        const inBSig = document.getElementById('input_brachy_ot_default_signing_authority');
+        const inBDesig = document.getElementById('input_brachy_ot_default_designation');
+
+        if (inBH1) document.querySelectorAll('.prev-brachy-h1').forEach(el => el.innerText = inBH1.value);
+        if (inBH2) document.querySelectorAll('.prev-brachy-h2').forEach(el => el.innerText = inBH2.value);
+        if (inBH3) document.querySelectorAll('.prev-brachy-h3').forEach(el => el.innerText = inBH3.value);
+        if (inBCopy) document.querySelectorAll('.prev-brachy-copy').forEach(el => el.innerText = inBCopy.value);
+        if (inBSig) document.querySelectorAll('.prev-brachy-sig-name').forEach(el => el.innerText = inBSig.value);
+        if (inBDesig) document.querySelectorAll('.prev-brachy-sig-desig').forEach(el => el.innerText = inBDesig.value);
     }
 
     // Initialize state on page load

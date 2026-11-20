@@ -146,8 +146,11 @@
                 Today
             </a>
             <button type="button" onclick="handlePrintDailyList();" style="background: #107c41; color: #ffffff; border: none; padding: 5px 12px; border-radius: 3px; font-weight: 700; font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                🖨️ Print
+                🖨️ Print OT List (2x A4)
             </button>
+            <a href="{% url 'print_template_settings' %}?template=brachy" target="_blank" style="background: #f0fdf4; color: #166534; border: 1px solid #86efac; padding: 4px 10px; border-radius: 3px; text-decoration: none; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="Configure default institutional headers, copy-to list, and signing authority (Admin/SubAdmin)">
+                ⚙️ Template Settings ↗
+            </a>
         </form>
     </div>
 
