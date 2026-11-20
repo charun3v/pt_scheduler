@@ -366,15 +366,18 @@ class TreatmentSchedule(models.Model):
 
     @property
     def treatment_end_date(self):
-        return self.date_of_end or self.calculate_end_date()
+        """
+        Returns the manually entered treatment end date.
+        Kept blank (None) if not entered manually when treatment status is recorded.
+        """
+        return self.actual_end_date or self.date_of_end
 
     @property
     def is_draft(self):
         return self.status == 'Draft'
 
     def save(self, *args, **kwargs):
-        if self.date_of_start and self.no_of_fractions and not self.date_of_end:
-            self.date_of_end = self.calculate_end_date()
+        # End Date is never automatically calculated; it remains blank until manually entered when treatment status is recorded
         super().save(*args, **kwargs)
 
     @property
@@ -394,17 +397,16 @@ class TreatmentSchedule(models.Model):
         """
         Determines the final scheduled date of this treatment course.
         For Brachytherapy: the latest scheduled appointment date.
-        For Teletherapy: the scheduled/calculated end date, or start date, or intended start date.
+        For Teletherapy: the manually recorded end date, or start date, or intended start date.
         """
         if self.treatment_type == 'Brachytherapy':
             latest_app = self.brachy_appointments.order_by('-appointment_date').first()
             if latest_app:
                 return latest_app.appointment_date
+        if self.actual_end_date:
+            return self.actual_end_date
         if self.date_of_end:
             return self.date_of_end
-        calc_end = self.calculate_end_date()
-        if calc_end:
-            return calc_end
         if self.date_of_start:
             return self.date_of_start
         if self.intended_start_date:

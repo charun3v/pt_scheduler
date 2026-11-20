@@ -23,7 +23,7 @@
             <div><strong>Modality:</strong> {{ schedule.treatment_type }}</div>
             <div><strong>Machine:</strong> {{ schedule.machine_display }}</div>
             <div><strong>Planned Start:</strong> {{ schedule.date_of_start|date:"d-M-Y"|default:"Unscheduled" }}</div>
-            <div><strong>Planned End:</strong> {{ schedule.treatment_end_date|date:"d-M-Y"|default:"-" }}</div>
+            <div><strong>End Date:</strong> {{ schedule.treatment_end_date|date:"d-M-Y"|default:"-" }}</div>
             <div><strong>Fractions:</strong> {{ schedule.no_of_fractions|default:"-" }}</div>
             {% if schedule.is_frozen %}
             <div style="color: #991b1b; font-weight: 700;">🔒 Frozen Course (> 1 month past scheduled date)</div>
@@ -76,7 +76,7 @@
                             Actual Treatment End Date:
                         </label>
                         <input type="date" name="actual_end_date" id="input_act_end"
-                               value="{% if schedule.actual_end_date %}{{ schedule.actual_end_date|date:'Y-m-d' }}{% elif schedule.treatment_end_date %}{{ schedule.treatment_end_date|date:'Y-m-d' }}{% endif %}"
+                               value="{% if schedule.actual_end_date %}{{ schedule.actual_end_date|date:'Y-m-d' }}{% endif %}"
                                style="width: 100%; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px;">
                     </div>
                 </div>

@@ -262,7 +262,7 @@
                         <th style="width: 110px;">Course / Tag</th>
                         <th style="width: 90px;">Sim Date</th>
                         <th style="width: 95px;">Start Date</th>
-                        <th style="width: 105px;" title="Estimated treatment completion date: automatically calculated from Start Date + Number of Fractions (1 fraction/day, Mon–Sat, skipping Sundays & holidays)">Planned End Date</th>
+                        <th style="width: 95px;">End Date</th>
                         <th style="width: 115px;">Treatment Mode</th>
                         <th style="width: 90px;">Intent</th>
                         <th style="width: 70px;">Dose</th>
@@ -306,7 +306,7 @@
                             {% endif %}
                         </td>
 
-                        <!-- Treatment End Date (Calculated skipping Sundays) -->
+                        <!-- Treatment End Date (Entered manually via Treatment Status) -->
                         <td>
                             {% if s.treatment_end_date %}
                                 <strong>{{ s.treatment_end_date|date:"d-M-Y" }}</strong>
@@ -446,7 +446,7 @@
                                 <div style="margin-top: 4px;">
                                     <button type="button" class="action-ribbon-btn" 
                                             style="padding: 2px 7px; font-size: 10px; background: #ecfdf5; color: #065f46; border-color: #a7f3d0; font-weight: 600;"
-                                            onclick="openActualStatusModal({{ s.id }}, '{{ s.actual_start_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_treatment_status_id|default:'' }}', '{{ s.status }}', '{{ s.date_of_start|date:'Y-m-d'|default:'' }}', '{{ s.treatment_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_status_notes|default:''|escapejs }}', '{{ s.date_of_sim|date:'Y-m-d'|default:'' }}', '{{ s.treatment_type }}');"
+                                            onclick="openActualStatusModal({{ s.id }}, '{{ s.actual_start_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_treatment_status_id|default:'' }}', '{{ s.status }}', '{{ s.date_of_start|date:'Y-m-d'|default:'' }}', '{{ s.actual_end_date|date:'Y-m-d'|default:'' }}', '{{ s.actual_status_notes|default:''|escapejs }}', '{{ s.date_of_sim|date:'Y-m-d'|default:'' }}', '{{ s.treatment_type }}');"
                                             title="Record Actual Start Date, End Date, and Treatment Completion Status">
                                         🩺 {% if s.actual_treatment_status or s.actual_start_date %}Edit Actual{% else %}Record Status{% endif %}
                                     </button>
@@ -733,7 +733,7 @@
                     </div>
                     <div>
                         <label style="display: block; font-size: 11px; font-weight: 600; color: #166534; margin-bottom: 3px;">Actual End Date:</label>
-                        <input type="date" name="actual_end_date" value="{% if latest_schedule.actual_end_date %}{{ latest_schedule.actual_end_date|date:'Y-m-d' }}{% elif latest_schedule.treatment_end_date %}{{ latest_schedule.treatment_end_date|date:'Y-m-d' }}{% endif %}" style="width: 100%; padding: 4px 6px; border: 1px solid #86efac; border-radius: 3px; font-size: 12px;">
+                        <input type="date" name="actual_end_date" value="{% if latest_schedule.actual_end_date %}{{ latest_schedule.actual_end_date|date:'Y-m-d' }}{% endif %}" style="width: 100%; padding: 4px 6px; border: 1px solid #86efac; border-radius: 3px; font-size: 12px;">
                     </div>
                 </div>
             </div>
@@ -789,7 +789,7 @@ function openActualStatusModal(courseId, actStart, actEnd, statusId, curStatus, 
         delete startInput.dataset.mode;
     }
 
-    document.getElementById('modal_act_end').value = actEnd || planEnd || '';
+    document.getElementById('modal_act_end').value = actEnd || '';
     document.getElementById('modal_act_start_no').value = actStart || '';
     document.getElementById('modal_act_end_no').value = actEnd || '';
     document.getElementById('modal_act_notes').value = notes || '';

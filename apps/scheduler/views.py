@@ -162,7 +162,9 @@ def schedule_patient_view(request, patient_id):
                     prev_s.actual_treatment_status = comp_obj
                     prev_s.status = 'Completed'
                     prev_s.actual_start_date = prev_st_date or prev_s.date_of_start
-                    prev_s.actual_end_date = prev_end_date or prev_s.treatment_end_date
+                    prev_s.actual_end_date = prev_end_date
+                    if prev_end_date:
+                        prev_s.date_of_end = prev_end_date
                 elif prev_comp == 'no':
                     if prev_st_id:
                         prev_s.actual_treatment_status = TreatmentCompletionStatus.objects.filter(id=prev_st_id).first()
@@ -179,6 +181,7 @@ def schedule_patient_view(request, patient_id):
                         prev_s.actual_start_date = prev_st_date
                     if prev_end_date:
                         prev_s.actual_end_date = prev_end_date
+                        prev_s.date_of_end = prev_end_date
                 if prev_notes:
                     prev_s.actual_status_notes = prev_notes
                 prev_s.save()
@@ -956,7 +959,9 @@ def update_actual_treatment_status_view(request, schedule_id):
             schedule.actual_treatment_status = comp_status
             schedule.status = 'Completed'
             schedule.actual_start_date = act_start or schedule.actual_start_date or schedule.date_of_start
-            schedule.actual_end_date = act_end or schedule.actual_end_date or schedule.treatment_end_date
+            schedule.actual_end_date = act_end or schedule.actual_end_date
+            if act_end:
+                schedule.date_of_end = act_end
             if notes:
                 schedule.actual_status_notes = notes
         elif is_completed_val == 'no':
@@ -975,6 +980,7 @@ def update_actual_treatment_status_view(request, schedule_id):
                 schedule.actual_start_date = act_start
             if act_end:
                 schedule.actual_end_date = act_end
+                schedule.date_of_end = act_end
             if notes:
                 schedule.actual_status_notes = notes
         else:
@@ -987,6 +993,7 @@ def update_actual_treatment_status_view(request, schedule_id):
                 schedule.actual_start_date = act_start
             if act_end:
                 schedule.actual_end_date = act_end
+                schedule.date_of_end = act_end
             if notes:
                 schedule.actual_status_notes = notes
 

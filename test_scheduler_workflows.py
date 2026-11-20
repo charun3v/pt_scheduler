@@ -5692,6 +5692,74 @@ def run_tests():
     Patient.objects.filter(mr_no__in=[888800001, 888800002, 888800003, 888800004]).delete()
     print("✓ Test 55 Passed: Clinical Governance, Edit Permissions, Search View Buttons & Past Course Handling fully verified.")
 
+    # ==========================================
+    # TEST 56: End Date Manual Entry Only (Never Auto-Calculated)
+    # ==========================================
+    print("\n--- Test 56: End Date Manual Entry Only (Never Auto-Calculated) ---")
+    Patient.objects.filter(mr_no=888800005).delete()
+    pt56 = Patient.objects.create(
+        mr_no=888800005,
+        pt_name="Test EndDate Patient",
+        age=50,
+        sex='Female',
+        phone_no='9900112233',
+        site_of_treatment='Head and neck',
+        diagnosis='Ca Oropharynx',
+        primary_consultant=active_consultant,
+        unit='Unit III'
+    )
+
+    # 1. Schedule a Teletherapy course with 30 fractions starting next week
+    start_56 = date.today() + timedelta(days=7)
+    sched56 = TreatmentSchedule.objects.create(
+        patient=pt56,
+        treatment_type='Teletherapy',
+        date_of_start=start_56,
+        no_of_fractions=30,
+        intent=radical_intent,
+        machine=mach_test,
+        shift=shift_test,
+        status='Scheduled'
+    )
+
+    # Verify that date_of_end is NOT auto-calculated upon creation/saving
+    assert sched56.date_of_end is None, "date_of_end must NOT be auto-calculated upon saving"
+    assert sched56.treatment_end_date is None, "treatment_end_date must be None if not entered manually"
+
+    # Verify patient detail page renders '-' for End Date
+    c.force_login(admin_user)
+    resp_pt56 = c.get(f'/patients/{pt56.id}/')
+    html_pt56 = resp_pt56.content.decode('utf-8')
+    assert "End Date" in html_pt56
+    assert "Planned End Date" not in html_pt56
+    # Course row must not show an auto-calculated date
+    calc_end_56 = sched56.calculate_end_date().strftime('%d-%b-%Y')
+    assert calc_end_56 not in html_pt56, f"Auto-calculated end date {calc_end_56} must not appear on patient detail"
+
+    # 2. Record Actual Treatment Status with manually entered actual_end_date
+    manual_end_date = start_56 + timedelta(days=40)
+    resp_status = c.post(f'/scheduler/course/{sched56.id}/actual-status/', {
+        'is_completed': 'yes',
+        'actual_start_date': start_56.strftime('%Y-%m-%d'),
+        'actual_end_date': manual_end_date.strftime('%Y-%m-%d'),
+        'actual_status_notes': 'All 30 fractions completed on time'
+    }, follow=True)
+    assert resp_status.status_code == 200
+
+    sched56.refresh_from_db()
+    assert sched56.actual_end_date == manual_end_date
+    assert sched56.date_of_end == manual_end_date
+    assert sched56.treatment_end_date == manual_end_date
+
+    # Now verify patient detail page displays the manually entered end date
+    resp_pt56_updated = c.get(f'/patients/{pt56.id}/')
+    html_pt56_updated = resp_pt56_updated.content.decode('utf-8')
+    assert manual_end_date.strftime('%d-%b-%Y') in html_pt56_updated
+
+    # Cleanup Test 56 records
+    pt56.delete()
+    print("✓ Test 56 Passed: End Date Manual Entry Only (Never Auto-Calculated) fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

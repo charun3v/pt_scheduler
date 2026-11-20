@@ -144,7 +144,7 @@
                     ⚠️ Previous Course #{{ latest_prev.id }} ({{ latest_prev.machine_display|default:latest_prev.treatment_type }}) - Completion Status Confirmation:
                 </span>
                 <span style="font-size: 11.5px; color: #78350f;">
-                    Planned: <strong>{{ latest_prev.date_of_start|date:"d-M-Y"|default:"Unscheduled" }}</strong> &rarr; <strong>{{ latest_prev.treatment_end_date|date:"d-M-Y"|default:"-" }}</strong>
+                    Start: <strong>{{ latest_prev.date_of_start|date:"d-M-Y"|default:"Unscheduled" }}</strong> &bull; End Date: <strong>{{ latest_prev.treatment_end_date|date:"d-M-Y"|default:"-" }}</strong>
                 </span>
             </div>
             <div style="font-size: 13px; color: #92400e; margin-bottom: 10px;">
@@ -175,7 +175,7 @@
                 </div>
                 <div>
                     <label style="font-size: 11.5px; font-weight: 600; color: #166534; margin-right: 4px;">Actual End Date:</label>
-                    <input type="date" name="prev_actual_end_date" id="prev_actual_end_date" value="{% if latest_prev.actual_end_date %}{{ latest_prev.actual_end_date|date:'Y-m-d' }}{% elif latest_prev.treatment_end_date %}{{ latest_prev.treatment_end_date|date:'Y-m-d' }}{% endif %}" style="padding: 3px 8px; font-size: 12px; border: 1px solid #86efac; border-radius: 3px;">
+                    <input type="date" name="prev_actual_end_date" id="prev_actual_end_date" value="{% if latest_prev.actual_end_date %}{{ latest_prev.actual_end_date|date:'Y-m-d' }}{% endif %}" style="padding: 3px 8px; font-size: 12px; border: 1px solid #86efac; border-radius: 3px;">
                 </div>
             </div>
             <!-- No fields -->
