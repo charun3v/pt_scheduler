@@ -211,21 +211,46 @@ def dashboard_view(request):
                 Q(diagnosis__icontains=query) |
                 Q(primary_consultant__name__icontains=query)
             )
+    elif show_hidden and user_is_admin:
+        # Hidden patients queue for Admin
+        patient_qs = Patient.objects.filter(
+            base_filter
+        ).distinct().select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
     else:
-        # Default view: Non-scheduled patients (pending patients awaiting scheduling)
+        # Default view: Non-scheduled teletherapy patients (pending teletherapy patients awaiting scheduling)
         # Front desk and nursing need not see the Pending Patients list
         if not can_view_pending_patients(request.user):
             patient_qs = Patient.objects.none()
         else:
-            patient_qs = Patient.objects.filter(
-                base_filter & (Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True))
-            ).distinct().select_related('primary_consultant').prefetch_related('schedules__machine', 'schedules__shift').order_by('-created_at')
+            # 1. Exclude patients who already have an active/ongoing/scheduled Teletherapy course
+            active_tele_patient_ids = TreatmentSchedule.objects.filter(
+                treatment_type='Teletherapy',
+                date_of_start__isnull=False,
+                status__in=['Scheduled', 'In Progress']
+            ).values_list('patient_id', flat=True)
+
+            # 2. Include patients with unstarted regular Teletherapy courses (Draft/Pending, not Emergency slot records)
+            unstarted_tele_patient_ids = TreatmentSchedule.objects.filter(
+                treatment_type='Teletherapy',
+                date_of_start__isnull=True,
+                is_emergency_slot=False
+            ).exclude(
+                status__in=['Completed', 'Cancelled']
+            ).values_list('patient_id', flat=True)
+
+            # 3. Query: Visible patients who either have no schedules at all (newly registered),
+            # or have an unstarted regular teletherapy course, and are NOT actively scheduled.
+            patient_qs = Patient.objects.filter(base_filter).filter(
+                Q(schedules__isnull=True) | Q(id__in=unstarted_tele_patient_ids)
+            ).exclude(
+                id__in=active_tele_patient_ids
+            ).distinct().select_related('primary_consultant').prefetch_related(
+                'schedules__machine', 'schedules__shift'
+            ).order_by('-created_at')
 
     hidden_count = Patient.objects.filter(
         is_hidden_from_dashboard=True
-    ).filter(
-        Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True)
-    ).distinct().count() if user_is_admin else 0
+    ).count() if user_is_admin else 0
 
     paginator = Paginator(patient_qs, 15)
     page_number = request.GET.get('page')

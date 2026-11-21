@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.utils import timezone
 from .models import Patient, ClinicalUnit, SEX_CHOICES, DEFAULT_SITES
 from apps.core.models import Consultant, AuditLog
+from apps.scheduler.models import TreatmentSchedule
 from apps.core.permissions import (
     can_edit_locked_identity, can_delete_patient, can_register_patient,
     is_admin_only, can_edit_patient, can_schedule_patient
@@ -691,17 +692,35 @@ def patient_hide_by_simulation_date_view(request):
         if not comment:
             comment = f"Bulk hidden: simulated before {cutoff_date.strftime('%d-%m-%Y')}"
 
+        active_tele_patient_ids = TreatmentSchedule.objects.filter(
+            treatment_type='Teletherapy',
+            date_of_start__isnull=False,
+            status__in=['Scheduled', 'In Progress']
+        ).values_list('patient_id', flat=True)
+
+        unstarted_tele_patient_ids = TreatmentSchedule.objects.filter(
+            treatment_type='Teletherapy',
+            date_of_start__isnull=True,
+            is_emergency_slot=False
+        ).exclude(
+            status__in=['Completed', 'Cancelled']
+        ).values_list('patient_id', flat=True)
+
         unsched_visible = Patient.objects.filter(
             is_hidden_from_dashboard=False
         ).filter(
-            Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True)
+            Q(schedules__isnull=True) | Q(id__in=unstarted_tele_patient_ids)
+        ).exclude(
+            id__in=active_tele_patient_ids
         ).distinct()
 
         has_recent_sim = Patient.objects.filter(
+            schedules__treatment_type='Teletherapy',
             schedules__date_of_sim__gte=cutoff_date
         ).values_list('id', flat=True)
 
         to_hide_ids = list(unsched_visible.filter(
+            schedules__treatment_type='Teletherapy',
             schedules__date_of_sim__lt=cutoff_date
         ).exclude(
             id__in=has_recent_sim

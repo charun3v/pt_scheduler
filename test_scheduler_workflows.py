@@ -358,7 +358,7 @@ def run_tests():
     # Verify primary options are present
     assert b'Register Patients' in resp.content, "Option 'Register Patients' must be present"
     assert b'Schedule Patients' in resp.content, "Option 'Schedule Patients' must be present"
-    assert b'Non-Scheduled Patients' in resp.content, "Table for Non-Scheduled Patients must be present"
+    assert (b'Non Scheduled Teletherapy Patients' in resp.content or b'Non-Scheduled Patients' in resp.content), "Table for Non Scheduled Teletherapy Patients must be present"
 
     # Verify pagination is exactly 15 per page
     page_obj = resp.context['page_obj']
@@ -2501,7 +2501,7 @@ def run_tests():
     assert '<div id="quickScheduleModal"' not in dash_def_html
     assert "⚡ Quick Schedule" not in dash_def_html
     assert "Search Patient Directory & Check Schedule Status" in dash_def_html
-    assert "Non-Scheduled Patients" not in dash_def_html
+    assert "Non Scheduled Teletherapy Patients" not in dash_def_html and "Non-Scheduled Patients" not in dash_def_html
 
     # c. Register a patient (allowed)
     test_reg_mr = 9999099
@@ -2631,7 +2631,7 @@ def run_tests():
     # Now verify Front Desk user DOES see the pending patients table
     resp_fd_enabled = c_fd.get('/')
     assert resp_fd_enabled.status_code == 200
-    assert "Non-Scheduled Patients" in resp_fd_enabled.content.decode('utf-8')
+    assert ("Non Scheduled Teletherapy Patients" in resp_fd_enabled.content.decode('utf-8') or "Non-Scheduled Patients" in resp_fd_enabled.content.decode('utf-8'))
 
     # Revert Front Desk back to cap_view_pending_queue = False
     c.force_login(admin_user)
@@ -2656,7 +2656,7 @@ def run_tests():
     assert resp_fd_restored.status_code == 200
     fd_restored_html = resp_fd_restored.content.decode('utf-8')
     assert "Search Patient Directory & Check Schedule Status" in fd_restored_html
-    assert "Non-Scheduled Patients" not in fd_restored_html
+    assert ("Non Scheduled Teletherapy Patients" not in fd_restored_html and "Non-Scheduled Patients" not in fd_restored_html)
 
     # 4. Create New Role via UI form
     Role.objects.filter(role_name='Clinical Auditor').delete()
@@ -6223,6 +6223,71 @@ def run_tests():
     pt_old.delete()
     pt_new.delete()
     print("✓ Test 60 Passed: Bulk Hide Unscheduled Patients by Simulation Date Cutoff and dashboard modal fully verified.")
+
+    # 61. Test Non Scheduled Teletherapy Patients Heading & Scheduled Patient Exclusion
+    print("\n--- Test 61: Non Scheduled Teletherapy Patients Heading & Active Scheduled Patient Exclusion ---")
+    c_admin = Client()
+    c_admin.force_login(admin_user)
+
+    # 1. Verify dashboard heading
+    resp_dash = c_admin.get('/dashboard/')
+    assert resp_dash.status_code == 200
+    dash_html = resp_dash.content.decode('utf-8')
+    assert "Non Scheduled Teletherapy Patients" in dash_html, "Dashboard heading must be 'Non Scheduled Teletherapy Patients'"
+
+    # 2. Create an actively scheduled teletherapy patient
+    pt_sched = Patient.objects.create(
+        mr_no=9999081,
+        pt_name='SCHEDULED TELE PATIENT',
+        age=52,
+        sex='M',
+        diagnosis='CA TONGUE',
+        primary_consultant=cons_1,
+        is_hidden_from_dashboard=False,
+        created_by=admin_user
+    )
+    TreatmentSchedule.objects.create(
+        patient=pt_sched,
+        treatment_type='Teletherapy',
+        machine=mach_linac,
+        date_of_start=date(2026, 11, 25),
+        status='Scheduled',
+        created_by=admin_user
+    )
+    # Also attach a dummy emergency record with date_of_start=None to simulate legacy data
+    TreatmentSchedule.objects.create(
+        patient=pt_sched,
+        treatment_type='Teletherapy',
+        machine=mach_linac,
+        date_of_start=None,
+        status='Emergency',
+        is_emergency_slot=True,
+        created_by=admin_user
+    )
+
+    # 3. Create a truly unscheduled teletherapy patient
+    pt_unsched = Patient.objects.create(
+        mr_no=9999082,
+        pt_name='GENUINE UNSCHEDULED PATIENT',
+        age=45,
+        sex='F',
+        diagnosis='CA BREAST',
+        primary_consultant=cons_1,
+        is_hidden_from_dashboard=False,
+        created_by=admin_user
+    )
+
+    # 4. Verify pt_sched is EXCLUDED, pt_unsched is INCLUDED in active dashboard
+    resp_dash_check = c_admin.get('/dashboard/')
+    assert resp_dash_check.status_code == 200
+    page_pts = resp_dash_check.context['page_obj']
+    assert pt_sched not in page_pts, "Actively scheduled patient MUST NOT appear in Non Scheduled Teletherapy Patients queue"
+    assert pt_unsched in page_pts, "Unscheduled patient must appear in Non Scheduled Teletherapy Patients queue"
+
+    # Cleanup
+    pt_sched.delete()
+    pt_unsched.delete()
+    print("✓ Test 61 Passed: Non Scheduled Teletherapy Patients heading, active scheduled patient exclusion, and teletherapy queue verification successful.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
