@@ -6131,6 +6131,99 @@ def run_tests():
     p_sim_2026.delete()
     print("✓ Test 59 Passed: CT Simulation Date Range Export Modal, 2-Sheet Excel Workbook (Teletherapy Data & Data Dictionary), and CSV export fully verified.")
 
+    # --------------------------------------------------------------------------
+    # Test 60: Bulk Hide Unscheduled Patients by Simulation Date Cutoff (Admin-Only)
+    # --------------------------------------------------------------------------
+    print("\n--- Test 60: Bulk Hide Unscheduled Patients by Simulation Date Cutoff (Admin-Only) ---")
+    admin_client = Client()
+    admin_client.force_login(admin_user)
+
+    # 1. Non-admin access control: Resident and SubAdmin blocked
+    res_client = Client()
+    res_client.force_login(res_user)
+    resp_res = res_client.post(reverse('patient_hide_by_simulation_date'), {'cutoff_date': '2026-10-01'}, follow=True)
+    assert resp_res.status_code == 200
+    assert "Access restricted" in resp_res.content.decode()
+
+    sub_client = Client()
+    sub_client.force_login(subadmin_user)
+    resp_sub = sub_client.post(reverse('patient_hide_by_simulation_date'), {'cutoff_date': '2026-10-01'}, follow=True)
+    assert resp_sub.status_code == 200
+    assert "Access restricted" in resp_sub.content.decode()
+
+    # 2. Setup test unscheduled patients
+    Patient.objects.filter(mr_no__in=[7700000001, 7700000002]).delete()
+    mach_linac = Machine.objects.filter(treatment_mode='Teletherapy').first()
+
+    pt_old = Patient.objects.create(
+        mr_no=7700000001,
+        pt_name='UNSCHEDULED OLD SIM',
+        age=50,
+        sex='F',
+        diagnosis='CA CERVIX',
+        primary_consultant=cons_1,
+        is_hidden_from_dashboard=False,
+        created_by=admin_user
+    )
+    TreatmentSchedule.objects.create(
+        patient=pt_old,
+        treatment_type='Teletherapy',
+        machine=mach_linac,
+        date_of_sim=date(2026, 9, 15),
+        date_of_start=None,
+        status='Pending',
+        created_by=admin_user
+    )
+
+    pt_new = Patient.objects.create(
+        mr_no=7700000002,
+        pt_name='UNSCHEDULED NEW SIM',
+        age=58,
+        sex='M',
+        diagnosis='CA LARYNX',
+        primary_consultant=cons_1,
+        is_hidden_from_dashboard=False,
+        created_by=admin_user
+    )
+    TreatmentSchedule.objects.create(
+        patient=pt_new,
+        treatment_type='Teletherapy',
+        machine=mach_linac,
+        date_of_sim=date(2026, 10, 15),
+        date_of_start=None,
+        status='Pending',
+        created_by=admin_user
+    )
+
+    # 3. Dashboard rendering verification
+    resp_dash = admin_client.get(reverse('dashboard'))
+    dash_html = resp_dash.content.decode('utf-8')
+    assert 'hideBySimDateModal' in dash_html
+    assert 'openHideBySimDateModal' in dash_html
+    assert 'Hide Before Sim. Date' in dash_html
+
+    # 4. Admin triggers bulk hide with cutoff 2026-10-01
+    resp_hide = admin_client.post(
+        reverse('patient_hide_by_simulation_date'),
+        {
+            'cutoff_date': '2026-10-01',
+            'comment': 'Test bulk hide simulated before 01-10-2026'
+        },
+        follow=True
+    )
+    assert resp_hide.status_code == 200
+    assert "Successfully hid" in resp_hide.content.decode()
+
+    pt_old.refresh_from_db()
+    pt_new.refresh_from_db()
+    assert pt_old.is_hidden_from_dashboard is True, "Patient simulated before 2026-10-01 must be hidden"
+    assert pt_new.is_hidden_from_dashboard is False, "Patient simulated on/after 2026-10-01 must remain visible"
+
+    # 5. Clean up test patients
+    pt_old.delete()
+    pt_new.delete()
+    print("✓ Test 60 Passed: Bulk Hide Unscheduled Patients by Simulation Date Cutoff and dashboard modal fully verified.")
+
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")
     print("==================================================")

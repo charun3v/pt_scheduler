@@ -664,4 +664,72 @@ def patient_batch_hide_dashboard_view(request):
     return redirect('dashboard')
 
 
+@login_required
+def patient_hide_by_simulation_date_view(request):
+    """
+    Bulk hide unscheduled patients from the Main Dashboard whose simulation date is before a specified cutoff date.
+    Strictly restricted to Admin (not SubAdmin).
+    """
+    if not is_admin_only(request.user):
+        messages.error(request, "Access restricted. Only Administrators have permission to hide patients from the dashboard.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        cutoff_str = request.POST.get('cutoff_date', '').strip()
+        comment = request.POST.get('comment', '').strip()
+
+        if not cutoff_str:
+            messages.error(request, "A simulation cutoff date is required.")
+            return redirect('dashboard')
+
+        try:
+            cutoff_date = datetime.strptime(cutoff_str, '%Y-%m-%d').date()
+        except ValueError:
+            messages.error(request, f"Invalid date format: '{cutoff_str}'. Expected YYYY-MM-DD.")
+            return redirect('dashboard')
+
+        if not comment:
+            comment = f"Bulk hidden: simulated before {cutoff_date.strftime('%d-%m-%Y')}"
+
+        unsched_visible = Patient.objects.filter(
+            is_hidden_from_dashboard=False
+        ).filter(
+            Q(schedules__isnull=True) | Q(schedules__date_of_start__isnull=True)
+        ).distinct()
+
+        has_recent_sim = Patient.objects.filter(
+            schedules__date_of_sim__gte=cutoff_date
+        ).values_list('id', flat=True)
+
+        to_hide_ids = list(unsched_visible.filter(
+            schedules__date_of_sim__lt=cutoff_date
+        ).exclude(
+            id__in=has_recent_sim
+        ).distinct().values_list('id', flat=True))
+
+        if not to_hide_ids:
+            messages.info(request, f"No visible unscheduled patients found with simulation date before {cutoff_date.strftime('%d-%m-%Y')}.")
+            return redirect('dashboard')
+
+        now = timezone.now()
+        updated_count = Patient.objects.filter(id__in=to_hide_ids).update(
+            is_hidden_from_dashboard=True,
+            hidden_reason=comment,
+            hidden_at=now,
+            hidden_by=request.user
+        )
+
+        AuditLog.objects.create(
+            user=request.user,
+            action="PATIENT_DASHBOARD_BATCH_HIDDEN",
+            details=f"Admin {request.user.username} bulk hid {updated_count} unscheduled patients simulated before {cutoff_date.strftime('%d-%m-%Y')} from dashboard. Reason: {comment}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f"Successfully hid {updated_count} unscheduled patient(s) simulated before {cutoff_date.strftime('%d-%m-%Y')} from the main dashboard.")
+
+    return redirect('dashboard')
+
+
+
 

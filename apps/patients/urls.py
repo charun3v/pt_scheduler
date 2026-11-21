@@ -9,5 +9,6 @@ urlpatterns = [
     path('<int:patient_id>/delete/', views.patient_delete_view, name='patient_delete'),
     path('<int:patient_id>/hide-dashboard/', views.patient_hide_dashboard_view, name='patient_hide_dashboard'),
     path('batch-hide-dashboard/', views.patient_batch_hide_dashboard_view, name='patient_batch_hide_dashboard'),
+    path('hide-by-sim-date/', views.patient_hide_by_simulation_date_view, name='patient_hide_by_simulation_date'),
     path('<int:patient_id>/unhide-dashboard/', views.patient_unhide_dashboard_view, name='patient_unhide_dashboard'),
 ]

@@ -305,6 +305,12 @@
                                 title="Hide selected patients from dashboard in batch">
                             🙈 Hide Selected (<span id="batchSelectedCount">0</span>)
                         </button>
+                        <button type="button" onclick="openHideBySimDateModal();"
+                                class="action-ribbon-btn"
+                                style="font-size: 11px; padding: 2px 8px; color: #b45309; border-color: #fcd34d; background: #fffbeb;"
+                                title="Hide unscheduled patients simulated before a specified date">
+                            📅 Hide Before Sim. Date...
+                        </button>
                     {% endif %}
                 {% endif %}
             </div>
@@ -744,6 +750,53 @@
         </form>
     </div>
 </div>
+
+<!-- Modal for Bulk Hiding Unscheduled Patients by Simulation Date (Admin Only) -->
+<div id="hideBySimDateModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 1050; align-items: center; justify-content: center;">
+    <div style="background: #ffffff; border-radius: 8px; width: 500px; max-width: 95%; box-shadow: 0 10px 25px rgba(0,0,0,0.25); overflow: hidden; border: 2px solid #b45309;">
+        <div style="background: #b45309; color: #ffffff; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">📅</span>
+                <strong style="font-size: 14px;">Hide Unscheduled Patients by Simulation Date</strong>
+            </div>
+            <button type="button" onclick="closeHideBySimDateModal();" style="background: none; border: none; color: #ffffff; font-size: 20px; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <form method="POST" action="{% url 'patient_hide_by_simulation_date' %}" id="hideBySimDateForm" style="padding: 18px;">
+            {% csrf_token %}
+            <p style="margin: 0 0 12px 0; font-size: 13px; color: #334155; line-height: 1.4;">
+                Select a simulation cutoff date. All visible unscheduled patients with a simulation date earlier than this date will be hidden from the main dashboard queue.
+            </p>
+            <div style="margin-bottom: 12px;">
+                <label for="simCutoffDateInput" style="display: block; font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Simulation Date Cutoff: <span style="color: #dc2626;">*</span>
+                </label>
+                <input type="date" name="cutoff_date" id="simCutoffDateInput" required value="2026-10-01"
+                       style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                <span style="font-size: 11px; color: #64748b; margin-top: 3px; display: block;">Patients simulated strictly before this date (e.g. 01-10-2026) will be hidden.</span>
+            </div>
+            <div style="margin-bottom: 14px;">
+                <label for="simCutoffCommentInput" style="display: block; font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+                    Comment / Reason:
+                </label>
+                <input type="text" name="comment" id="simCutoffCommentInput"
+                       value="Simulated before 01-10-2026"
+                       placeholder="Reason for hiding..."
+                       style="width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px;">
+            </div>
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 8px 12px; margin-bottom: 14px; font-size: 11px; color: #92400e;">
+                ℹ️ Hidden patients remain fully searchable by MR Number or Name, and can be viewed or unhidden at any time using <strong>View Hidden Patients</strong>.
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+                <button type="button" onclick="closeHideBySimDateModal();" class="action-ribbon-btn" style="padding: 6px 14px; font-size: 12px;">
+                    Cancel
+                </button>
+                <button type="submit" class="action-ribbon-btn" style="padding: 6px 18px; font-size: 12px; font-weight: 700; background: #b45309; color: #ffffff; border-color: #92400e; cursor: pointer;">
+                    🙈 Hide Patients
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endif %}
 
 <script>
@@ -821,6 +874,31 @@
         if (modal) modal.style.display = 'none';
     }
 
+    // Open Hide by Simulation Date Modal
+    function openHideBySimDateModal() {
+        var modal = document.getElementById('hideBySimDateModal');
+        if (modal) {
+            modal.style.display = 'flex';
+            var commentInput = document.getElementById('simCutoffCommentInput');
+            var dateInput = document.getElementById('simCutoffDateInput');
+            if (dateInput && commentInput) {
+                dateInput.onchange = function() {
+                    if (dateInput.value) {
+                        var parts = dateInput.value.split('-');
+                        if (parts.length === 3) {
+                            commentInput.value = 'Simulated before ' + parts[2] + '-' + parts[1] + '-' + parts[0];
+                        }
+                    }
+                };
+            }
+        }
+    }
+
+    function closeHideBySimDateModal() {
+        var modal = document.getElementById('hideBySimDateModal');
+        if (modal) modal.style.display = 'none';
+    }
+
     // Open Approve Confirmation Modal
     function openApproveModal(userId, username, prefix, fullName, roleId, roleName, regDate) {
         document.getElementById('approveUserModalForm').action = '/users/' + userId + '/approve/';
@@ -876,6 +954,10 @@
         var batchModal = document.getElementById('batchHideModal');
         if (event.target == batchModal) {
             batchModal.style.display = "none";
+        }
+        var simDateModal = document.getElementById('hideBySimDateModal');
+        if (event.target == simDateModal) {
+            simDateModal.style.display = "none";
         }
     }
 </script>
