@@ -1,0 +1,190 @@
+<!-- Teletherapy Bulk Export Modal (Admin Only) -->
+{% if IS_ADMIN_ONLY %}
+<div id="teletherapyExportModal" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 99999; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+    <div style="background: #ffffff; border-radius: 10px; width: 92%; max-width: 620px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); overflow: hidden; border: 2px solid #003366; animation: modalPop 0.2s ease-out;">
+        
+        <!-- Modal Header -->
+        <div style="background: #003366; color: #ffffff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">📤</span>
+                <span style="font-size: 15px; font-weight: 700;">Export Radiotherapy Data</span>
+                <span style="background: #fee2e2; color: #991b1b; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px;">Admin Only</span>
+            </div>
+            <button type="button" onclick="closeExportDataModal()" style="background: none; border: none; color: #ffffff; font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px;">&times;</button>
+        </div>
+
+        <!-- Modal Body Form -->
+        <form id="modalExportDataForm" method="GET" action="{% url 'teletherapy_export' %}" target="_blank" style="padding: 20px; margin: 0;">
+            <input type="hidden" name="format" id="modalExportFormatInput" value="excel">
+
+            <p style="font-size: 13px; color: #334155; margin: 0 0 14px 0; line-height: 1.5;">
+                Select the <strong>CT Simulation Date range</strong> to filter records for export. The exported Excel workbook includes all 21 clinical fields in the <em>Teletherapy Data</em> sheet along with a comprehensive <em>Data Dictionary</em> sheet.
+            </p>
+
+            <!-- Simulation Date Range Inputs (Start Date & End Date) -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <label for="modalExportStartSim" style="display: block; font-size: 12px; font-weight: 700; color: #003366; margin-bottom: 4px;">
+                            CT Simulation Start Date: <span style="color: #dc2626;">*</span>
+                        </label>
+                        <input type="date" name="start_sim" id="modalExportStartSim" required
+                               style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13px; border: 1px solid #707070; border-radius: 4px; background: #ffffff;">
+                        <span style="font-size: 11px; color: #64748b; margin-top: 3px; display: block;">Earliest simulation date</span>
+                    </div>
+
+                    <div>
+                        <label for="modalExportEndSim" style="display: block; font-size: 12px; font-weight: 700; color: #003366; margin-bottom: 4px;">
+                            CT Simulation End Date: <span style="color: #dc2626;">*</span>
+                        </label>
+                        <input type="date" name="end_sim" id="modalExportEndSim" required
+                               style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13px; border: 1px solid #707070; border-radius: 4px; background: #ffffff;">
+                        <span style="font-size: 11px; color: #64748b; margin-top: 3px; display: block;">Latest simulation date</span>
+                    </div>
+                </div>
+
+                <!-- Date Range Quick Presets -->
+                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                    <span style="font-size: 11px; font-weight: 700; color: #475569; margin-right: 2px;">Presets:</span>
+                    <button type="button" onclick="setExportSimPreset('this_year')" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">This Year (2026)</button>
+                    <button type="button" onclick="setExportSimPreset('last_year')" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">Last Year (2025)</button>
+                    <button type="button" onclick="setExportSimPreset('last_6m')" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">Last 6 Months</button>
+                    <button type="button" onclick="setExportSimPreset('this_month')" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">This Month</button>
+                    <button type="button" onclick="setExportSimPreset('all')" class="action-ribbon-btn" style="padding: 2px 8px; font-size: 11px; cursor: pointer; color: #0284c7;" title="Export all simulation records without date filter">All Records</button>
+                </div>
+            </div>
+
+            <!-- Workbook Structure Info Callout -->
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 12px 14px; font-size: 12px; color: #166534; line-height: 1.5; margin-bottom: 16px;">
+                <div style="font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 14px;">📊</span>
+                    <span>Excel Workbook Sheets (.xlsx)</span>
+                </div>
+                <div>• <strong>Sheet 1 ("Teletherapy Data"):</strong> 21 clinical fields matching the template (MR No, Patient Name, Age, Sex, Date of Sim, Diagnosis, Site, Laterality, Phone, Intent, Unit, Consultant, Machine, Start Date, Shift, Dose, Fractions, Technique, Jr Resident, Simulated For, RT No).</div>
+                <div style="margin-top: 3px;">• <strong>Sheet 2 ("Data Dictionary"):</strong> Detailed metadata specifying column definitions, data types, mandatory flags, format examples, and permissible lookup values.</div>
+            </div>
+
+            <!-- Modal Footer Buttons -->
+            <div style="display: flex; justify-content: flex-end; gap: 10px; align-items: center; border-top: 1px solid #e2e8f0; padding-top: 14px;">
+                <button type="button" onclick="closeExportDataModal()" class="action-ribbon-btn" style="padding: 8px 16px; font-size: 12.5px; cursor: pointer;">
+                    Cancel
+                </button>
+                <button type="button" onclick="submitModalExport('csv')" class="action-ribbon-btn" style="padding: 8px 14px; font-size: 12.5px; cursor: pointer; color: #0369a1; border-color: #7dd3fc; background: #f0f9ff;" title="Export data rows to CSV">
+                    📄 Export as CSV
+                </button>
+                <button type="button" onclick="submitModalExport('excel')" class="action-ribbon-btn" style="padding: 8px 20px; font-size: 12.5px; font-weight: bold; cursor: pointer; background: #003366; color: #ffffff; border-color: #002244; box-shadow: 0 2px 4px rgba(0,0,0,0.15);" title="Download Excel workbook (.xlsx) with Data Dictionary">
+                    📊 Export to Excel (.xlsx)
+                </button>
+            </div>
+        </form>
+
+    </div>
+</div>
+
+<script>
+    // Open Export Data Modal and initialize simulation dates
+    function openExportDataModal(startSim, endSim) {
+        var modal = document.getElementById('teletherapyExportModal');
+        if (!modal) return;
+
+        var startInput = document.getElementById('modalExportStartSim');
+        var endInput = document.getElementById('modalExportEndSim');
+
+        if (startSim && endSim) {
+            startInput.value = startSim;
+            endInput.value = endSim;
+        } else if (!startInput.value || !endInput.value) {
+            // Default to start of current year (2026-01-01) and today
+            var now = new Date();
+            var year = now.getFullYear();
+            var month = String(now.getMonth() + 1).padStart(2, '0');
+            var day = String(now.getDate()).padStart(2, '0');
+            var todayStr = year + '-' + month + '-' + day;
+            var startOfYearStr = year + '-01-01';
+
+            startInput.value = startOfYearStr;
+            endInput.value = todayStr;
+        }
+
+        startInput.required = true;
+        endInput.required = true;
+        modal.style.display = 'flex';
+    }
+
+    function closeExportDataModal() {
+        var modal = document.getElementById('teletherapyExportModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    function setExportSimPreset(preset) {
+        var startInput = document.getElementById('modalExportStartSim');
+        var endInput = document.getElementById('modalExportEndSim');
+        var now = new Date();
+        var year = now.getFullYear();
+        var month = String(now.getMonth() + 1).padStart(2, '0');
+        var day = String(now.getDate()).padStart(2, '0');
+        var todayStr = year + '-' + month + '-' + day;
+
+        if (preset === 'this_year') {
+            startInput.value = year + '-01-01';
+            endInput.value = year + '-12-31';
+            startInput.required = true;
+            endInput.required = true;
+        } else if (preset === 'last_year') {
+            var lastYear = year - 1;
+            startInput.value = lastYear + '-01-01';
+            endInput.value = lastYear + '-12-31';
+            startInput.required = true;
+            endInput.required = true;
+        } else if (preset === 'last_6m') {
+            var sixMonthsAgo = new Date();
+            sixMonthsAgo.setMonth(now.getMonth() - 6);
+            var m = String(sixMonthsAgo.getMonth() + 1).padStart(2, '0');
+            var d = String(sixMonthsAgo.getDate()).padStart(2, '0');
+            startInput.value = sixMonthsAgo.getFullYear() + '-' + m + '-' + d;
+            endInput.value = todayStr;
+            startInput.required = true;
+            endInput.required = true;
+        } else if (preset === 'this_month') {
+            startInput.value = year + '-' + month + '-01';
+            endInput.value = todayStr;
+            startInput.required = true;
+            endInput.required = true;
+        } else if (preset === 'all') {
+            startInput.value = '';
+            endInput.value = '';
+            startInput.required = false;
+            endInput.required = false;
+        }
+    }
+
+    function submitModalExport(format) {
+        var form = document.getElementById('modalExportDataForm');
+        var formatInput = document.getElementById('modalExportFormatInput');
+        formatInput.value = format || 'excel';
+
+        var startInput = document.getElementById('modalExportStartSim');
+        var endInput = document.getElementById('modalExportEndSim');
+
+        if (startInput.value && endInput.value && startInput.value > endInput.value) {
+            alert('Simulation Start Date cannot be later than Simulation End Date.');
+            return false;
+        }
+
+        form.submit();
+        setTimeout(function() {
+            closeExportDataModal();
+        }, 800);
+    }
+
+    // Attach click outside to close
+    window.addEventListener('click', function(event) {
+        var exportModal = document.getElementById('teletherapyExportModal');
+        if (exportModal && event.target === exportModal) {
+            exportModal.style.display = 'none';
+        }
+    });
+</script>
+{% endif %}

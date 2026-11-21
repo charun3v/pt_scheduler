@@ -12,7 +12,7 @@
             <button type="button" onclick="openTeletherapyImportModal()" class="action-ribbon-btn" style="background: #ecfdf5; color: #047857; font-weight: bold; border-color: #10b981; padding: 6px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
                 <span>📥 Import Data</span>
             </button>
-            <a href="{% url 'teletherapy_export' %}" class="action-ribbon-btn" style="background: #f0f9ff; color: #0369a1; font-weight: bold; border-color: #0284c7; padding: 6px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+            <a href="javascript:void(0)" onclick="openExportDataModal()" class="action-ribbon-btn" style="background: #f0f9ff; color: #0369a1; font-weight: bold; border-color: #0284c7; padding: 6px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Export Teletherapy Data with Simulation Date Filter & Data Dictionary">
                 <span>📤 Export Data</span>
             </a>
             {% endif %}

@@ -111,7 +111,7 @@
         <a href="{% url 'audit_log_report' %}" class="action-ribbon-btn" style="color: #8b0000; font-weight: bold;" title="System Security & Clinical Audit Trail (Admin Only)">📋 Audit Logs</a>
         <span style="color: #cbd5e1; margin: 0 4px;">|</span>
         <a href="javascript:void(0)" onclick="openTeletherapyImportModal()" class="action-ribbon-btn" style="color: #047857; font-weight: bold; border-color: #10b981; background: #ecfdf5;" title="Import Teletherapy Data from Excel / CSV (Admin Only)">📥 Import Data</a>
-        <a href="{% url 'teletherapy_export' %}" class="action-ribbon-btn" style="color: #0369a1; font-weight: bold; border-color: #0284c7; background: #f0f9ff;" title="Export Teletherapy Data to CSV (Admin Only)">📤 Export Data</a>
+        <a href="javascript:void(0)" onclick="openExportDataModal()" class="action-ribbon-btn" style="color: #0369a1; font-weight: bold; border-color: #0284c7; background: #f0f9ff;" title="Export Teletherapy Data to Excel (.xlsx) with Data Dictionary (Admin Only)">📤 Export Data</a>
         {% endif %}
 
         <div style="flex-grow: 1;"></div>
@@ -137,6 +137,7 @@
     </main>
 
     {% include "scheduler/teletherapy_import_modal.html" %}
+    {% include "scheduler/teletherapy_export_modal.html" %}
     {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -2841,7 +2841,7 @@ def run_tests():
     c.force_login(res_user)
 
     # Attempt to schedule 5 appointments directly as Resident -> Blocked (400 or 403)
-    five_dates = ['2026-11-21', '2026-11-22', '2026-11-24', '2026-11-27', '2026-12-01']
+    five_dates = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-27', '2026-11-30']
     resp_blocked = c.post(
         f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
         json.dumps({
@@ -2859,7 +2859,7 @@ def run_tests():
     assert 'Maximum of four brachytherapy appointments permitted' in blocked_json['error']
 
     # Resident schedules 3 dates -> Allowed!
-    three_dates_unordered = ['2026-11-27', '2026-11-21', '2026-11-24']
+    three_dates_unordered = ['2026-11-27', '2026-11-23', '2026-11-25']
     resp_allowed = c.post(
         f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
         json.dumps({
@@ -2878,20 +2878,20 @@ def run_tests():
     appts_created = list(BrachytherapyAppointment.objects.filter(patient=brachy_pt).order_by('fraction_number'))
     assert len(appts_created) == 3
     assert appts_created[0].fraction_number == 1
-    assert appts_created[0].appointment_date == date(2026, 11, 21)
+    assert appts_created[0].appointment_date == date(2026, 11, 23)
     assert appts_created[1].fraction_number == 2
-    assert appts_created[1].appointment_date == date(2026, 11, 24)
+    assert appts_created[1].appointment_date == date(2026, 11, 25)
     assert appts_created[2].fraction_number == 3
     assert appts_created[2].appointment_date == date(2026, 11, 27)
 
     # Verify TreatmentSchedule course
     brachy_sched = TreatmentSchedule.objects.get(patient=brachy_pt, treatment_type='Brachytherapy')
-    assert brachy_sched.date_of_start == date(2026, 11, 21)
+    assert brachy_sched.date_of_start == date(2026, 11, 23)
     assert brachy_sched.date_of_end == date(2026, 11, 27)
     assert brachy_sched.no_of_fractions == 3
 
     # Resident attempts to add 2 more dates (3 existing + 2 = 5 total) without authorization -> Blocked
-    two_dates = ['2026-12-01', '2026-12-04']
+    two_dates = ['2026-11-29', '2026-11-30']
     resp_blocked_more = c.post(
         f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
         json.dumps({
@@ -2931,7 +2931,7 @@ def run_tests():
     resp_dup = c.post(
         f'/scheduler/patient/{brachy_pt.id}/brachytherapy/',
         json.dumps({
-            'selected_dates': ['2026-11-21'],  # already scheduled!
+            'selected_dates': ['2026-11-23'],  # already scheduled!
             'applicator_id': app_ic.id,
             'anesthesia_id': ana_spinal.id,
             'site_of_treatment': 'Cervix',
@@ -5979,6 +5979,157 @@ def run_tests():
     p1.delete()
     p2.delete()
     print("✓ Test 58 Passed: Admin Deletion Rights (Users & Patients with double confirmation), Batch Multi-Select Hide, and Technician Sheet Modal Modality Filtering fully verified.")
+
+    # --------------------------------------------------------------------------
+    # Test 59: Teletherapy CT Simulation Date Range Export & Excel with Data Dictionary
+    # --------------------------------------------------------------------------
+    print("\n--- Test 59: Teletherapy CT Simulation Date Range Export & Excel with Data Dictionary ---")
+    import openpyxl
+    import io
+    admin_client = Client()
+    admin_client.force_login(admin_user)
+
+    # 1. Non-admin access control
+    res_client = Client()
+    res_client.force_login(res_user)
+    resp_res = res_client.get(reverse('teletherapy_export') + '?start_sim=2026-01-01&end_sim=2026-12-31&format=excel', follow=True)
+    assert resp_res.status_code == 200
+    assert "Access restricted" in resp_res.content.decode()
+
+    # 2. Base template & dashboard include modal & modal openers
+    resp_dash = admin_client.get(reverse('dashboard'))
+    dash_html = resp_dash.content.decode('utf-8')
+    assert 'teletherapyExportModal' in dash_html
+    assert 'openExportDataModal' in dash_html
+    assert 'modalExportStartSim' in dash_html
+    assert 'modalExportEndSim' in dash_html
+    assert 'Data Dictionary' in dash_html
+
+    # 3. Create test patients with distinct simulation dates
+    # Pt A: date_of_sim = 2025-06-15 (in 2025 range)
+    # Pt B: date_of_sim = 2026-03-10 (in 2026 range)
+    mach_linac = Machine.objects.filter(treatment_mode='Teletherapy').first()
+    shift_m = Shift.objects.first()
+
+    Patient.objects.filter(mr_no__in=[8800000001, 8800000002]).delete()
+    p_sim_2025 = Patient.objects.create(
+        mr_no=8800000001,
+        pt_name='EXPORT PATIENT 2025',
+        age=55,
+        sex='F',
+        diagnosis='CA BREAST',
+        site_of_treatment='Breast',
+        primary_consultant=cons_1,
+        created_by=admin_user
+    )
+    s_sim_2025 = TreatmentSchedule.objects.create(
+        patient=p_sim_2025,
+        treatment_type='Teletherapy',
+        machine=mach_linac,
+        shift=shift_m,
+        date_of_sim=date(2025, 6, 15),
+        date_of_start=date(2025, 7, 1),
+        status='Completed',
+        dose_planned=Decimal('50.00'),
+        no_of_fractions=25,
+        created_by=admin_user
+    )
+
+    p_sim_2026 = Patient.objects.create(
+        mr_no=8800000002,
+        pt_name='EXPORT PATIENT 2026',
+        age=62,
+        sex='M',
+        diagnosis='CA LUNG',
+        site_of_treatment='Thorax',
+        primary_consultant=cons_1,
+        created_by=admin_user
+    )
+    s_sim_2026 = TreatmentSchedule.objects.create(
+        patient=p_sim_2026,
+        treatment_type='Teletherapy',
+        machine=mach_linac,
+        shift=shift_m,
+        date_of_sim=date(2026, 3, 10),
+        date_of_start=date(2026, 3, 20),
+        status='Scheduled',
+        dose_planned=Decimal('60.00'),
+        no_of_fractions=30,
+        created_by=admin_user
+    )
+
+    # 4. Export with 2025 simulation date filter
+    resp_exp_2025 = admin_client.get(
+        reverse('teletherapy_export') + '?start_sim=2025-01-01&end_sim=2025-12-31&format=excel'
+    )
+    assert resp_exp_2025.status_code == 200
+    assert resp_exp_2025['Content-Type'] == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    assert 'sim_20250101_to_20251231' in resp_exp_2025['Content-Disposition']
+
+    # Inspect the exported Excel workbook using openpyxl
+    wb_2025 = openpyxl.load_workbook(io.BytesIO(resp_exp_2025.content))
+    assert 'Teletherapy Data' in wb_2025.sheetnames
+    assert 'Data Dictionary' in wb_2025.sheetnames
+
+    # Check Sheet 1: Teletherapy Data
+    ws_data_2025 = wb_2025['Teletherapy Data']
+    headers_row = [ws_data_2025.cell(1, c).value for c in range(1, 22)]
+    assert headers_row == [
+        'MR_No', 'Pt_name', 'Age', 'Sex', 'Date_Of_sim', 'Diagnosis',
+        'Site_of _treatment', 'Laterality', 'Phone_no', 'Intent', 'Unit',
+        'Primary Consultant', 'Machine', 'Date_of_start', 'Shift',
+        'Dose_planned', 'No_of_fractions', 'Technique', 'Jr_Resident',
+        'Simulated_for', 'RT_No'
+    ]
+    exported_mr_nos = [ws_data_2025.cell(r, 1).value for r in range(2, ws_data_2025.max_row + 1)]
+    assert 8800000001 in exported_mr_nos
+    assert 8800000002 not in exported_mr_nos
+
+    # Check Sheet 2: Data Dictionary
+    ws_dict = wb_2025['Data Dictionary']
+    assert "KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY" in str(ws_dict['A1'].value)
+    assert "DATA DICTIONARY" in str(ws_dict['A2'].value)
+    assert "01-Jan-2025 to 31-Dec-2025" in str(ws_dict['A3'].value)
+    dict_headers = [ws_dict.cell(5, c).value for c in range(1, 7)]
+    assert dict_headers == [
+        'Sl. No.', 'Column / Field Name', 'Clinical Field Description',
+        'Data Type', 'Required / Mandatory', 'Permissible Values / Format Example'
+    ]
+    assert ws_dict.cell(6, 2).value == 'MR_No'
+    assert 'Mandatory' in ws_dict.cell(6, 5).value
+    assert ws_dict.cell(10, 2).value == 'Date_Of_sim'
+    assert 'Date' in ws_dict.cell(10, 4).value
+    assert ws_dict.cell(26, 2).value == 'RT_No'
+
+    # 5. Export with 2026 simulation date filter
+    resp_exp_2026 = admin_client.get(
+        reverse('teletherapy_export') + '?start_sim=2026-01-01&end_sim=2026-12-31&format=excel'
+    )
+    assert resp_exp_2026.status_code == 200
+    wb_2026 = openpyxl.load_workbook(io.BytesIO(resp_exp_2026.content))
+    ws_data_2026 = wb_2026['Teletherapy Data']
+    exported_mr_nos_2026 = [ws_data_2026.cell(r, 1).value for r in range(2, ws_data_2026.max_row + 1)]
+    assert 8800000002 in exported_mr_nos_2026
+    assert 8800000001 not in exported_mr_nos_2026
+
+    # 6. Export as CSV with simulation date filter
+    resp_exp_csv = admin_client.get(
+        reverse('teletherapy_export') + '?start_sim=2026-01-01&end_sim=2026-12-31&format=csv'
+    )
+    assert resp_exp_csv.status_code == 200
+    assert resp_exp_csv['Content-Type'] == 'text/csv; charset=utf-8-sig'
+    csv_text = resp_exp_csv.content.decode('utf-8-sig')
+    assert '8800000002' in csv_text
+    assert '8800000001' not in csv_text
+
+    # 7. AuditLog check
+    last_log = AuditLog.objects.filter(action="TELETHERAPY_DATA_EXPORT").latest('id')
+    assert "Excel" in last_log.details or "CSV" in last_log.details
+
+    # Clean up
+    p_sim_2025.delete()
+    p_sim_2026.delete()
+    print("✓ Test 59 Passed: CT Simulation Date Range Export Modal, 2-Sheet Excel Workbook (Teletherapy Data & Data Dictionary), and CSV export fully verified.")
 
     print("\n==================================================")
     print("ALL RADIOTHERAPY SCHEDULER TESTS PASSED (100% GREEN)!")

@@ -20,6 +20,8 @@ import re
 import csv
 import io
 import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 import calendar
 from apps.patients.models import Patient, DEFAULT_SITES
 from apps.core.models import AuditLog, PrintTemplateConfig, Designation, Consultant
@@ -3263,10 +3265,263 @@ def teletherapy_import_view(request):
     return render(request, 'scheduler/teletherapy_import.html', context)
 
 
+def generate_teletherapy_export_excel(schedules_qs, d_sim_start=None, d_sim_end=None):
+    """
+    Generates an Excel workbook (.xlsx) with two sheets:
+      - Sheet 1 ("Teletherapy Data"): Exact 21 clinical fields matching the template.
+      - Sheet 2 ("Data Dictionary"): Comprehensive metadata dictionary specifying field definitions,
+        data types, mandatory requirements, format examples, and permissible lookup values.
+    Returns: BytesIO buffer containing the workbook.
+    """
+    wb = openpyxl.Workbook()
+
+    # -------------------------------------------------------------
+    # Sheet 1: Teletherapy Data
+    # -------------------------------------------------------------
+    ws_data = wb.active
+    ws_data.title = "Teletherapy Data"
+
+    headers = [
+        'MR_No', 'Pt_name', 'Age', 'Sex', 'Date_Of_sim', 'Diagnosis',
+        'Site_of _treatment', 'Laterality', 'Phone_no', 'Intent', 'Unit',
+        'Primary Consultant', 'Machine', 'Date_of_start', 'Shift',
+        'Dose_planned', 'No_of_fractions', 'Technique', 'Jr_Resident',
+        'Simulated_for', 'RT_No'
+    ]
+    ws_data.append(headers)
+
+    header_fill = PatternFill(start_color="003366", end_color="003366", fill_type="solid")
+    header_font = Font(name="Calibri", size=10.5, bold=True, color="FFFFFF")
+    center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws_data.row_dimensions[1].height = 26
+
+    thin_side = Side(style='thin', color='D9D9D9')
+    cell_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws_data.cell(row=1, column=col_idx)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center_align
+        cell.border = cell_border
+
+    data_font = Font(name="Calibri", size=10)
+    left_align = Alignment(horizontal="left", vertical="center")
+    center_align_cell = Alignment(horizontal="center", vertical="center")
+    right_align = Alignment(horizontal="right", vertical="center")
+
+    center_cols = {1, 3, 4, 5, 8, 9, 10, 11, 14, 15, 17, 18, 20, 21}
+    right_cols = {16}
+
+    row_num = 2
+    for s in schedules_qs:
+        p = s.patient
+        tech_name = ''
+        if s.special_technique and s.special_technique.name.lower() != 'none':
+            tech_name = s.special_technique.name
+        elif s.technique:
+            tech_name = s.technique.name
+
+        laterality = ''
+        if s.notes:
+            m = re.search(r'Laterality:\s*([^\n\r]+)', s.notes, re.IGNORECASE)
+            if m:
+                laterality = m.group(1).strip()
+        if not laterality and hasattr(p, 'laterality') and p.laterality:
+            laterality = p.laterality
+
+        row = [
+            p.mr_no,
+            p.pt_name or '',
+            p.age if p.age is not None else '',
+            p.sex or '',
+            s.date_of_sim.strftime('%Y-%m-%d') if s.date_of_sim else '',
+            p.diagnosis or '',
+            s.site_of_treatment or p.site_of_treatment or '',
+            laterality,
+            p.phone_no or '',
+            s.intent.name if s.intent else '',
+            p.unit or '',
+            p.primary_consultant.name if p.primary_consultant else '',
+            s.machine.name if s.machine else '',
+            s.date_of_start.strftime('%Y-%m-%d') if s.date_of_start else '',
+            s.shift.name if s.shift else '',
+            float(s.dose_planned) if s.dose_planned is not None else '',
+            s.no_of_fractions if s.no_of_fractions is not None else '',
+            tech_name,
+            s.jr_resident or '',
+            s.simulated_for.name if s.simulated_for else '',
+            p.rt_no or '',
+        ]
+        ws_data.append(row)
+        ws_data.row_dimensions[row_num].height = 20
+
+        is_even = (row_num % 2 == 0)
+        row_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid") if is_even else PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws_data.cell(row=row_num, column=col_idx)
+            cell.font = data_font
+            cell.fill = row_fill
+            cell.border = cell_border
+            if col_idx in right_cols:
+                cell.alignment = right_align
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = '0.00'
+            elif col_idx in center_cols:
+                cell.alignment = center_align_cell
+            else:
+                cell.alignment = left_align
+        row_num += 1
+
+    for col in ws_data.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or '')
+            if len(val_str) > max_len:
+                max_len = len(val_str)
+        ws_data.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+    ws_data.freeze_panes = 'A2'
+
+    # -------------------------------------------------------------
+    # Sheet 2: Data Dictionary
+    # -------------------------------------------------------------
+    ws_dict = wb.create_sheet(title="Data Dictionary")
+
+    ws_dict.merge_cells('A1:F1')
+    ws_dict['A1'] = "KIDWAI MEMORIAL INSTITUTE OF ONCOLOGY — DEPARTMENT OF RADIATION ONCOLOGY"
+    ws_dict['A1'].font = Font(name="Calibri", size=13, bold=True, color="003366")
+    ws_dict['A1'].fill = PatternFill(start_color="F0F4F8", end_color="F0F4F8", fill_type="solid")
+    ws_dict['A1'].alignment = Alignment(horizontal="center", vertical="center")
+    ws_dict.row_dimensions[1].height = 28
+
+    ws_dict.merge_cells('A2:F2')
+    ws_dict['A2'] = "TELETHERAPY CLINICAL DATABASE & EXPORT SPECIFICATION — DATA DICTIONARY"
+    ws_dict['A2'].font = Font(name="Calibri", size=11, bold=True, color="1E293B")
+    ws_dict['A2'].fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+    ws_dict['A2'].alignment = Alignment(horizontal="center", vertical="center")
+    ws_dict.row_dimensions[2].height = 22
+
+    total_records = schedules_qs.count()
+    if d_sim_start and d_sim_end:
+        sim_filter_desc = f"{d_sim_start.strftime('%d-%b-%Y')} to {d_sim_end.strftime('%d-%b-%Y')}"
+    elif d_sim_start:
+        sim_filter_desc = f"From {d_sim_start.strftime('%d-%b-%Y')} onwards"
+    elif d_sim_end:
+        sim_filter_desc = f"Up to {d_sim_end.strftime('%d-%b-%Y')}"
+    else:
+        sim_filter_desc = "All Records (No Simulation Date Filter)"
+
+    ws_dict.merge_cells('A3:F3')
+    ws_dict['A3'] = f"Generated: {timezone.localtime().strftime('%d-%b-%Y %I:%M %p')} | CT Simulation Filter: {sim_filter_desc} | Total Records Exported: {total_records}"
+    ws_dict['A3'].font = Font(name="Calibri", size=9.5, italic=True, color="475569")
+    ws_dict['A3'].fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+    ws_dict['A3'].alignment = Alignment(horizontal="center", vertical="center")
+    ws_dict.row_dimensions[3].height = 20
+
+    ws_dict.append([])
+    ws_dict.row_dimensions[4].height = 8
+
+    dict_headers = [
+        'Sl. No.', 'Column / Field Name', 'Clinical Field Description',
+        'Data Type', 'Required / Mandatory', 'Permissible Values / Format Example'
+    ]
+    ws_dict.append(dict_headers)
+    ws_dict.row_dimensions[5].height = 26
+
+    dict_header_fill = PatternFill(start_color="003366", end_color="003366", fill_type="solid")
+    dict_header_font = Font(name="Calibri", size=10.5, bold=True, color="FFFFFF")
+
+    for col_idx in range(1, len(dict_headers) + 1):
+        cell = ws_dict.cell(row=5, column=col_idx)
+        cell.fill = dict_header_fill
+        cell.font = dict_header_font
+        cell.alignment = center_align
+        cell.border = cell_border
+
+    data_dictionary_rows = [
+        (1, 'MR_No', 'Medical Record Number (Unique institutional patient identifier)', 'BigInt / Integer (up to 12 digits)', 'Mandatory (Yes)', 'e.g. 20240024292 (Numeric identifier across hospital)'),
+        (2, 'Pt_name', 'Patient Full Name', 'Text / String (max 255 chars)', 'Mandatory (Yes)', 'e.g. REKHA, MASTER KARTHIK (Converted to uppercase)'),
+        (3, 'Age', 'Patient Age in completed years at registration', 'Integer (0 - 125)', 'Optional', 'e.g. 36, 52 (Positive integer)'),
+        (4, 'Sex', 'Biological Sex / Gender of the patient', 'Code (1 character)', 'Mandatory (Yes)', 'M (Male), F (Female), O (Other)'),
+        (5, 'Date_Of_sim', 'Date of CT Simulation scan for treatment planning', 'Date (YYYY-MM-DD)', 'Mandatory (Yes)', 'e.g. 2025-02-14 (Simulation reference date; filter key)'),
+        (6, 'Diagnosis', 'Primary oncological diagnosis and histology', 'Text / String (max 255 chars)', 'Mandatory (Yes)', 'e.g. ASTROCYTOMA, CA CERVIX, CA RIGHT BREAST'),
+        (7, 'Site_of _treatment', 'Anatomical target site / organ receiving radiotherapy', 'Lookup / String', 'Mandatory (Yes)', 'Brain, Head and neck, Thorax, Breast, Pelvis, Abdomen, Extremities, Cranio-Spinal'),
+        (8, 'Laterality', 'Anatomical laterality of the target volume', 'Lookup / String', 'Optional', 'Left, Right, Bilateral, Central (Default: Central)'),
+        (9, 'Phone_no', 'Primary contact telephone / mobile number', 'Text / Numeric (10-15 digits)', 'Optional', 'e.g. 9535600246 (Contact phone)'),
+        (10, 'Intent', 'Clinical treatment intent of radiation therapy', 'Lookup / String', 'Mandatory (Yes)', 'Radical, Adjuvant, Neoadjuvant, Palliative, Prophylactic'),
+        (11, 'Unit', 'Radiation Oncology Clinical Unit in charge of patient care', 'Lookup / String', 'Mandatory (Yes)', 'Unit I, Unit II, Unit III'),
+        (12, 'Primary Consultant', 'Treating Radiation Oncology Consultant physician', 'Lookup / User Name', 'Mandatory (Yes)', 'e.g. Dr. Naveen T, Dr. Nikhila K R, Dr. Ashalatha, Dr. Sridhar'),
+        (13, 'Machine', 'Assigned external beam teletherapy delivery unit', 'Lookup / Code', 'Mandatory (Yes)', 'ELEKTA - LA1, ELEKTA - LA2, ELEKTA - LA3, ELEKTA - LA4, Varian - DBX, Varian - DHX, Varian - Unique'),
+        (14, 'Date_of_start', 'Scheduled / actual treatment commencement date', 'Date (YYYY-MM-DD)', 'Mandatory (Yes)', 'e.g. 2025-03-01 (First fraction delivery date)'),
+        (15, 'Shift', 'Assigned machine operational time window / shift', 'Lookup / String', 'Mandatory (Yes)', 'Morning, Evening, Shift I, Shift II, General'),
+        (16, 'Dose_planned', 'Total prescribed radiation dose to target volume in Gray (Gy)', 'Decimal / Float (2 decimal places)', 'Optional', 'e.g. 60.00, 66.00, 50.00, 30.00, 20.00'),
+        (17, 'No_of_fractions', 'Total number of planned treatment fractions', 'Integer (1 - 50)', 'Optional', 'e.g. 30, 25, 20, 10, 5, 1'),
+        (18, 'Technique', 'Radiotherapy delivery planning technique / modality', 'Lookup / String', 'Optional', 'IMRT, VMAT, 3D-CRT, 2D Conventional, SRS, SRT, SBRT'),
+        (19, 'Jr_Resident', 'Junior Resident physician involved in planning / contouring', 'Text / User Name', 'Optional', 'e.g. Dr. Arun, resident username'),
+        (20, 'Simulated_for', 'Indication / clinical classification for CT simulation scan', 'Lookup / String', 'Optional', 'Teletherapy, Brachytherapy, Elective, Emergency'),
+        (21, 'RT_No', 'Departmental Radiotherapy Register / Ledger Number', 'Text / Alphanumeric (max 50 chars)', 'Optional', 'e.g. 9999, RT-2025-0142')
+    ]
+
+    dict_font = Font(name="Calibri", size=10)
+    dict_font_bold_field = Font(name="Calibri", size=10, bold=True, color="003366")
+    mand_yes_font = Font(name="Calibri", size=10, bold=True, color="991B1B")
+    mand_no_font = Font(name="Calibri", size=10, color="166534")
+
+    dict_row_num = 6
+    for item in data_dictionary_rows:
+        ws_dict.append(list(item))
+        ws_dict.row_dimensions[dict_row_num].height = 21
+
+        is_even = (dict_row_num % 2 == 0)
+        row_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid") if is_even else PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+
+        for col_idx in range(1, len(dict_headers) + 1):
+            cell = ws_dict.cell(row=dict_row_num, column=col_idx)
+            cell.fill = row_fill
+            cell.border = cell_border
+            if col_idx == 1:
+                cell.alignment = center_align_cell
+                cell.font = dict_font
+            elif col_idx == 2:
+                cell.alignment = left_align
+                cell.font = dict_font_bold_field
+            elif col_idx == 3:
+                cell.alignment = left_align
+                cell.font = dict_font
+            elif col_idx == 4:
+                cell.alignment = center_align_cell
+                cell.font = dict_font
+            elif col_idx == 5:
+                cell.alignment = center_align_cell
+                cell.font = mand_yes_font if 'Mandatory' in str(cell.value) else mand_no_font
+            elif col_idx == 6:
+                cell.alignment = left_align
+                cell.font = dict_font
+        dict_row_num += 1
+
+    ws_dict.column_dimensions['A'].width = 10
+    ws_dict.column_dimensions['B'].width = 24
+    ws_dict.column_dimensions['C'].width = 50
+    ws_dict.column_dimensions['D'].width = 28
+    ws_dict.column_dimensions['E'].width = 22
+    ws_dict.column_dimensions['F'].width = 54
+
+    ws_dict.freeze_panes = 'A6'
+
+    excel_buffer = io.BytesIO()
+    wb.save(excel_buffer)
+    excel_buffer.seek(0)
+    return excel_buffer
+
+
 @login_required
 def teletherapy_export_view(request):
     """
-    Exports Teletherapy patient and treatment schedule data as a CSV file matching
+    Exports Teletherapy patient and treatment schedule data as an Excel workbook (.xlsx)
+    with two sheets (Teletherapy Data & Data Dictionary) or CSV file matching
     the exact 21-column template:
     MR_No,Pt_name,Age,Sex,Date_Of_sim,Diagnosis,Site_of _treatment,Laterality,Phone_no,
     Intent,Unit,Primary Consultant,Machine,Date_of_start,Shift,Dose_planned,
@@ -3286,24 +3541,77 @@ def teletherapy_export_view(request):
     if machine_id:
         schedules_qs = schedules_qs.filter(machine_id=machine_id)
 
-    # Optional date filters
+    # Simulation date range filters (start_sim & end_sim)
+    start_sim_str = request.GET.get('start_sim') or request.GET.get('sim_from')
+    end_sim_str = request.GET.get('end_sim') or request.GET.get('sim_to')
+    d_sim_start = None
+    d_sim_end = None
+
+    if start_sim_str:
+        try:
+            d_sim_start = datetime.strptime(start_sim_str.strip(), '%Y-%m-%d').date()
+            schedules_qs = schedules_qs.filter(date_of_sim__gte=d_sim_start)
+        except ValueError:
+            pass
+
+    if end_sim_str:
+        try:
+            d_sim_end = datetime.strptime(end_sim_str.strip(), '%Y-%m-%d').date()
+            schedules_qs = schedules_qs.filter(date_of_sim__lte=d_sim_end)
+        except ValueError:
+            pass
+
+    # Optional start date filters (date_from & date_to) for backward compatibility
     date_from_str = request.GET.get('date_from')
     date_to_str = request.GET.get('date_to')
     if date_from_str:
         try:
-            d_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+            d_from = datetime.strptime(date_from_str.strip(), '%Y-%m-%d').date()
             schedules_qs = schedules_qs.filter(date_of_start__gte=d_from)
         except ValueError:
             pass
     if date_to_str:
         try:
-            d_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
+            d_to = datetime.strptime(date_to_str.strip(), '%Y-%m-%d').date()
             schedules_qs = schedules_qs.filter(date_of_start__lte=d_to)
         except ValueError:
             pass
 
+    export_format = request.GET.get('format', '').lower().strip()
+    is_excel = (export_format in ('excel', 'xlsx')) or (export_format != 'csv' and bool(start_sim_str or end_sim_str))
+
+    date_stamp = timezone.localdate().strftime('%Y-%m-%d')
+    total_count = schedules_qs.count()
+
+    AuditLog.objects.create(
+        user=request.user,
+        action="TELETHERAPY_DATA_EXPORT",
+        mr_no="BULK_EXPORT",
+        details=f"Exported teletherapy data ({'Excel' if is_excel else 'CSV'}): {total_count} records. Sim range: {start_sim_str or 'all'} to {end_sim_str or 'all'}.",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+
+    if is_excel:
+        excel_buf = generate_teletherapy_export_excel(schedules_qs, d_sim_start, d_sim_end)
+        if d_sim_start and d_sim_end:
+            sim_slug = f"sim_{d_sim_start.strftime('%Y%m%d')}_to_{d_sim_end.strftime('%Y%m%d')}"
+        elif d_sim_start:
+            sim_slug = f"sim_from_{d_sim_start.strftime('%Y%m%d')}"
+        elif d_sim_end:
+            sim_slug = f"sim_to_{d_sim_end.strftime('%Y%m%d')}"
+        else:
+            sim_slug = "sim_all"
+        filename = f"teletherapy_data_export_{sim_slug}_{date_stamp}.xlsx"
+        response = HttpResponse(
+            excel_buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    # CSV fallback
     response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-    filename = f"teletherapy_export_{timezone.localdate().strftime('%Y-%m-%d')}.csv"
+    filename = f"teletherapy_export_{date_stamp}.csv"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
     writer = csv.writer(response)
@@ -3329,6 +3637,8 @@ def teletherapy_export_view(request):
             m = re.search(r'Laterality:\s*([^\n\r]+)', s.notes, re.IGNORECASE)
             if m:
                 laterality = m.group(1).strip()
+        if not laterality and hasattr(p, 'laterality') and p.laterality:
+            laterality = p.laterality
 
         row = [
             p.mr_no,
